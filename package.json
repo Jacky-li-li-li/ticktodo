@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "description": "Tick — AI 会话的索引层：置顶 Todo 工作台",
   "scripts": {
-    "dev": "pnpm --filter @tick/desktop dev",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "dev": "pnpm --filter @tick/tick-extension build && pnpm --filter @tick/desktop dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck"
   },
   "engines": {
     "node": ">=22.19.0"

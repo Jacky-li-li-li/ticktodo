@@ -1,7 +1,7 @@
 /**
  * TodoList / ThreadRow — 线索列表与线索行（§4.2）。
- * 状态映射：open → 静止行（右：时间）/ hover（右：继续胶囊）；done 不在本列表（归档页 M1）。
- * 无会话时不显示时间（不编造，§4.2）——M0 无绑定，时间取 updatedAt。
+ * 状态映射：open → 静止行（右：时间）/ hover（右：继续胶囊）；done 不在本列表（归档页）。
+ * 时间取 updatedAt（M0）；M3 会换成 adapter 给出的 lastUsedAt。
  */
 
 import React from 'react'
@@ -17,9 +17,11 @@ const Check = (): React.JSX.Element => (
 export function TodoList({
   todos,
   onArchive,
+  onContinue,
 }: {
   todos: Todo[]
   onArchive: (todo: Todo) => void
+  onContinue: (todo: Todo) => void
 }): React.JSX.Element {
   return (
     <>
@@ -34,8 +36,10 @@ export function TodoList({
           </button>
           <span className="title">{todo.title}</span>
           <span className="time">{relTime(todo.updatedAt, new Date())}</span>
-          {/* M0：继续动作占位（M1 接 AiPicker/launch） */}
-          <button className="action">继续</button>
+          {/* 悬停时时间让位给「继续」：有绑定会话才是“接着做”，否则是“开一个新的” */}
+          <button className="action" onClick={() => onContinue(todo)}>
+            继续
+          </button>
         </div>
       ))}
     </>

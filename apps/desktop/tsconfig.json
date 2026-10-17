@@ -2,8 +2,22 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "types": ["node"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "paths": {
+      "@tick/tick-extension/durable": [
+        "../../packages/tick-extension/src/durable.ts"
+      ]
+    }
   },
-  "include": ["src/**/*", "vite.config.mts"]
+  "include": [
+    "src/**/*",
+    "vite.config.mts"
+  ]
 }

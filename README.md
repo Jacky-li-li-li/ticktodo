@@ -25,8 +25,8 @@ pnpm typecheck      # 全仓 tsc --noEmit
 ## 里程碑进度
 
 - [x] **M0** 仓库脚手架 + 置顶悬浮面板（360×520，min 320×420 / max 480×720，右上贴边 16px）+ Todo CRUD（原子写 + 文件锁 + 业务规则 1/4/5 结构）+ pi 升级 1.3.0
-- [ ] **M1** ProjectIndex + PiAdapter 实装（argv 投递 / `--session-id` / `--name` / 版本校验 / verify 绕缓存直读）
-- [ ] **M2** `create_todo` extension（CLI + 面板共用）+ 面板 Chat（pi-durable@1.3.0，pin 版本）
+- [x] **M1** ProjectIndex + PiAdapter 实装（argv 投递 / `--session-id` / `--name` / 版本校验 / verify 绕缓存直读）
+- [x] **M2** `create_todo` extension（CLI + 面板共用）+ 面板 Chat（pi-durable@1.3.0，pin 版本）+ AiPicker（继续 → 项目/投递/接着做）
 - [ ] **M3** 多会话绑定 UI + S5 反向建索引 + 快捷键/位置记忆 + 用量统计（单会话维度）+ 自配 provider
 - [ ] **M4** electron-builder 打包 + F8 导出（JSON + Markdown）
 
@@ -59,3 +59,32 @@ tick/
 | `exports/` | F8 手动导出（M4） |
 
 **凭据纪律**：整个数据根不含任何 API Key；自配 provider 的 Key 只进系统钥匙串（safeStorage，M3+）。
+
+## M2 两件实事（怎么用 / 怎么验）
+
+### 1. `create_todo` 扩展（pi CLI 里也能建线索）
+
+- 实现只有一份领域逻辑：`packages/tick-extension/src/todos-file.ts`（原子写 + O_EXCL 锁，和 Main 共用同一份 `todos.json`）。
+  两个运行时各一层薄适配：`src/index.ts`（pi coding-agent `registerTool`）与 `src/durable.ts`（pi-durable `defineTool`）。
+  > 实测发现：两套扩展 API 并不通用（`registerTool` vs `defineTool`），所以"一份实现"指的是领域逻辑，不是注册代码。
+- 打包：`pnpm --filter @tick/tick-extension build` → `dist/index.js`（esbuild 单文件，typebox 一起打进去）
+- 安装：App 启动时按内容 hash 幂等写入 `~/.pi/agent/extensions/tick/index.js`（pi 自动发现目录，默认启用，不改用户 settings）
+- 幂等：同一 pi 会话重复调用只返回既有那条；`requestId` 命中同理
+
+### 2. 面板 Chat（pi-durable）
+
+- 执行层 `apps/desktop/src/main/services/chat-host.ts`：`Harness.open(openNodeJsonlStorage(sessions/panel-chat))`
+  → `root()` → `resume()`（崩溃续跑）→ `viewState().subscribe()` 把结构视图拍平成消息推给 UI
+- 模型/凭据**复用 pi 本体但不写**：`ModelRuntime.create({ credentials: 只读 store })` 直读 `~/.pi/agent/{models,models-store,auth}.json`
+  - 只读是刻意的：面板不该抢 `auth.json.lock`，也不该改用户的 pi 凭据；
+  - 代价：OAuth 令牌过期时面板会直接报错（续期交给 pi 本体），M3 的自配 provider 是另一个 `CredentialSource` 实现
+- 失败一定有反馈：durable 的 `settled.status === 'unanswered'` 会渲染成一条「这轮没答出来：…」
+- 面板用量不统计（D15），`pi.usage` 有但不读
+
+### 3. 「继续」→ AiPicker
+
+- `launch:resolve-cwd` 做 cwd 三级推导：绑定会话的 cwd → `todo.lastLaunch` → home（home 显示成 `~`，不写成用户名）
+- 主按钮**永远带项目名**（`在 <项目> 中打开 pi` / `接着做`），投递默认「复制文案」，切「直接发送」才走 argv
+- 只有 `verify()` 通过才写绑定（0 字节僵尸会话不进 `bindings`）
+
+自检小工具：dev 期 main 进程开 CDP（`127.0.0.1:9223`），可用 `curl http://127.0.0.1:9223/json` 连上后 `Runtime.evaluate` 直接驱动 UI；renderer 的 console 也会转发到终端。

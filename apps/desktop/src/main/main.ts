@@ -1,17 +1,23 @@
 /**
- * main — 应用入口（M0）。
+ * main — 应用入口。
  *
- * 启动顺序：resolveDirs → ensureDirs（0700）→ TodoStore 就绪 → 窗口（记忆位）→ IPC → 载入 UI。
- * 常驻语义：关窗 = 隐藏（app 不退）；Cmd+Q 退出。DPI/多屏修正随 M3 的\"位置记忆\"细化。
+ * 启动顺序：resolveDirs → ensureDirs（0700）→ TodoStore → 装配 adapter/索引/拉起/面板对话
+ *          → 窗口（记忆位）→ IPC → 载入 UI。
+ * 常驻语义：关窗 = 隐藏（app 不退）；Cmd+Q 退出。
  */
 
 import { app, BrowserWindow, clipboard, shell } from 'electron'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import { ProjectsIpc } from '@tick/shared'
+import crypto from 'node:crypto'
+import { ChatIpc, ProjectsIpc, TodosIpc } from '@tick/shared'
 import { AiToolRegistry } from '@tick/ai-core'
 import { PiAdapter } from '@tick/ai-pi'
 import { ensureDirs, resolveDirs } from './services/storage'
 import { ProjectIndexService } from './services/project-index'
+import { ChatAgentHost } from './services/chat-host'
+import { LaunchService } from './services/launch'
 import { TodoStore } from './store'
 import { createPanelWindow, installAppMenu, saveWindowState } from './window'
 import { registerIpc } from './ipc'
@@ -21,7 +27,13 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 }
 
+// dev：开 CDP 端口，便于本仓自检（生产不启用）
+if (!app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9223')
+}
+
 let panel: BrowserWindow | null = null
+let chat: ChatAgentHost | undefined
 
 app.on('second-instance', () => {
   if (panel) {
@@ -38,7 +50,7 @@ app.whenReady().then(() => {
   const store = new TodoStore(path.join(dirs.data, 'todos.json'))
   store.ensureFile()
 
-  // ---------- M1：adapter 注册表 + 项目索引 ----------
+  // ---------- adapter 注册表（M1） ----------
   const registry = new AiToolRegistry()
   const pi = new PiAdapter({
     clipboardWrite: (text) => clipboard.writeText(text), // 剪贴板投递出口（ai 包不依赖 Electron）
@@ -59,10 +71,21 @@ app.whenReady().then(() => {
   const projectIndex = new ProjectIndexService(pi, path.join(dirs.cache, 'projects.json'), {
     launchClock,
   })
+  const launchService = new LaunchService(pi, store)
 
   panel = createPanelWindow(dirs)
   installAppMenu(panel)
-  registerIpc(store, { panel: () => panel }, { projectIndex }, registry.list())
+  registerIpc(store, { panel: () => panel }, { projectIndex, launch: launchService, chat: () => chat }, registry.list())
+
+  // ---------- M2：pi extension 安装 + 面板 Chat ----------
+  installTickExtension()
+  watchTodosFile(store, dirs.data)
+
+  chat = new ChatAgentHost({
+    storageDir: dirs.panelChat,
+    onState: (state) => panel?.webContents.send(ChatIpc.updated, state),
+  })
+  void chat.init()
 
   // 冷启动纪律：UI 先拿缓存；后台扫完推送给 renderer
   void (async () => {
@@ -83,7 +106,14 @@ app.whenReady().then(() => {
     }
   })
 
-  // 消灭 devtools 打开的外链窗口逃逸（防 sys-link 劫持；M0 只允许 shell.openExternal 白名单）
+  // dev 期把 renderer 的 console 转发到终端（否则 UI 报错完全看不见）
+  if (!app.isPackaged) {
+    panel.webContents.on('console-message', (...args: unknown[]) => {
+      console.log('[renderer]', args.slice(1).join(' '))
+    })
+  }
+
+  // 消灭 devtools 打开的外链窗口逃逸（防 sys-link 劫持；只允许 shell.openExternal 白名单）
   panel.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) {
       shell.openExternal(url)
@@ -106,24 +136,91 @@ app.whenReady().then(() => {
   }
 })
 
+/**
+ * 把 create_todo 扩展装进 pi 的自动发现目录（TECH-ARCH §7）。
+ * 幂等：内容 hash 没变就完全不动用户的 ~/.pi；变了才写。
+ */
+function installTickExtension(): void {
+  const sources = [
+    path.resolve(__dirname, '../../../packages/tick-extension/dist/index.js'), // dev / 同仓
+    path.resolve(process.resourcesPath ?? '', 'tick-extension/index.js'), // 打包（M4 extraResources）
+  ]
+  const src = sources.find((p) => {
+    try {
+      return fs.statSync(p).isFile()
+    } catch {
+      return false
+    }
+  })
+  if (!src) {
+    console.warn('[tick] 未找到 tick-extension 产物；create_todo 在 CLI 里不可用（先 pnpm -r build）')
+    return
+  }
+
+  try {
+    const bundle = fs.readFileSync(src)
+    const hash = crypto.createHash('sha256').update(bundle).digest('hex').slice(0, 16)
+    const targetDir = process.env.PI_CODING_AGENT_DIR?.trim()
+      ? path.join(process.env.PI_CODING_AGENT_DIR.trim(), 'extensions', 'tick')
+      : path.join(os.homedir(), '.pi', 'agent', 'extensions', 'tick')
+    const target = path.join(targetDir, 'index.js')
+    const stamp = path.join(targetDir, '.installed.json')
+
+    const current = fs.existsSync(stamp)
+      ? (JSON.parse(fs.readFileSync(stamp, 'utf8')) as { hash?: string }).hash
+      : undefined
+    if (current === hash && fs.existsSync(target)) return
+
+    fs.mkdirSync(targetDir, { recursive: true })
+    fs.writeFileSync(target, bundle)
+    fs.writeFileSync(stamp, JSON.stringify({ hash, installedAt: new Date().toISOString() }, null, 2))
+    console.log(`[tick] tick-extension 已安装到 ${target}`)
+  } catch (e) {
+    console.error('[tick] tick-extension 安装失败:', e)
+  }
+}
+
+/**
+ * pi extension 直接写 todos.json（PRD §6 规则 3：与 Main 共写同一份）。
+ * Main 侧用 fs.watch 感知外部改动并推给 UI，避免面板显示过期列表。
+ */
+function watchTodosFile(store: TodoStore, dataDir: string): void {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    const watcher = fs.watch(dataDir, (_event, filename) => {
+      if (filename !== 'todos.json') return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        panel?.webContents.send(TodosIpc.changed, store.list())
+      }, 150)
+    })
+    watcher.on('error', (e) => console.error('[tick] todos.json watch 失败:', e))
+    app.on('before-quit', () => watcher.close())
+  } catch (e) {
+    console.error('[tick] 无法监听 data 目录:', e)
+  }
+}
+
 // 常驻 ≠ 崩溃后僵尸：窗口全关（Cmd+Q 已触发 willClose）且无任务 → 退出
 app.on('window-all-closed', () => {
-  // 保存最终窗口几何（主进程侧兜底，Renderer 侧的 moved/resized 已实时存过）
   try {
     const dirs = resolveDirs()
     if (panel) saveWindowState(dirs, panel)
   } catch {
     /* ignore */
   }
-  // macOS 习惯是保留 dock 活性；常驻面板本就常驻，直接退出即可（用户可再启动）
   app.quit()
 })
 
 app.on('before-quit', () => {
   if (panel) (panel as unknown as { __willClose?: boolean }).__willClose = true
+  void chat?.close()
 })
 
-// fs.watch 域外的兜底：捕获 uncaught，为 M2 的 durable 稳定运行留哨位
+// durable 稳定运行哨位：不让单次异常拖垮常驻面板
 process.on('uncaughtException', (err) => {
   console.error('[tick] uncaughtException:', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[tick] unhandledRejection:', reason)
 })

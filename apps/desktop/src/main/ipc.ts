@@ -4,11 +4,21 @@
  */
 
 import { app, BrowserWindow, ipcMain } from 'electron'
-import type { Todo, TodoCreateInput, TodoPatch } from '@tick/shared'
-import { ProjectsIpc, TodosIpc, ToolsIpc, WindowIpc } from '@tick/shared'
+import type {
+  ChatState,
+  LaunchOutcome,
+  LaunchRequest,
+  ResumeRequest,
+  Todo,
+  TodoCreateInput,
+  TodoPatch,
+} from '@tick/shared'
+import { ChatIpc, LaunchIpc, ProjectsIpc, TodosIpc, ToolsIpc, WindowIpc } from '@tick/shared'
 import type { AiToolAdapter } from '@tick/ai-core'
 import type { TodoStore } from './store'
 import type { ProjectIndexService } from './services/project-index'
+import type { ChatAgentHost } from './services/chat-host'
+import type { LaunchService } from './services/launch'
 
 export interface IpcWindows {
   panel: () => BrowserWindow | null
@@ -16,6 +26,8 @@ export interface IpcWindows {
 
 export interface IpcServices {
   projectIndex: ProjectIndexService
+  chat: () => ChatAgentHost | undefined
+  launch: LaunchService
 }
 
 export function registerIpc(
@@ -48,7 +60,7 @@ export function registerIpc(
     return services.projectIndex.refresh()
   })
 
-  // ---------- 工具就绪（Q14 双出口空态判据；M1 只有 pi） ----------
+  // ---------- 工具就绪（Q14 双出口空态判据） ----------
   ipcMain.handle(ToolsIpc.status, async () => {
     const results = await Promise.all(
       adapters.map(async (a) => ({
@@ -58,6 +70,38 @@ export function registerIpc(
       })),
     )
     return results
+  })
+
+  // ---------- 面板 Chat（M2 / pi-durable） ----------
+  ipcMain.handle(ChatIpc.state, (): ChatState => {
+    return services.chat()?.getState() ?? { status: 'unavailable', messages: [], reason: '面板对话未启动' }
+  })
+
+  ipcMain.handle(ChatIpc.send, async (_e, text: string): Promise<void> => {
+    const chat = services.chat()
+    if (!chat) throw new Error('面板对话未启动')
+    await chat.send(text)
+  })
+
+  ipcMain.handle(ChatIpc.abort, async (): Promise<void> => {
+    await services.chat()?.abort()
+  })
+
+  ipcMain.handle(ChatIpc.reset, async (): Promise<void> => {
+    await services.chat()?.reset()
+  })
+
+  // ---------- 拉起 / 恢复（M2 / ai-picker） ----------
+  ipcMain.handle(LaunchIpc.resolveCwd, async (_e, todoId?: string) => {
+    return services.launch.resolveCwd(todoId)
+  })
+
+  ipcMain.handle(LaunchIpc.launch, async (_e, req: LaunchRequest): Promise<LaunchOutcome> => {
+    return services.launch.launch(req)
+  })
+
+  ipcMain.handle(LaunchIpc.resume, async (_e, req: ResumeRequest): Promise<LaunchOutcome> => {
+    return services.launch.resume(req)
   })
 
   // 常驻语义：隐藏 ≠ 销毁；退出走 Cmd+Q / dock quit

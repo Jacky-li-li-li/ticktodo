@@ -27,6 +27,8 @@ export function useTodos(): {
 
   useEffect(() => {
     void refresh()
+    // pi extension 直接写 todos.json（命令行里 create_todo）→ main 的 fs.watch 推过来
+    return window.tick.todos.onChange?.(() => void refresh())
   }, [refresh])
 
   const create = useCallback(

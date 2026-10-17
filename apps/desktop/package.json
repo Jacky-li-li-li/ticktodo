@@ -11,7 +11,10 @@
   "dependencies": {
     "@tick/shared": "workspace:*",
     "@tick/ai-core": "workspace:*",
-    "@tick/ai-pi": "workspace:*"
+    "@tick/ai-pi": "workspace:*",
+    "@earendil-works/pi-durable": "1.3.0",
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@tick/tick-extension": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

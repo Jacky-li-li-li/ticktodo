@@ -328,3 +328,353 @@ body,
   flex-direction: column;
   gap: var(--gap-std);
 }
+
+.toast-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 顶栏右侧按钮组（M2） ---------- */
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-back {
+  -webkit-app-region: no-drag;
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-label);
+  font-size: 16px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+.topbar-back:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--t-title);
+}
+
+/* ---------- 面板对话（M2） ---------- */
+
+.chat-model {
+  margin-left: auto;
+  margin-right: 4px;
+  max-width: 150px;
+  font-size: 10px;
+  color: var(--t-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-stream {
+  gap: 8px;
+  padding: 2px 2px 4px;
+}
+
+.chat-msg {
+  display: flex;
+}
+
+.chat-msg.user {
+  justify-content: flex-end;
+}
+
+.chat-bubble {
+  max-width: 86%;
+  padding: 8px 11px;
+  border-radius: 13px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  cursor: text;
+}
+
+.chat-msg.user .chat-bubble {
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.42), rgba(10, 132, 255, 0.24));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.chat-msg.assistant .chat-bubble {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--t-body);
+}
+
+.chat-input.disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.chat-send {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--t-row);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-send:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.chat-send:disabled {
+  opacity: 0.45;
+}
+
+/* ---------- AiPicker 浮层（R3 同款材质） ---------- */
+
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  padding: var(--pad-panel);
+  background: rgba(6, 8, 14, 0.42);
+  backdrop-filter: blur(2px);
+  border-radius: var(--r-panel);
+}
+
+.sheet {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--r-card);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03) 42%, rgba(255, 255, 255, 0)),
+    rgba(16, 18, 28, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.16),
+    0 18px 48px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(56px) saturate(1.3);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 2px;
+}
+
+.sheet-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-close {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-weak);
+  font-size: 11px;
+}
+
+.sheet-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--r-row);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-body);
+  font-size: 11px;
+  text-align: left;
+}
+
+button.sheet-row:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sheet-row .label {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--t-weak);
+}
+
+.sheet-row .value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t-title);
+}
+
+.sheet-row .path {
+  flex: 1;
+  font-size: 10px;
+  color: var(--t-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.sheet-row .chevron {
+  color: var(--t-faint);
+}
+
+.project-list {
+  max-height: 168px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px;
+  border-radius: var(--r-row);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.project-list::-webkit-scrollbar {
+  width: 0;
+}
+
+.project-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.project-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.project-item.current {
+  background: rgba(10, 132, 255, 0.18);
+}
+
+.project-item .name {
+  font-size: 11px;
+  color: var(--t-row);
+}
+
+.project-item .path {
+  flex: 1;
+  font-size: 10px;
+  color: var(--t-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+}
+
+.project-empty {
+  padding: 8px;
+  font-size: 10px;
+  color: var(--t-weak);
+}
+
+/* 投递方式：两段式，默认在左（剪贴板） */
+.segmented {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.segmented button {
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-secondary);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.segmented button.on {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--t-title);
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.sheet-actions .primary,
+.sheet-actions .secondary {
+  flex: 1;
+  height: 38px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+}
+
+.sheet-actions .primary {
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.62), rgba(10, 132, 255, 0.32));
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.34),
+    0 6px 18px rgba(10, 132, 255, 0.26);
+}
+
+.sheet-actions .secondary {
+  color: var(--t-row);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sheet-actions .primary:disabled,
+.sheet-actions .secondary:disabled {
+  opacity: 0.55;
+}
+
+.badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.24);
+  font-size: 9px;
+  line-height: 16px;
+  text-align: center;
+}
