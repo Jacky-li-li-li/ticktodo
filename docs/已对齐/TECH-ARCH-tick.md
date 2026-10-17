@@ -1,6 +1,6 @@
 # 技术架构 · Tick 置顶 Todo 工作台
 
-配合 `PRD-tick.md`（v0.3）与 `REVIEW-tick-v0.3.md`。会话执行层 = pi 1.2.0；上层产品自研；多 AI 经 `packages/ai/*` Adapter 扩展。
+配合 `PRD-tick.md`（v0.3）与 `REVIEW-tick-v0.3.md`。会话执行层 = pi **1.3.0**（早期基线实验用过 1.2.0）；上层产品自研；多 AI 经 `packages/ai/*` Adapter 扩展。
 
 **v0.3 变更**：飞书相关能力整体移除；新增 `ProjectIndex`（从 pi 会话目录推导项目）；投递方式改为 argv 优先；数据根迁至 `~/.ticktodo`；Todo 与 session 改为 1:N；`create_todo` 以 pi extension 形式提供。
 
@@ -146,11 +146,11 @@ tick/
 
 | 模块 | 位置 | 职责 |
 |------|------|------|
-| WindowManager | main | 置顶、显隐（位置记忆待补） |
-| ShortcutService | main | 全局快捷键（首版未实现） |
+| WindowManager | main | 置顶、显隐、位置记忆（`cache/window-state.json`；含 pinned / 失焦收起） |
+| ShortcutService | main | 全局快捷键（`⌘⌥T` 显隐面板、`⌘⌥N` 新建线索；已实现） |
 | TodoStore | main | CRUD、软完成；原子写 + 文件锁（`todo-store.ts`） |
 | SessionStore | main | **只存绑定关系**（`Todo.bindings[]` 1:N + `primarySessionId`）；元数据不镜像，走 adapter |
-| ProjectIndexService | main | **调度**各 adapter 采集 → 交给 core 归并 → 分段缓存（`cache/projects.json`）→ 失效重建 → IPC；含 **Warm/Ask 两级调度**（后台低优先级扫，用户请求时提速） |
+| ProjectIndexService | main | **调度**各 adapter 采集 → 交给 core 归并 → 分段缓存（`cache/projects.json`）→ 失效重建 → IPC；as-built 简化为**启动后台扫 + 手动 refresh**（Warm/Ask 全速切换与 checkpoint 仍预留，未全量落地） |
 | mergeProjects | ai/core | **工具无关**的纯函数：归一化 → git 根上卷 → 按路径合并证据 → 排序（可单测，不依赖任何 adapter） |
 | canonicalPath | ai/core | 路径同一性：realpath / `/private/var` / 大小写 / trailing slash / worktree |
 | CwdResolver | main | 默认 cwd 推导：绑定 session cwd（**按 `binding.toolId` 取对应 adapter**）→ `Todo.lastLaunch` → **home**；返回 `{cwd, source}`，UI 据此渲染按钮 |

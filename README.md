@@ -136,7 +136,7 @@ tick/
 - **用量**（F6-b，默认关）：设置开启后，详情里的每个会话显示 tokens / cost；provider 未上报成本时显示「≥」；面板 Chat 不参与统计（底部有静态说明）。
 - **导出**（F8）：⋯ → 导出未完成 / 导出全部；详情里可「导出」当前线索。产物落 `exports/tick-export-<ts>.json` + `.md`；JSON 含 `filePath`、实时 `exists`、`usage`（未开用量统计时为 `null`），不含正文。
 - **面板 Chat**：顶部新增目录行，默认 home，可切换项目（只改 agent cwd，不新建会话）。
-- **未做**：跨工具接手（F6-a）、导出再导入（P2+）、Windows 安装（P3）。
+- **未做**：跨工具接手（F6-a）、第二工具 adapter、导出再导入（P2+）、Windows 安装（P3）、开机启动、清除面板历史、S5 认领前标题可编辑、ProjectIndex Warm/Ask 完整两级 + checkpoint、首屏显式 `pi auth check --json`。
 
 ### 6. 自配 provider（M3 尾巴）与打包安装（M4）
 

@@ -207,7 +207,7 @@ export function AiPicker({
               <div className="tool-card-title">没有可用的 agent 工具</div>
               <div className="tool-card-hint">Tick 只做索引、不内置模型…记线索不受影响</div>
               <div className="tool-card-scan">
-                已扫描本机：pi · claude code · codex —— 均未检测到会话目录
+                当前只接入了 pi；本机未检测到可用工具
               </div>
               <button
                 className="tool-card-retry"
