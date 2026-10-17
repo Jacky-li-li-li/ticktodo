@@ -18,10 +18,12 @@ export function TodoList({
   todos,
   onArchive,
   onContinue,
+  onOpen,
 }: {
   todos: Todo[]
   onArchive: (todo: Todo) => void
   onContinue: (todo: Todo) => void
+  onOpen: (todo: Todo) => void
 }): React.JSX.Element {
   return (
     <>
@@ -34,7 +36,9 @@ export function TodoList({
           >
             <Check />
           </button>
-          <span className="title">{todo.title}</span>
+          <button className="title title-button" onClick={() => onOpen(todo)}>
+            {todo.title}
+          </button>
           <span className="time">{relTime(todo.updatedAt, new Date())}</span>
           {/* 悬停时时间让位给「继续」：有绑定会话才是“接着做”，否则是“开一个新的” */}
           <button className="action" onClick={() => onContinue(todo)}>

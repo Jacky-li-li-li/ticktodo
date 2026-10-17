@@ -12,10 +12,10 @@
  * pinned（用户手动加项目）持久在 cache 文件里，重扫时保留。
  */
 
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectEntry, ProjectSource } from '@tick/ai-core'
-import { mergeProjects, sortEntries } from '@tick/ai-core'
+import { canonicalPath, mergeProjects, sortEntries } from '@tick/ai-core'
 import type { PiAdapter } from '@tick/ai-pi'
 import { collectJsonlFiles, readFirstLineHeader, type SessionRoot } from '@tick/ai-pi'
 import { atomicWriteJson, readJson } from './storage'
@@ -33,6 +33,8 @@ interface CacheFile {
   files: Record<string, CachedFileMeta>
   projects: ProjectEntry[]
   pinned: string[]
+  /** 失效目录的重新定位映射：old canonical → new canonical（只做映射，不动 pi 的文件） */
+  aliases?: Record<string, string>
 }
 
 const EMPTY_CACHE: CacheFile = {
@@ -41,6 +43,7 @@ const EMPTY_CACHE: CacheFile = {
   files: {},
   projects: [],
   pinned: [],
+  aliases: {},
 }
 
 export interface ProjectIndexOptions {
@@ -69,7 +72,7 @@ export class ProjectIndexService {
   async init(): Promise<void> {
     const cached = readJson<CacheFile>(this.cacheFile)
     if (cached?.version === 1) {
-      this.cache = cached
+      this.cache = { ...cached, aliases: cached.aliases ?? {} }
     }
     this.loaded = true
   }
@@ -87,9 +90,13 @@ export class ProjectIndexService {
       try {
         const files = new Map<string, CachedFileMeta>(Object.entries(this.cache.files))
         const byCwd = new Map<string, { sessionCount: number; lastUsedAt?: number }>()
+        // Q8 硬约束：文件级增量按 (size,mtime)，消失的条目必须从缓存删除。
+        // 旧实现只增不删，cache/projects.json 的 files 会无限增长。
+        const seen = new Set<string>()
 
         for (const root of this.sessionRoots()) {
           for (const file of collectJsonlFiles(root.dir)) {
+            seen.add(file)
             let st
             try {
               st = statSync(file)
@@ -117,6 +124,10 @@ export class ProjectIndexService {
           }
         }
 
+        for (const known of files.keys()) {
+          if (!seen.has(known)) files.delete(known)
+        }
+
         const source: ProjectSource = {
           toolId: this.adapter.id,
           projects: [...byCwd.entries()].map(([p, e]) => ({
@@ -133,12 +144,9 @@ export class ProjectIndexService {
           files: Object.fromEntries(files),
           projects: merged,
           pinned: this.cache.pinned,
+          aliases: this.cache.aliases ?? {},
         }
-        try {
-          atomicWriteJson(this.cacheFile, this.cache)
-        } catch {
-          /* 缓存写失败不致命：下次重扫 */
-        }
+        this.saveCache()
         const clock = this.opts.launchClock?.() ?? new Map()
         return this.overlay(sortEntries(structuredClone(merged)), clock)
       } finally {
@@ -148,13 +156,48 @@ export class ProjectIndexService {
     return this.scanning
   }
 
-  /** 用户手动加项目（M3+ 使用；现在先持久链路就绪） */
+  /**
+   * 用户手动加项目（F3）：canonical 化后 pin 进缓存并立即落盘，
+   * 这样即使 pi 不可用/没有会话，项目也能一直出现在选择器里（不参与 stale 清理）。
+   */
   pin(projectPath: string): void {
-    if (!this.cache.pinned.includes(projectPath)) this.cache.pinned.push(projectPath)
+    const p = canonicalPath(projectPath)
+    if (!this.cache.pinned.includes(p)) {
+      this.cache.pinned.push(p)
+      this.saveCache()
+    }
   }
 
   unpin(projectPath: string): void {
-    this.cache.pinned = this.cache.pinned.filter((p) => p !== projectPath)
+    const p = canonicalPath(projectPath)
+    const next = this.cache.pinned.filter((x) => x !== p)
+    if (next.length === this.cache.pinned.length) return
+    this.cache.pinned = next
+    this.saveCache()
+  }
+
+  /** 失效目录重新定位（F3）：记录 old→new 映射并 pin 新目录，返回新路径 */
+  relocate(oldPath: string, newPath: string): string {
+    const oldCanonical = canonicalPath(oldPath)
+    const newCanonical = canonicalPath(newPath)
+    this.cache.aliases = { ...(this.cache.aliases ?? {}), [oldCanonical]: newCanonical }
+    if (!this.cache.pinned.includes(newCanonical)) this.cache.pinned.push(newCanonical)
+    this.saveCache()
+    return newCanonical
+  }
+
+  /** 给 CwdResolver 用：记住的旧目录失效时，查是否有重新定位映射 */
+  aliasOf(projectPath: string): string | undefined {
+    return (this.cache.aliases ?? {})[canonicalPath(projectPath)]
+  }
+
+  private saveCache(): void {
+    try {
+      mkdirSync(path.dirname(this.cacheFile), { recursive: true, mode: 0o700 })
+      atomicWriteJson(this.cacheFile, this.cache)
+    } catch {
+      /* cache 可再生产：写失败下次重扫/重启再说 */
+    }
   }
 
   /** evidence-only merge 结果晚于缓存：调用方把 Tick 时钟/pinned 叠到最新结果上 */
@@ -181,9 +224,15 @@ export class ProjectIndexService {
     if (e.lastUsedAt === undefined || mtimeMs > e.lastUsedAt) e.lastUsedAt = mtimeMs
   }
 
-  /** 叠加 Tick 侧状态：lastLaunchedAt（时钟）+ pinned 用户条目 */
+  /** 叠加 Tick 侧状态：lastLaunchedAt（时钟）+ pinned 用户条目 + 失效目录别名 */
   private overlay(entries: ProjectEntry[], clock: Map<string, number>): ProjectEntry[] {
+    const aliases = this.cache.aliases ?? {}
     for (const e of entries) {
+      if (aliases[e.path]) {
+        // 目录改名的替代：列表按新路径展示（不移动任何 pi 文件）
+        e.path = aliases[e.path] as string
+        e.exists = existsSync(e.path)
+      }
       const t = clock.get(e.path)
       if (t !== undefined) e.lastLaunchedAt = t
       if (this.cache.pinned.includes(e.path)) e.pinned = true

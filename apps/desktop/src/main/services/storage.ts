@@ -13,6 +13,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 export interface TickDirs {
   root: string
@@ -41,7 +42,7 @@ Tick = 「AI 会话的索引层」。本目录按性质分四层：
 
 | 目录 | 丢了会怎样 | 同步 | 说明 |
 |---|---|---|---|
-| data/ | 致命（todo 全没） | ✅ 建议 | 关键数据，只存索引与设置，永不自动删 |
+| data/ | 致命（todo 全没） | ✅ 建议 | 关键数据：todos.json / settings.json；永不自动删 |
 | sessions/ | 可承受（面板只是捕获入口） | ⚠️ 不建议 | 面板对话正文（MB 级）；建议提供「清除面板历史」 |
 | cache/ | 无所谓（重扫即重建） | ❌ 不需要 | 项目缓存等可再生数据 |
 | exports/ | — | — | F8 手动导出的产物 |
@@ -66,20 +67,32 @@ export function ensureDirs(dirs: TickDirs): void {
     }
   }
   fs.mkdirSync(dirs.panelChat, { recursive: true, mode: 0o700 })
+  // 内容变了就刷新（旧版本留下的 README 不会一直骗人）
   const readme = path.join(dirs.root, 'README.md')
-  if (!fs.existsSync(readme)) fs.writeFileSync(readme, README, { mode: 0o600 })
+  try {
+    if (!fs.existsSync(readme) || fs.readFileSync(readme, 'utf8') !== README) {
+      fs.writeFileSync(readme, README, { mode: 0o600 })
+    }
+  } catch {
+    /* README 写失败不阻塞启动 */
+  }
 }
 
 // ---------- 原子写 + 文件锁 ----------
 // todos.json 会被 CLI（extension，M2）与面板并发写（PRD F5）。
 // 锁 = 同目录 O_EXCL 独占文件；陈旧锁（>5s）视为持有者已死，强夺。
+//
+// ⚠️ 锁文件名必须与 packages/tick-extension/src/todos-file.ts 完全一致（`<file>.lock`）：
+// 两个运行时各写各的锁 = 没有互斥，会静默丢写（实测 240 次写丢 117 条）。
+// 锁内容 = `<pid>:<uuid>` token，release 只删自己持有的锁，避免被强夺后误删别人的锁。
 
 export function lockPathFor(file: string): string {
-  return path.join(path.dirname(file), `.${path.basename(file)}.lock`)
+  return `${file}.lock`
 }
 
 export class FileLock {
   private file: string
+  private token = ''
 
   constructor(file: string) {
     this.file = file
@@ -88,8 +101,10 @@ export class FileLock {
   acquire(): boolean {
     const lock = lockPathFor(this.file)
     for (let attempt = 0; attempt < 40; attempt++) {
+      const token = `${process.pid}:${randomUUID()}`
       try {
-        fs.writeFileSync(lock, String(process.pid), { flag: 'wx', mode: 0o600 })
+        fs.writeFileSync(lock, token, { flag: 'wx', mode: 0o600 })
+        this.token = token
         return true
       } catch (e: unknown) {
         const err = e as NodeJS.ErrnoException
@@ -111,8 +126,11 @@ export class FileLock {
   }
 
   release(): void {
+    const lock = lockPathFor(this.file)
     try {
-      fs.rmSync(lockPathFor(this.file), { force: true })
+      // 只删自己持有的锁：被 >5s 强夺后不能再误删下一个持有者的锁
+      if (fs.readFileSync(lock, 'utf8') !== this.token) return
+      fs.rmSync(lock, { force: true })
     } catch {
       /* 忽略 */
     }

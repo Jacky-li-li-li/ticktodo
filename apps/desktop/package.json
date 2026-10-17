@@ -5,8 +5,36 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "unset ELECTRON_RUN_AS_NODE && vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "build": "node -e \"require('fs').rmSync('dist-electron',{recursive:true,force:true})\" && tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "dist": "npm run build && electron-builder --mac",
+    "dist:dir": "npm run build && electron-builder --mac dir"
+  },
+  "build": {
+    "appId": "com.ticktodo.panel",
+    "productName": "Tick",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json",
+      "!node_modules/**"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dir",
+        "zip"
+      ],
+      "identity": null,
+      "darkModeSupport": true
+    },
+    "npmRebuild": false,
+    "electronDist": "../../node_modules/electron/dist"
   },
   "dependencies": {
     "@tick/shared": "workspace:*",
@@ -14,7 +42,8 @@
     "@tick/ai-pi": "workspace:*",
     "@earendil-works/pi-durable": "1.3.0",
     "@earendil-works/pi-coding-agent": "1.3.0",
-    "@tick/tick-extension": "workspace:*"
+    "@tick/tick-extension": "workspace:*",
+    "openai": "7.19.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -22,6 +51,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "electron": "44.8.0",
+    "electron-builder": "^26.15.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.6.0",

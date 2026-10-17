@@ -20,14 +20,14 @@ import path from 'node:path'
 import { canonicalPath } from './canonical-path'
 import type { ProjectEntry, ProjectSource } from './index'
 
+const sep = path.sep
+
 export interface MergeOptions {
   /** 归一化/git 判断的 home 界（默认 os.homedir()；测试可注入） */
   homedir?: string
   /** 目录存在性注入（测试） */
   pathExists?: (p: string) => boolean
 }
-
-const sep = path.sep
 
 /** dir 是否严格位于 home 内部（home 自己与外部都算"不在 home 之下"） */
 function strictlyUnderHome(dir: string, home: string): boolean {
@@ -46,11 +46,10 @@ export function gitRootOf(
   const home = opts.homedir ?? os.homedir()
   let dir = projectPath
   for (;;) {
-    if (strictlyUnderHome(dir, home) || dir !== home) {
-      if (exists(path.join(dir, '.git'))) return dir
-    }
-    // home 不是项目：走到 home 或 home 之上即停止向上（home 及其祖先永不成为项目根）
-    if (dir === home || !path.isAbsolute(dir) && dir === sep) return null
+    // home 本身不是项目（不查 home/.git）；home 之下的目录正常上卷
+    if (dir !== home && exists(path.join(dir, '.git'))) return dir
+    // 走到 home 即停止向上（home 及其祖先永不成为项目根）
+    if (dir === home) return null
     const parent = path.dirname(dir)
     if (parent === dir) return null // FS 根
     if (!strictlyUnderHome(parent, home) && strictlyUnderHome(dir, home)) {

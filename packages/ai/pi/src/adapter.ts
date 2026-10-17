@@ -1,19 +1,23 @@
 /**
  * PiAdapter — @tick/ai-core 合同的第一份实装。
  *
- * 三条硬纪律（TECH-ARCH §6.2）：
- *  1. spawn 一律固定 argv 数组 + 去掉 ELECTRON_RUN_AS_NODE（WorkBuddy 宿主污染实证）；无 shell 拼接。
- *  2. verify() 绕缓存直读 + size===0 = 未产生（31 个 0 字节僵尸物证，D16）。
- *  3. 探测路径绝不用 pi 的 getDefaultSessionDir()（mkdirSync 副作用）。
+ * 四条硬纪律（TECH-ARCH §6.2 / §7）：
+ *  1. **交互式 TUI 必须开在终端里**：pi 用 `process.stdin/stdout.isTTY` 判定模式，非 TTY 会静默
+ *     降级成 print（headless）模式——`spawn(..., {stdio:'ignore'})` 拉不出用户能继续用的 pi。
+ *     所以这里只把「终端 + 命令」交给注入的 openTerminal（main 进程写 .command 脚本 + `open`）。
+ *  2. argv 一律数组、无 shell 拼接；终端脚本由 main 侧做 POSIX 单引号转义后再交给 shell。
+ *  3. verify() 绕缓存直读 + size===0 = 未产生（31 个 0 字节僵尸物证，D16）。
+ *  4. 探测路径绝不用 pi 的 getDefaultSessionDir()（mkdirSync 副作用）。
  *
  * launch 语义（PRD F4）：
  *  - deliver='argv'：prompt 作为位置参数立即发送（pi 无「仅预填」模式，源码确认）；
  *  - deliver='clipboard'：prompt 进剪贴板（依赖注入 clipboardWrite，避免 ai/pi 反向依赖 Electron），
  *    argv 不带 prompt；'none' 同理不带 prompt。
  *  - sessionId 由调用方预生成（LaunchContext.sessionId），此处只做 uuid 字符集校验。
+ *  - launch 只做一次**即时** verify；剪贴板模式下会话文件要等用户发送第一条消息才出现，
+ *    因此返回 verified=false 是正常语义，由 LaunchService 写成 pending 绑定并在后台对账。
  */
 
-import { spawn } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -26,16 +30,20 @@ import type {
   ProjectSource,
   SessionInfo,
   SessionRef,
+  SessionSummary,
+  SessionUsage,
 } from '@tick/ai-core'
 import { canonicalPath, newCliSessionId } from '@tick/ai-core'
 import {
   collectJsonlFiles,
   findSessionFilesById,
   readFirstLineHeader,
-  readSessionName,
+  readSessionMeta,
   resolveSessionRoots,
+  toSessionTitle,
   type SessionRoot,
 } from './paths'
+import { computeUsageFromFile, inheritedEntriesOf } from './usage'
 
 export const MIN_PI_VERSION = '1.3.0'
 
@@ -51,13 +59,23 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
+/** 交给 main 进程在终端里打开的命令（ai 包不依赖 Electron / Terminal） */
+export interface TerminalOpenSpec {
+  cwd: string
+  executable: string
+  args: string[]
+}
+
 export interface PiAdapterDeps {
   /** 剪贴板投递的出口（Electron main 注入 clipboard.writeText） */
   clipboardWrite?: (text: string) => void
   /** 可执行的查找（默认本机 PATH + 常见安装位置） */
   resolveExe?: () => Promise<string | null>
-  /** spawn 注入（测试 dry-run 用） */
-  spawnImpl?: typeof spawn
+  /**
+   * 在终端里打开 pi（必须注入；main 用 .command + open -a Terminal 实现）。
+   * 测试可注入 fake 来断言 argv，不会再真的起进程。
+   */
+  openTerminal?: (spec: TerminalOpenSpec) => Promise<void> | void
   /** 会话根注入（测试隔离） */
   sessionRoots?: () => SessionRoot[]
 }
@@ -74,7 +92,7 @@ export class PiAdapter implements AiToolAdapter {
   readonly capabilities = {
     needsCwd: true,
     resumeSession: true,
-    deliverPrompt: ['argv'] as DeliverMode[],
+    deliverPrompt: ['argv', 'clipboard'] as DeliverMode[],
     setSessionName: true,
     discoverProjects: true,
     describeSessions: true,
@@ -89,6 +107,8 @@ export class PiAdapter implements AiToolAdapter {
   private deps: PiAdapterDeps
   private resolvedExe: string | null = null
   private resolvedVersion: string | null = null
+  /** 用量缓存：key=file，value 带 (mtime,size)，文件变了才重算 */
+  private usageCache = new Map<string, { mtimeMs: number; size: number; usage: SessionUsage }>()
 
   constructor(deps: PiAdapterDeps = {}) {
     this.deps = deps
@@ -228,8 +248,47 @@ export class PiAdapter implements AiToolAdapter {
     return out.map((o) => o.ref)
   }
 
+  /**
+   * 会话列表（S5 / 多会话 UI）：一次扫描所有根，读 header + name/firstMessage。
+   * 只取元数据，不缓存正文；0 字节僵尸与无 header 文件跳过（D16）。
+   */
+  async listSessionInfos(): Promise<SessionSummary[]> {
+    const out: SessionSummary[] = []
+    for (const root of this.roots()) {
+      for (const file of collectJsonlFiles(root.dir)) {
+        let st
+        try {
+          st = statSync(file)
+        } catch {
+          continue
+        }
+        if (st.size === 0) continue
+        const header = readFirstLineHeader(file)
+        if (!header?.cwd || !header.id) continue
+        const meta: { name?: string; firstUserText?: string } = await readSessionMeta(file).catch(
+          () => ({}),
+        )
+        out.push({
+          toolId: this.id,
+          sessionId: newCliSessionId(header.id),
+          cwd: header.cwd,
+          name: meta.name,
+          firstMessage: toSessionTitle(meta.firstUserText),
+          createdAt: header.timestamp ?? new Date(st.mtimeMs).toISOString(),
+          lastUsedAt: st.mtimeMs,
+          filePath: file,
+          exists: true,
+          parentSessionPath: header.parentSession,
+          size: st.size,
+        })
+      }
+    }
+    out.sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
+    return out
+  }
+
   /** 单会话元数据（含 name —— 需要流式扫 session_info 行，不缓存正文） */
-  async describeSession(id: string): Promise<SessionInfo | undefined> {
+  async describeSession(id: string, opts: { withName?: boolean } = {}): Promise<SessionInfo | undefined> {
     const file = this.findFile(id)
     if (!file) return undefined
     let header
@@ -246,19 +305,42 @@ export class PiAdapter implements AiToolAdapter {
     } catch {
       /* 已确认存在，mtime 失败罕见 */
     }
-    const name = await readSessionName(file).catch(() => undefined)
+    // name/firstMessage 需要全量扫；调用方只要 cwd 时（withName:false）别白读 MB 级正文
+    const meta: { name?: string; firstUserText?: string } =
+      opts.withName === false ? {} : await readSessionMeta(file).catch(() => ({}))
     return {
       toolId: this.id,
       sessionId: newCliSessionId(header.id ?? id),
       cwd: header.cwd ?? homedir(),
-      name,
+      name: meta.name,
+      firstMessage: toSessionTitle(meta.firstUserText),
       createdAt: header.timestamp ?? (mtime ? new Date(mtime).toISOString() : ''),
       lastUsedAt: mtime,
+      filePath: file,
       exists: true,
       resumable: true,
       hasLocalFiles: true,
       parentSessionPath: header.parentSession,
     }
+  }
+
+  /** 单会话用量（F6-b；默认关，UI 打开且设置开启时才调） */
+  async computeUsage(id: string): Promise<SessionUsage | undefined> {
+    const file = this.findFile(id)
+    if (!file) return undefined
+    let st
+    try {
+      st = statSync(file)
+    } catch {
+      return undefined
+    }
+    if (st.size === 0) return undefined
+    const cached = this.usageCache.get(file)
+    if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) return cached.usage
+    const header = readFirstLineHeader(file)
+    const usage = computeUsageFromFile(file, inheritedEntriesOf(header?.parentSession))
+    if (usage) this.usageCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, usage })
+    return usage
   }
 
   /**
@@ -293,7 +375,46 @@ export class PiAdapter implements AiToolAdapter {
   // ---------- 拉起 ----------
 
   async launch(ctx: LaunchContext): Promise<LaunchResult> {
-    return this.spawnSession(ctx, { resume: false })
+    const exe = await this.requireExe()
+    const sessionId = ctx.sessionId
+    if (!UUID_RE.test(sessionId)) {
+      throw new Error(`sessionId 必须是 UUID，收到「${sessionId}」`)
+    }
+    const cwd = ctx.cwd || homedir()
+    if (!existsSync(cwd)) throw new Error(`cwd 不存在：${cwd}`)
+
+    const deliver: LaunchResult['delivered'] =
+      ctx.deliver === 'argv' ? 'argv' : ctx.deliver === 'clipboard' ? 'clipboard' : 'none'
+    if (deliver === 'clipboard' && !this.deps.clipboardWrite) {
+      throw new Error('clipboard 投递需要注入 clipboardWrite（main 进程装配）')
+    }
+
+    // pi 位置参数 = 启动消息，放最前（RESEARCH-pi §「CLI trips」）；
+    // 起头为 '-' / '@' 的消息会被当 flag / @file —— 直接拒绝并提示改剪贴板
+    const prompt = ctx.promptText
+    const argv: string[] = []
+    if (deliver === 'argv') {
+      if (!prompt.trim()) throw new Error('argv 投递需要非空 promptText')
+      if (prompt.startsWith('-') || prompt.startsWith('@')) {
+        throw new Error('消息不能以 "-" 或 "@" 开头（会被 pi 当作 flag / 文件参数）；请改用剪贴板投递')
+      }
+      argv.push(prompt)
+    }
+    argv.push('--session-id', sessionId)
+    if (ctx.name?.trim()) argv.push('--name', ctx.name.trim().slice(0, 80))
+
+    if (deliver === 'clipboard') this.deps.clipboardWrite?.(prompt)
+
+    await this.openTerminal(cwd, exe, argv)
+    // 只做一次即时检查：剪贴板模式下这里必然 false（正常），由 LaunchService 的 pending 对账接手
+    const verified = await this.verify(sessionId, { retries: 0, intervalMs: 0 })
+    return {
+      toolId: this.id,
+      sessionId: newCliSessionId(sessionId),
+      cwd,
+      delivered: deliver,
+      verified,
+    }
   }
 
   async resume(sessionId: string, ctx: LaunchContext): Promise<LaunchResult> {
@@ -302,72 +423,35 @@ export class PiAdapter implements AiToolAdapter {
     if (!file) {
       throw new Error(`无法 resume：session 文件不存在（${sessionId}）`)
     }
-    return this.spawnSession({ ...ctx, sessionId: newCliSessionId(sessionId) }, { resume: true })
-  }
+    const exe = await this.requireExe()
+    const header = readFirstLineHeader(file)
+    // resume 的 cwd 必须来自会话自身 header（工具侧权威值）；renderer 选过的项目不能覆盖它，
+    // 否则 pi 会按「当前 cwd 的项目目录」找不到 session，转而在新 cwd 下静默新建一个同 id 会话。
+    const sessionCwd = header?.cwd && existsSync(header.cwd) ? header.cwd : undefined
+    const fallbackCwd = ctx.cwd && existsSync(ctx.cwd) ? ctx.cwd : homedir()
+    const cwd = sessionCwd ?? fallbackCwd
 
-  private async spawnSession(
-    ctx: LaunchContext,
-    opts: { resume: boolean },
-  ): Promise<LaunchResult> {
-    const exe = await this.resolveExe()
-    if (!exe) throw new Error('pi 未安装或不在 PATH（可设 TICK_PI_PATH）')
-
-    const sessionId = ctx.sessionId
-    if (!UUID_RE.test(sessionId)) {
-      throw new Error(`sessionId 必须是 UUID，收到「${sessionId}」`)
-    }
-
-    if (ctx.cwd) {
-      // cwd 只读校验；不存在 = CwdResolver 逻辑在 main，还没兜上 → 显式报错不静默
-      if (!existsSync(ctx.cwd)) throw new Error(`cwd 不存在：${ctx.cwd}`)
-    }
-
-    const deliver = ctx.deliver === 'argv' ? 'argv' : ctx.deliver === 'clipboard' ? 'clipboard' : 'none'
-    if (ctx.deliver === 'clipboard' && !this.deps.clipboardWrite) {
-      throw new Error('clipboard 投递需要注入 clipboardWrite（main 进程装配）')
-    }
-
-    const argv: string[] = [exe]
-    // pi 位置参数 = 启动消息，放最前（RESEARCH-pi §「CLI trips」）；
-    // 起头为 '-' 的消息会被当 flag —— 用首段前置保护词避免（约定：加一层空格不可行，直接拒绝并提示改剪贴板）
-    const prompt = ctx.promptText
-    if (deliver === 'argv') {
-      if (!prompt.trim()) throw new Error('argv 投递需要非空 promptText')
-      if (prompt.startsWith('-')) {
-        throw new Error('消息不能以 "-" 开头（会被 pi 当作命令行 flag）；请改用剪贴板投递')
-      }
-      argv.push(prompt)
-    }
-    if (opts.resume) argv.push('--session-id', sessionId)
-    else argv.push('--session-id', sessionId)
-    if (ctx.name?.trim()) argv.push('--name', ctx.name.trim().slice(0, 80))
-
-    if (deliver === 'clipboard') {
-      this.deps.clipboardWrite?.(prompt)
-    }
-
-    const env = { ...process.env }
-    delete env.ELECTRON_RUN_AS_NODE // WorkBuddy 宿主污染实证：会让一切子进程变 run-as-node
-
-    const spawnFn = this.deps.spawnImpl ?? spawn
-    const child = spawnFn(argv[0] as string, argv.slice(1), {
-      cwd: ctx.cwd || homedir(),
-      detached: true,
-      stdio: 'ignore',
-      env,
-    })
-    child.unref()
-    const pid = child.pid
-
-    const verified = await this.verify(sessionId)
+    // 用 --session <绝对路径> 而不是 --session-id：直接打开文件，不依赖 cwd 的项目目录解析
+    await this.openTerminal(cwd, exe, ['--session', file])
     return {
       toolId: this.id,
       sessionId: newCliSessionId(sessionId),
-      cwd: ctx.cwd,
-      pid,
-      delivered: deliver,
-      verified,
+      cwd,
+      delivered: 'none',
+      verified: true,
     }
+  }
+
+  private async requireExe(): Promise<string> {
+    const exe = await this.resolveExe()
+    if (!exe) throw new Error('pi 未安装或不在 PATH（可设 TICK_PI_PATH）')
+    return exe
+  }
+
+  private async openTerminal(cwd: string, executable: string, args: string[]): Promise<void> {
+    const open = this.deps.openTerminal
+    if (!open) throw new Error('未注入终端拉起实现（main 进程装配 openTerminal）')
+    await open({ cwd, executable, args })
   }
 }
 

@@ -45,6 +45,7 @@ export function sameCanonicalPath(a: string, b: string): boolean {
   try {
     return realpathSync(a).toLowerCase() === realpathSync(b).toLowerCase()
   } catch {
-    return a.toLowerCase() === b.toLowerCase() && a === b
+    // 不存在/不可 realpath 的路径：大小写不敏感 FS 上按小写比较（a===b 已在上面提前返回）
+    return a.toLowerCase() === b.toLowerCase()
   }
 }

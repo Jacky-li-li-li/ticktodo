@@ -19,12 +19,25 @@ const createTodoTool = defineTool({
     title: Type.String({ description: '一句话线索标题（必填）' }),
     body: Type.Optional(Type.String({ description: '补充说明 / 下一步（选填）' })),
   }),
-  replay: 'safe',
-  async execute(args) {
+  /**
+   * 写操作必须是「非 safe 重跑」（PRD F5）：
+   * pi-durable 里 `replay: 'safe'` 的含义是**崩溃/重启后允许重跑 execute()**，对建单就是重复建单。
+   * 默认值就是 unsafe（不重跑），所以这里显式写出来，别再被误改成 safe。
+   *
+   * 幂等键：用 durable 的 `conversationId:callId` 作为 requestId——同一个工具调用被重试时
+   * callId 不变，createTodo 命中 requestId 直接返回既有那条。
+   */
+  replay: 'unsafe',
+  async execute(args, api) {
+    const requestId =
+      api && typeof api.callId === 'string'
+        ? `${String(api.conversationId)}:${api.callId}`
+        : undefined
     const { todo, created } = createTodo({
       title: args.title,
       body: args.body,
       source: 'panel',
+      requestId,
     })
     return {
       output: [

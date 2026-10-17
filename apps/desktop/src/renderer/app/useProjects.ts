@@ -2,7 +2,7 @@
  * useProjects — 项目索引的 renderer 侧（首帧走缓存，后台扫完再换）。
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ProjectEntry } from '@tick/ai-core'
 import type { TickApi } from '../../preload/index'
 
@@ -12,8 +12,15 @@ declare global {
   }
 }
 
-export function useProjects(): ProjectEntry[] {
+export function useProjects(): {
+  projects: ProjectEntry[]
+  refresh: () => Promise<void>
+} {
   const [projects, setProjects] = useState<ProjectEntry[]>([])
+
+  const refresh = useCallback(async () => {
+    setProjects(await window.tick.projects.list())
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -29,5 +36,5 @@ export function useProjects(): ProjectEntry[] {
     }
   }, [])
 
-  return projects
+  return { projects, refresh }
 }

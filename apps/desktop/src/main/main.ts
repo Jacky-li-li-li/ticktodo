@@ -6,21 +6,32 @@
  * 常驻语义：关窗 = 隐藏（app 不退）；Cmd+Q 退出。
  */
 
-import { app, BrowserWindow, clipboard, shell } from 'electron'
+import { app, BrowserWindow, clipboard, globalShortcut, shell } from 'electron'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { ChatIpc, ProjectsIpc, TodosIpc } from '@tick/shared'
-import { AiToolRegistry } from '@tick/ai-core'
+import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc } from '@tick/shared'
+import { AiToolRegistry, canonicalPath, gitRootOf } from '@tick/ai-core'
 import { PiAdapter } from '@tick/ai-pi'
 import { ensureDirs, resolveDirs } from './services/storage'
 import { ProjectIndexService } from './services/project-index'
 import { ChatAgentHost } from './services/chat-host'
 import { LaunchService } from './services/launch'
+import { SettingsStore } from './services/settings-store'
+import { CredentialVault } from './services/credential-vault'
+import { ProviderConfigService } from './services/provider-config'
+import { SessionService } from './services/sessions'
+import { ExportService } from './services/export'
+import { createTerminalLauncher } from './services/terminal-launch'
 import { TodoStore } from './store'
 import { createPanelWindow, installAppMenu, saveWindowState } from './window'
 import { registerIpc } from './ipc'
+
+// userData 稳定化：自配 provider 的 key 密文在 userData（系统钥匙串支撑），
+// 不用默认的 Electron 目录名（dev 下 app name 是 @tick/desktop，会漂）。
+// 必须在任何 Electron API 之前生效（requestSingleInstanceLock 也用 userData 建锁）。
+app.setName('Tick')
 
 // 单实例：面板是常驻窗，二次拉起（install.sh/dock 双击）应聚焦已有实例
 if (!app.requestSingleInstanceLock()) {
@@ -49,43 +60,152 @@ app.whenReady().then(() => {
 
   const store = new TodoStore(path.join(dirs.data, 'todos.json'))
   store.ensureFile()
+  const settingsStore = new SettingsStore(path.join(dirs.data, 'settings.json'))
+  const credentialVault = new CredentialVault(app.getPath('userData'))
+  const providerConfig = new ProviderConfigService(settingsStore, credentialVault)
 
   // ---------- adapter 注册表（M1） ----------
   const registry = new AiToolRegistry()
   const pi = new PiAdapter({
     clipboardWrite: (text) => clipboard.writeText(text), // 剪贴板投递出口（ai 包不依赖 Electron）
+    // 交互式 pi 必须开在终端里（非 TTY 会降级成 headless print 模式）
+    openTerminal: createTerminalLauncher(path.join(dirs.cache, 'launch')),
   })
   registry.register(pi)
 
-  // 跨工具时钟：todos.lastLaunch{projectPath} → 路径 → 最近拉起时间
+  // 跨工具时钟：todos.lastLaunch{projectPath, launchedAt} → canonical/git 根 → 最近拉起时间
+  // 不能用 Todo.updatedAt（任何编辑都会刷新它，排序会乱），也不能用原始子目录路径（overlay 匹配的是 git 根）。
   const launchClock = (): Map<string, number> => {
     const map = new Map<string, number>()
     for (const t of store.list()) {
       if (!t.lastLaunch) continue
-      const ms = Date.parse(t.updatedAt)
-      const prev = map.get(t.lastLaunch.projectPath)
-      if (prev === undefined || ms > prev) map.set(t.lastLaunch.projectPath, ms)
+      const ms = Date.parse(t.lastLaunch.launchedAt ?? t.updatedAt)
+      if (Number.isNaN(ms)) continue
+      const canonical = canonicalPath(t.lastLaunch.projectPath)
+      const root = gitRootOf(canonical) ?? canonical
+      for (const key of new Set([canonical, root])) {
+        const prev = map.get(key)
+        if (prev === undefined || ms > prev) map.set(key, ms)
+      }
     }
     return map
   }
   const projectIndex = new ProjectIndexService(pi, path.join(dirs.cache, 'projects.json'), {
     launchClock,
   })
-  const launchService = new LaunchService(pi, store)
+  const sessionService = new SessionService(pi, store)
+  const exportService = new ExportService(registry.list(), store, () => settingsStore.get(), dirs.exports)
+  const launchService = new LaunchService(pi, store, {
+    settings: () => settingsStore.get(),
+    resolveAlias: (p) => projectIndex.aliasOf(p),
+    recentProject: () => {
+      const home = os.homedir()
+      return projectIndex
+        .getCachedProjects()
+        .find((p) => p.exists && p.path !== home && p.sessionCount > 0)?.path
+    },
+  })
 
   panel = createPanelWindow(dirs)
   installAppMenu(panel)
-  registerIpc(store, { panel: () => panel }, { projectIndex, launch: launchService, chat: () => chat }, registry.list())
+
+  // ---------- 面板 Chat：凭据来源可切换（pi 本体 / 自配 provider），切换 = 重建 host ----------
+  const createChat = (): ChatAgentHost =>
+    new ChatAgentHost({
+      storageDir: dirs.panelChat,
+      onState: (state) => panel?.webContents.send(ChatIpc.updated, state),
+      credentialSource: providerConfig.chatCredentialSource(),
+    })
+  chat = createChat()
+  void chat.init()
+
+  const reloadChat = async (): Promise<void> => {
+    const old = chat
+    chat = undefined
+    await old?.close()
+    chat = createChat()
+    await chat.init()
+  }
+
+  registerIpc(
+    store,
+    { panel: () => panel },
+    {
+      projectIndex,
+      launch: launchService,
+      chat: () => chat,
+      settings: settingsStore,
+      sessions: sessionService,
+      exportService,
+      dataDir: dirs.root,
+      providerConfig,
+      reloadChat,
+    },
+    registry.list(),
+  )
+
+  // ---------- 全局快捷键（M3 / PRD F1） ----------
+  const showPanel = (): void => {
+    if (!panel) return
+    panel.show()
+    panel.focus()
+  }
+  const togglePanel = (): void => {
+    if (!panel) return
+    if (panel.isVisible()) panel.hide()
+    else showPanel()
+  }
+  const newTodo = (): void => {
+    showPanel()
+    panel?.webContents.send(WindowIpc.newTodo)
+  }
+  const shortcuts: [string, () => void][] = [
+    ['CommandOrControl+Alt+T', togglePanel],
+    ['CommandOrControl+Alt+N', newTodo],
+  ]
+  for (const [accelerator, handler] of shortcuts) {
+    try {
+      if (!globalShortcut.register(accelerator, handler)) {
+        console.warn(`[tick] 全局快捷键注册失败（可能被占用）：${accelerator}`)
+      }
+    } catch (e) {
+      console.error(`[tick] 全局快捷键异常：${accelerator}`, e)
+    }
+  }
+  app.on('will-quit', () => globalShortcut.unregisterAll())
 
   // ---------- M2：pi extension 安装 + 面板 Chat ----------
-  installTickExtension()
+  // 没装 pi 时不往 ~/.pi 写东西（Q14：功能随工具降级）
+  void (async () => {
+    try {
+      const detected = await pi.detect()
+      if (detected.installed) installTickExtension()
+    } catch (e) {
+      console.error('[tick] pi 检测失败，跳过 extension 安装:', e)
+    }
+  })()
   watchTodosFile(store, dirs.data)
 
-  chat = new ChatAgentHost({
-    storageDir: dirs.panelChat,
-    onState: (state) => panel?.webContents.send(ChatIpc.updated, state),
-  })
-  void chat.init()
+  // pending 绑定对账：终端里的 pi 产生会话文件后，把绑定从 pending → verified。
+  // 没有 pending 时几乎零成本（只读一次 todos.json）；重叠的 tick 直接跳过。
+  let reconciling = false
+  const reconcile = (): void => {
+    if (reconciling) return
+    reconciling = true
+    void launchService
+      .reconcilePending()
+      .then((n) => {
+        if (n > 0) console.log(`[tick] pending 绑定已转 verified：${n}`)
+      })
+      .catch((e) => console.error('[tick] pending 绑定对账失败:', e))
+      .finally(() => {
+        reconciling = false
+      })
+  }
+  const reconcileTimer = setInterval(reconcile, 5_000)
+  reconcileTimer.unref()
+  reconcile()
+  app.on('before-quit', () => clearInterval(reconcileTimer))
 
   // 冷启动纪律：UI 先拿缓存；后台扫完推送给 renderer
   void (async () => {
@@ -123,8 +243,8 @@ app.whenReady().then(() => {
   })
 
   if (app.isPackaged) {
-    // 打包后：dist/renderer/index.html
-    panel.loadFile(path.join(__dirname, '../renderer/index.html'))
+    // 打包后：dist/renderer/index.html（__dirname = app.asar/dist-electron）
+    panel.loadFile(path.join(__dirname, '../dist/renderer/index.html'))
   } else {
     // dev：vite dev server（vite-plugin-electron 注入）
     const envPort = process.env.VITE_DEV_SERVER_URL
@@ -212,9 +332,16 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-app.on('before-quit', () => {
+let quitting = false
+app.on('before-quit', (event) => {
   if (panel) (panel as unknown as { __willClose?: boolean }).__willClose = true
-  void chat?.close()
+  if (quitting || !chat) return
+  // durable 的 close 需要 await（否则最后的写入可能没刷完）；带超时兜底，避免退出被卡住
+  event.preventDefault()
+  quitting = true
+  void Promise.race([chat.close(), new Promise((r) => setTimeout(r, 1500))])
+    .catch((e) => console.error('[tick] chat 关闭失败:', e))
+    .finally(() => app.quit())
 })
 
 // durable 稳定运行哨位：不让单次异常拖垮常驻面板

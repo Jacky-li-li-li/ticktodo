@@ -547,6 +547,22 @@ button.sheet-row:hover {
   color: var(--t-faint);
 }
 
+/* stale 目录降级提示（验收 4.2：不能静默跑错目录） */
+.project-hint {
+  padding: 0 10px 2px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(255, 196, 120, 0.86);
+}
+
+/* 面板对话不参与用量统计（PRD F6-b）：底部静态说明，避免用户以为漏统计 */
+.chat-usage-note {
+  padding: 4px 14px 8px;
+  font-size: 9px;
+  color: var(--t-faint);
+  text-align: center;
+}
+
 .project-list {
   max-height: 168px;
   overflow-y: auto;
@@ -677,4 +693,592 @@ button.sheet-row:hover {
   font-size: 9px;
   line-height: 16px;
   text-align: center;
+}
+
+/* ---------- Phase A：编辑 / 归档 / 设置 / 菜单（保持现有材质） ---------- */
+
+.thread-row .title-button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thread-row .title-button:hover {
+  color: var(--t-title);
+}
+
+.thread-row.done .title {
+  color: var(--t-weak);
+  text-decoration: line-through;
+}
+
+.thread-row.done .check {
+  display: grid;
+  place-items: center;
+  background: rgba(52, 199, 89, 0.9);
+  border-color: rgba(52, 199, 89, 0.9);
+  color: #fff;
+  font-size: 10px;
+}
+
+.list-more {
+  align-self: center;
+  margin: 6px auto 2px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--t-label);
+  font-size: 10px;
+}
+
+.list-more:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--t-title);
+}
+
+.menu-pop {
+  position: absolute;
+  top: 36px;
+  right: 14px;
+  z-index: 6;
+  min-width: 128px;
+  padding: 5px;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+    rgba(16, 18, 28, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(40px);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.menu-item {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-body);
+  font-size: 11px;
+  text-align: left;
+}
+
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--t-title);
+}
+
+.sheet {
+  max-height: 88%;
+  overflow-y: auto;
+}
+
+.sheet-section-title {
+  margin-top: 4px;
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t-label);
+}
+
+.sheet-note {
+  padding: 0 2px 2px;
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--t-weak);
+}
+
+.sheet-input,
+.sheet-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: var(--r-row);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-title);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+}
+
+.sheet-input:focus,
+.sheet-textarea:focus {
+  border-color: rgba(10, 132, 255, 0.5);
+}
+
+.sheet-textarea {
+  min-height: 86px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.sheet-meta {
+  padding: 2px;
+  font-size: 9.5px;
+  color: var(--t-weak);
+  word-break: break-all;
+}
+
+.sheet-actions {
+  flex-wrap: wrap;
+}
+
+.sheet-actions .danger {
+  color: rgba(255, 120, 120, 0.92);
+}
+
+.sheet-actions .danger.confirm {
+  border-color: rgba(255, 120, 120, 0.45);
+  background: rgba(255, 80, 80, 0.16);
+}
+
+.project-add {
+  margin-top: 2px;
+  padding: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-label);
+  font-size: 10px;
+  text-align: center;
+}
+
+.project-add:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-title);
+}
+
+.chat-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  min-height: 30px;
+  border: none;
+  border-radius: var(--r-row);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--t-body);
+  font-size: 10px;
+  text-align: left;
+}
+
+.chat-project:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.chat-project .label {
+  flex-shrink: 0;
+  color: var(--t-weak);
+  font-size: 9.5px;
+}
+
+.chat-project .value {
+  flex: 1;
+  color: var(--t-title);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-project .chevron {
+  color: var(--t-faint);
+}
+
+.chat-project-list {
+  margin-top: -2px;
+}
+
+/* ---------- Phase B：会话列表 / S5 认领 ---------- */
+
+.session-sheet {
+  max-height: 92%;
+}
+
+.session-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.chip {
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--t-label);
+  font-size: 9.5px;
+}
+
+.chip.on {
+  background: rgba(10, 132, 255, 0.22);
+  border-color: rgba(10, 132, 255, 0.45);
+  color: var(--t-title);
+}
+
+.session-count {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--t-weak);
+}
+
+.session-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 52vh;
+  padding-right: 2px;
+}
+
+.session-groups::-webkit-scrollbar {
+  width: 0;
+}
+
+.session-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.session-group-head {
+  position: sticky;
+  top: 0;
+  padding: 4px 2px;
+  font-size: 9px;
+  color: var(--t-faint);
+  background: rgba(16, 18, 28, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.session-item:hover {
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.session-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-name {
+  font-size: 11px;
+  color: var(--t-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.session-meta {
+  font-size: 9px;
+  color: var(--t-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mini {
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-label);
+  font-size: 9.5px;
+}
+
+.mini:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--t-title);
+}
+
+.mini.primary {
+  background: rgba(10, 132, 255, 0.22);
+  border-color: rgba(10, 132, 255, 0.42);
+  color: var(--t-title);
+}
+
+.mini:disabled {
+  opacity: 0.38;
+}
+
+.session-empty {
+  padding: 10px 4px;
+  font-size: 10px;
+  color: var(--t-weak);
+  text-align: center;
+}
+
+.todo-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 188px;
+  overflow-y: auto;
+}
+
+.todo-sessions::-webkit-scrollbar {
+  width: 0;
+}
+
+.todo-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.todo-session.missing {
+  opacity: 0.55;
+}
+
+.primary-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(10, 132, 255, 0.8);
+}
+
+.session-tag {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--t-weak);
+  font-size: 8.5px;
+  font-weight: 400;
+}
+
+.session-usage {
+  font-size: 9px;
+  color: var(--t-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-group-label {
+  padding: 6px 8px 2px;
+  font-size: 8.5px;
+  color: var(--t-faint);
+}
+
+.project-item.stale .name {
+  color: var(--t-weak);
+}
+
+.project-item.stale .path {
+  color: rgba(255, 196, 120, 0.7);
+}
+
+.project-group-toggle {
+  margin: 3px 2px 1px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--t-weak);
+  font-size: 9px;
+  text-align: left;
+}
+
+.project-group-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--t-label);
+}
+
+/* preload / 渲染失败兜底 */
+.boot-fallback {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  text-align: center;
+  color: var(--t-label);
+  font-size: 11px;
+  background: rgba(16, 18, 28, 0.9);
+}
+
+.boot-title {
+  color: var(--t-title);
+  font-size: 12px;
+}
+
+.boot-retry {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--t-title);
+  font-size: 10px;
+}
+
+.empty-action {
+  margin-top: 10px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-label);
+  font-size: 10px;
+}
+
+.empty-action:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--t-title);
+}
+
+/* ---------- 自配 provider 表单（M3 尾巴 / PRD F5 来源 2） ---------- */
+
+.provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px;
+}
+
+.provider-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-label {
+  flex-shrink: 0;
+  width: 62px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t-label);
+}
+
+.provider-field .text-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-title);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+}
+
+.provider-field .text-input::placeholder {
+  color: var(--t-faint);
+}
+
+.provider-field .text-input:focus {
+  border-color: rgba(10, 132, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.provider-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* UI-SPEC 3.4 胶囊按钮：高 30 / 圆角 15 / 11 SemiBold */
+.pill {
+  flex: 1;
+  height: 30px;
+  border-radius: 15px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.pill.primary {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.62), rgba(10, 132, 255, 0.3));
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.38),
+    0 6px 18px rgba(10, 132, 255, 0.3);
+}
+
+.pill.secondary {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.22);
+}
+
+.pill:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.provider-status {
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.provider-status.ok {
+  background: rgba(52, 199, 89, 0.12);
+  color: rgba(122, 225, 148, 0.92);
+}
+
+.provider-status.bad {
+  background: rgba(255, 107, 107, 0.1);
+  color: rgba(255, 140, 140, 0.92);
+}
+
+.provider-error {
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: rgba(255, 107, 107, 0.12);
+  color: rgba(255, 140, 140, 0.95);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+/* 空态里的「去设置」按钮（ChatPanel 双出口） */
+.empty .pill {
+  flex: none;
+  margin-top: 8px;
+  padding: 0 18px;
 }

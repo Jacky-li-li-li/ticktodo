@@ -18,6 +18,7 @@ export function useTodos(): {
   create: (title: string, body?: string) => Promise<Todo | undefined>
   patch: (id: string, p: TodoPatch) => Promise<Todo | undefined>
   setStatus: (id: string, status: Todo['status']) => Promise<void>
+  remove: (id: string) => Promise<boolean>
 } {
   const [todos, setTodos] = useState<Todo[]>([])
 
@@ -65,5 +66,18 @@ export function useTodos(): {
     [patch],
   )
 
-  return { todos, refresh, create, patch, setStatus }
+  const remove = useCallback(
+    async (id: string) => {
+      try {
+        await window.tick.todos.remove(id)
+        await refresh()
+        return true
+      } catch {
+        return false
+      }
+    },
+    [refresh],
+  )
+
+  return { todos, refresh, create, patch, setStatus, remove }
 }

@@ -11,6 +11,7 @@
  * 不做的：面板用量统计（D15：pi.usage 有但不读）。
  */
 
+import { existsSync } from 'node:fs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -18,7 +19,8 @@ import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { Harness, createRegistry, type Conversation, type ConversationView } from '@earendil-works/pi-durable'
 import { openNodeJsonlStorage } from '@earendil-works/pi-durable/storage/jsonl/node'
 import type { Credential, CredentialInfo, CredentialStore, Models } from '@earendil-works/pi-ai'
-import type { ChatMessage, ChatState } from '@tick/shared'
+import type { ChatMessage, ChatState, CustomProviderConfig } from '@tick/shared'
+import { parseJsonc } from '@tick/ai-pi'
 import { TickDurableExtension } from '@tick/tick-extension/durable'
 
 /** pi-durable 的 view 是 Chord 的 AttachedReplicatedState：subscribe 回调收到 ConversationView */
@@ -34,6 +36,12 @@ export interface ChatHostDeps {
   createModels?: () => Promise<Models>
   /** 指定模型（设置里选过的那个）；缺省按 pi 的默认 → 该 provider 的第一个可用 */
   preferredModel?: { provider: string; id: string }
+  /**
+   * 凭据来源（M3 尾巴 / PRD F5 来源 2）：
+   * 缺省 = pi 本体（零配置）；custom = 自配 OpenAI 兼容 endpoint（key 已在内存，不再落盘）。
+   * 来源切换需要重建 host（main 侧 reloadChat），durable 会话历史不受影响。
+   */
+  credentialSource?: { kind: 'custom'; config: CustomProviderConfig; apiKey: string }
 }
 
 export class ChatAgentHost {
@@ -64,21 +72,32 @@ export class ChatAgentHost {
     try {
       fs.mkdirSync(this.deps.storageDir, { recursive: true, mode: 0o700 })
 
+      const source = this.deps.credentialSource
       const models = this.deps.createModels
         ? await this.deps.createModels()
-        : await defaultModels()
+        : source?.kind === 'custom'
+          ? await customProviderModels(source.config, source.apiKey)
+          : await defaultModels()
 
       const available = await models.getAvailable()
       if (available.length === 0) {
         console.warn('[tick] 面板对话不可用：没有可用凭据')
         this.publish({
           status: 'unavailable',
-          reason: '未检测到可用的模型凭据（pi auth 里没有可用的 provider）',
+          source: source?.kind === 'custom' ? 'custom' : 'pi',
+          reason:
+            source?.kind === 'custom'
+              ? '自配 provider 未通过可用性检查（去设置里“测试连接”）'
+              : '未检测到可用的模型凭据（pi auth 里没有可用的 provider）',
         })
         return
       }
 
-      const picked = pickModel(models, available, this.deps.preferredModel)
+      const preferred =
+        source?.kind === 'custom'
+          ? { provider: CUSTOM_PROVIDER_ID, id: source.config.model }
+          : this.deps.preferredModel
+      const picked = pickModel(models, available, preferred, source?.kind === 'custom')
       if (!picked) {
         this.publish({ status: 'unavailable', reason: 'pi 的模型目录为空' })
         return
@@ -89,7 +108,21 @@ export class ChatAgentHost {
       registry.install(TickDurableExtension)
 
       const storage = await openNodeJsonlStorage(this.deps.storageDir, BACKGROUND_CONTEXT)
-      const harness = await Harness.open(storage, { models, registry }, BACKGROUND_CONTEXT)
+      const harness = await Harness.open(
+        storage,
+        {
+          models,
+          registry,
+          settings: {
+            // 模型请求必须能失败：不给超时的话，网络挂起会让 run 永远 busy，
+            // 后续消息全部排队（resume 后也不会好转）。120s 对长回复足够。
+            stream: { timeoutMs: 120_000 },
+          },
+          // durable 内部吞掉的失败（hook 抛错、session 失败）必须留痕，否则面板“busy 到永远”无法排查
+          onReport: (error) => console.error('[tick] durable report:', error),
+        },
+        BACKGROUND_CONTEXT,
+      )
       this.harness = harness
 
       this.root = await harness.root(BACKGROUND_CONTEXT, {
@@ -101,7 +134,13 @@ export class ChatAgentHost {
       this.view = await this.root.viewState(BACKGROUND_CONTEXT)
       this.view.subscribe((value) => this.renderView(value))
 
-      this.publish({ status: 'idle', model: `${picked.provider}/${picked.id}`, reason: undefined })
+      this.publish({
+        status: 'idle',
+        model: `${picked.provider}/${picked.id}`,
+        cwd: os.homedir(),
+        source: source?.kind === 'custom' ? 'custom' : 'pi',
+        reason: undefined,
+      })
     } catch (err) {
       console.error('[tick] 面板对话初始化失败:', err)
       this.publish({
@@ -176,6 +215,14 @@ export class ChatAgentHost {
     )
   }
 
+  /** 切换面板对话的工作目录（PRD F5：默认 home，可切换） */
+  async setCwd(cwd: string): Promise<void> {
+    if (!this.root) throw new Error(this.state.reason ?? '面板对话尚未就绪')
+    if (!existsSync(cwd)) throw new Error(`目录不存在：${cwd}`)
+    await this.root.configure({ cwd }, BACKGROUND_CONTEXT)
+    this.publish({ cwd })
+  }
+
   /** 打断当前 run（保留已提交的部分） */
   async abort(): Promise<void> {
     await this.root?.abort(BACKGROUND_CONTEXT)
@@ -198,6 +245,59 @@ export class ChatAgentHost {
     }
     await this.harness?.close(BACKGROUND_CONTEXT)
   }
+}
+
+/** 自配 provider 的注册 id（单一实例；未来逐工具凭据可扩展为 `<tool>-custom`） */
+const CUSTOM_PROVIDER_ID = 'tick-custom'
+
+/**
+ * 自配 provider（PRD F5 来源 2）：内置 pi-ai 直连上游，不依赖 pi 本体。
+ * 用 `ModelRuntime.registerProvider` 挂一个 OpenAI 兼容 provider：
+ *  - `api` = 内置 `openai-completions`（/chat/completions，任意兼容网关都能接）
+ *  - `baseUrl` + `apiKey` 直接进 provider config → auth 解析为「configured API key」，
+ *    不需要 CredentialStore，key 不进任何文件（内存直连，落盘只存在于 safeStorage 密文）
+ *  - 自配模型的价格未知 → cost 全 0（面板 Chat 不显示用量，口径一致）
+ */
+async function customProviderModels(config: CustomProviderConfig, apiKey: string): Promise<Models> {
+  const { ModelRuntime } = await import('@earendil-works/pi-coding-agent')
+  const runtime = await ModelRuntime.create({
+    // 自配模型的 key 在 registerProvider 里（configured API key），不走 store；
+    // store 用 pi 的只读凭据兜底：resume 历史会话（用 pi 模型的 run）时仍能跑，
+    // 没装 pi 的用户这里读到空，自配模型照常工作。
+    credentials: readOnlyPiCredentials(),
+    refreshOnCreate: false,
+    allowModelNetwork: false,
+  })
+  runtime.registerProvider(CUSTOM_PROVIDER_ID, {
+    name: config.name?.trim() || '自定义',
+    baseUrl: config.baseUrl,
+    apiKey,
+    api: 'openai-completions',
+    models: [
+      {
+        id: config.model,
+        name: config.model,
+        input: ['text'],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        reasoning: false,
+        contextWindow: 200_000,
+        maxTokens: 32_000,
+      },
+    ],
+  })
+  // 诊断代理：durable 的每次模型请求留痕（排查用，稳定后移除）
+  return new Proxy(runtime, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver)
+      if (prop === 'streamSimple' || prop === 'stream') {
+        return (model: { provider?: string; id?: string }, ...rest: unknown[]) => {
+          console.log(`[tick][provider] ${String(prop)} → ${String(model?.provider)}/${String(model?.id)}`)
+          return (value as (...args: unknown[]) => unknown).call(target, model, ...rest)
+        }
+      }
+      return value
+    },
+  })
 }
 
 /**
@@ -251,19 +351,22 @@ function pickModel(
   models: Models,
   available: readonly { provider: string; id: string }[],
   preferred?: { provider: string; id: string },
+  skipPiSettings = false,
 ): { provider: string; id: string } | undefined {
   if (preferred) {
     const hit = available.find((m) => m.provider === preferred.provider && m.id === preferred.id)
     if (hit) return hit
   }
-  const settings = readPiSettings()
-  if (settings?.defaultProvider && settings.defaultModel) {
-    const hit = available.find(
-      (m) => m.provider === settings.defaultProvider && m.id === settings.defaultModel,
-    )
-    if (hit) return hit
-    const sameProvider = available.find((m) => m.provider === settings.defaultProvider)
-    if (sameProvider) return sameProvider
+  if (!skipPiSettings) {
+    const settings = readPiSettings()
+    if (settings?.defaultProvider && settings.defaultModel) {
+      const hit = available.find(
+        (m) => m.provider === settings.defaultProvider && m.id === settings.defaultModel,
+      )
+      if (hit) return hit
+      const sameProvider = available.find((m) => m.provider === settings.defaultProvider)
+      if (sameProvider) return sameProvider
+    }
   }
   return available[0]
 }
@@ -272,7 +375,8 @@ function readPiSettings(): { defaultProvider?: string; defaultModel?: string } |
   const agentDir = process.env.PI_CODING_AGENT_DIR?.trim() || path.join(os.homedir(), '.pi', 'agent')
   try {
     const raw = fs.readFileSync(path.join(agentDir, 'settings.json'), 'utf8')
-    const parsed = JSON.parse(raw) as { defaultProvider?: string; defaultModel?: string }
+    // pi 的 settings.json 是 jsonc（允许注释/尾逗号）——与 paths.ts 用同一个解析器，别用 JSON.parse
+    const parsed = parseJsonc(raw) as { defaultProvider?: string; defaultModel?: string } | undefined
     return parsed
   } catch {
     return undefined

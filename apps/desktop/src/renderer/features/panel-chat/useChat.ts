@@ -22,6 +22,7 @@ export function useChat(): {
   send: (text: string) => Promise<void>
   abort: () => Promise<void>
   reset: () => Promise<void>
+  setCwd: (cwd: string) => Promise<void>
 } {
   const [chat, setChat] = useState<ChatState>(EMPTY)
 
@@ -70,5 +71,9 @@ export function useChat(): {
     await window.tick.chat.reset()
   }, [])
 
-  return { chat, send, abort, reset }
+  const setCwd = useCallback(async (cwd: string) => {
+    await window.tick.chat.setCwd(cwd)
+  }, [])
+
+  return { chat, send, abort, reset, setCwd }
 }

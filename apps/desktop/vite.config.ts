@@ -21,7 +21,8 @@ export default defineConfig({
         vite: {
           build: {
             outDir: path.resolve(appRoot, 'dist-electron'),
-            emptyOutDir: true,
+            // dev 下 main 重建不能删掉 preload 产物（两者共用 outDir）；清理由 build script 先做
+            emptyOutDir: false,
           },
         },
       },

@@ -613,7 +613,7 @@ sequenceDiagram
 | 阶段 | 方式 |
 |------|------|
 | Dev | vite-plugin-electron / `pnpm --filter @tick/desktop dev` |
-| Prod | 未落地。无 electron-builder 依赖与配置，`pnpm build` 只产出未打包的 main / preload / renderer |
+| Prod | electron-builder 产出 `release/mac-arm64/Tick.app` + zip（产物只含 dist/ + dist-electron/，vite 已全量 bundle 依赖链；`electronDist` 复用 node_modules 跳过下载）；`scripts/install.sh` 覆盖安装到 /Applications |
 
 ---
 

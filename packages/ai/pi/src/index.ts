@@ -9,3 +9,4 @@
 
 export * from './paths'
 export * from './adapter'
+export * from './usage'

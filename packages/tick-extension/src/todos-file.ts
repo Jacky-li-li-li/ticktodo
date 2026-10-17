@@ -19,6 +19,13 @@ export interface TodoBinding {
   toolId: string
   sessionId: string
   boundAt: string
+  state?: 'pending' | 'verified'
+}
+
+export interface LastLaunchRecord {
+  toolId: string
+  projectPath: string
+  launchedAt?: string
 }
 
 export interface TodoRecord {
@@ -30,6 +37,7 @@ export interface TodoRecord {
   updatedAt: string
   bindings: TodoBinding[]
   primarySessionId?: string
+  lastLaunch?: LastLaunchRecord
   source?: 'panel' | 'pi'
   requestId?: string
 }
@@ -58,12 +66,40 @@ export function todosFilePath(home = resolveTickHome()): string {
   return path.join(home, 'data', 'todos.json')
 }
 
-function readFile(file: string): TodosFile {
+function backupCorrupt(file: string): string | undefined {
+  try {
+    const backup = `${file}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`
+    fs.copyFileSync(file, backup)
+    try {
+      fs.chmodSync(backup, 0o600)
+    } catch {
+      /* 忽略 */
+    }
+    return backup
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 读 todos.json。解析失败时先备份成 `<file>.corrupt-<ts>` 再返回空表——
+ * 数据层是「致命」层，不能静默把用户数据覆盖掉（至少留一份可人工恢复的原件）。
+ * 只读路径（listTodos）不触发备份，避免读操作产生副作用。
+ */
+function readFile(file: string, backupOnCorrupt = false): TodosFile {
+  if (!fs.existsSync(file)) return { version: 1, todos: [] }
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as TodosFile
-    if (!parsed || !Array.isArray(parsed.todos)) return { version: 1, todos: [] }
+    if (!parsed || !Array.isArray(parsed.todos)) {
+      if (backupOnCorrupt) console.error(`[tick] todos.json 结构非法：${backupCorrupt(file) ?? file}`)
+      return { version: 1, todos: [] }
+    }
     return { version: 1, todos: parsed.todos }
-  } catch {
+  } catch (err) {
+    if (backupOnCorrupt) {
+      const backup = backupCorrupt(file)
+      console.error(`[tick] todos.json 解析失败（已备份到 ${backup ?? '失败'}）：`, err)
+    }
     return { version: 1, todos: [] }
   }
 }
@@ -87,12 +123,20 @@ function writeFileAtomic(file: string, data: TodosFile): void {
   }
 }
 
-/** O_EXCL 目录锁；5s 视为陈旧锁（进程崩了留下的） */
-function acquireLock(lockPath: string, timeoutMs = 5000): number | undefined {
+/**
+ * O_EXCL 目录锁；5s 视为陈旧锁（进程崩了留下的）。
+ *
+ * ⚠️ 锁文件名必须与 Main 的 services/storage.ts 完全一致（`<file>.lock`），
+ * 否则两套运行时各锁各的 = 没有互斥（实测 Main/extension 并发 240 次写丢 117 条）。
+ * 锁内容 = `<pid>:<uuid>` token；释放只删自己持有的锁。
+ */
+function acquireLock(lockPath: string, timeoutMs = 5000): string {
   const start = Date.now()
   for (;;) {
+    const token = `${process.pid}:${randomUUID()}`
     try {
-      return fs.openSync(lockPath, 'wx')
+      fs.writeFileSync(lockPath, token, { flag: 'wx', mode: 0o600 })
+      return token
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code
       if (code !== 'EEXIST') throw err
@@ -112,24 +156,31 @@ function acquireLock(lockPath: string, timeoutMs = 5000): number | undefined {
   }
 }
 
-function withLockedFile<T>(file: string, fn: (data: TodosFile) => T): T {
+function releaseLock(lockPath: string, token: string): void {
+  try {
+    if (fs.readFileSync(lockPath, 'utf8') !== token) return
+    fs.rmSync(lockPath, { force: true })
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 锁内读改写；`dirty=false` 时不写文件（命中幂等键时避免无谓写 + 触发 watcher） */
+function withLockedFile<T>(
+  file: string,
+  fn: (data: TodosFile) => { result: T; dirty: boolean },
+): T {
   // 锁文件要和 data 目录同生：首次运行时目录还不存在（ENOENT 不是"抢不到锁"）
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   const lockPath = `${file}.lock`
-  const fd = acquireLock(lockPath)
-  if (fd === undefined) throw new Error(`todos.json 锁不可用（${lockPath}）`)
+  const token = acquireLock(lockPath)
   try {
-    const data = readFile(file)
-    const result = fn(data)
-    writeFileAtomic(file, data)
+    const data = readFile(file, true)
+    const { result, dirty } = fn(data)
+    if (dirty) writeFileAtomic(file, data)
     return result
   } finally {
-    try {
-      fs.closeSync(fd)
-    } catch {
-      /* 忽略 */
-    }
-    fs.rmSync(lockPath, { force: true })
+    releaseLock(lockPath, token)
   }
 }
 
@@ -142,7 +193,7 @@ export function createTodo(input: CreateTodoInput, home = resolveTickHome()): { 
   if (!title) throw new Error('标题为空不可保存')
 
   const file = todosFilePath(home)
-  return withLockedFile(file, (data) => {
+  return withLockedFile<{ todo: TodoRecord; created: boolean }>(file, (data) => {
     const now = new Date().toISOString()
 
     const existing = data.todos.find(
@@ -150,7 +201,8 @@ export function createTodo(input: CreateTodoInput, home = resolveTickHome()): { 
         (input.requestId && t.requestId === input.requestId) ||
         (input.sessionId && t.bindings.some((b) => b.sessionId === input.sessionId)),
     )
-    if (existing) return { todo: existing, created: false }
+    // 命中幂等键 / 同会话：直接返回既有那条，且不写文件（避免无谓 write 触发 Main 的 fs.watch）
+    if (existing) return { result: { todo: existing, created: false }, dirty: false }
 
     const todo: TodoRecord = {
       id: randomUUID(),
@@ -160,14 +212,14 @@ export function createTodo(input: CreateTodoInput, home = resolveTickHome()): { 
       createdAt: now,
       updatedAt: now,
       bindings: input.sessionId
-        ? [{ toolId: 'pi', sessionId: input.sessionId, boundAt: now }]
+        ? [{ toolId: 'pi', sessionId: input.sessionId, boundAt: now, state: 'verified' }]
         : [],
       primarySessionId: input.sessionId,
       source: input.source ?? 'pi',
       requestId: input.requestId,
     }
     data.todos.push(todo)
-    return { todo, created: true }
+    return { result: { todo, created: true }, dirty: true }
   })
 }
 

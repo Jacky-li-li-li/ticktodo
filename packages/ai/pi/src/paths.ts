@@ -183,11 +183,22 @@ export function findSessionFilesById(sessionId: string, roots: SessionRoot[], ma
   return hits
 }
 
-/** 读一个文件的全部 session_info.name（不缓存正文；行内先 includes 再 parse，控 I/O 成本） */
-export async function readSessionName(file: string): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve, reject) => {
+export interface SessionMeta {
+  /** 最新的 session_info.name（--name 写入，可能被 /rename 改） */
+  name?: string
+  /** 首条 user 消息的纯文本（用于 name 缺失时的标题回退） */
+  firstUserText?: string
+}
+
+/**
+ * 读会话元数据：最新 session_info.name + 首条 user 文本。
+ * 口径（TECH-ARCH §6）：name 必须全量扫（pi 自己也如此），但**只取字段、不缓存正文**。
+ * 行内先 includes 再 parse；内存只保留两行文本。
+ */
+export async function readSessionMeta(file: string): Promise<SessionMeta> {
+  return new Promise<SessionMeta>((resolve, reject) => {
     const rs = createReadStream(file, { encoding: 'utf8' })
-    let found: string | undefined
+    const meta: SessionMeta = {}
     let pending = ''
     rs.on('data', (chunk) => {
       pending += chunk
@@ -199,7 +210,20 @@ export async function readSessionName(file: string): Promise<string | undefined>
           try {
             const parsed = JSON.parse(line) as { type?: string; name?: string }
             if (parsed.type === 'session_info' && typeof parsed.name === 'string' && parsed.name) {
-              found = parsed.name
+              meta.name = parsed.name
+            }
+          } catch {
+            /* 坏行忽略 */
+          }
+        } else if (meta.firstUserText === undefined && line.includes('"role":"user"')) {
+          try {
+            const parsed = JSON.parse(line) as {
+              type?: string
+              message?: { role?: string; content?: unknown }
+            }
+            if (parsed.type === 'message' && parsed.message?.role === 'user') {
+              const text = messageText(parsed.message.content)
+              if (text.trim()) meta.firstUserText = text
             }
           } catch {
             /* 坏行忽略 */
@@ -208,7 +232,30 @@ export async function readSessionName(file: string): Promise<string | undefined>
         idx = pending.indexOf('\n')
       }
     })
-    rs.on('end', () => resolve(found))
+    rs.on('end', () => resolve(meta))
     rs.on('error', reject)
   })
+}
+
+function messageText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((b): b is { type: string; text?: string } => Boolean(b) && typeof b === 'object')
+    .filter((b) => b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text as string)
+    .join('')
+}
+
+/** 把首条消息压成一行可用的标题：去 context 标签/AGENTS.md/图片块，截断 */
+export function toSessionTitle(text: string | undefined, max = 80): string | undefined {
+  if (!text) return undefined
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => !l.startsWith('#') && !l.startsWith('<'))
+  const first = lines[0]
+  if (!first) return undefined
+  return first.length > max ? `${first.slice(0, max)}…` : first
 }

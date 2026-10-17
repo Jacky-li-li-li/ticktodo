@@ -22,9 +22,13 @@ export interface SessionInfo {
   sessionId: CliSessionId
   cwd: string
   name?: string
+  /** name 缺失时的回退：首条 user 消息（压成一行）。S5 建 todo 的标题用 */
+  firstMessage?: string
   createdAt: string
   lastUsedAt?: number
   exists: boolean
+  /** 会话文件绝对路径（F8 导出必须给，让用户能定位原始会话） */
+  filePath?: string
   /** false = 只读会话，不能 resume */
   resumable: boolean
   /** false = 本机看不到它的文件（远端/网关侧），只能看不能跳 */
@@ -40,6 +44,52 @@ export interface SessionInfo {
 export interface SessionRef {
   toolId: string
   sessionId: CliSessionId
+}
+
+/** 会话列表的轻量元数据（S5 反向建索引 / 多会话绑定 UI） */
+export interface SessionSummary {
+  toolId: string
+  sessionId: CliSessionId
+  cwd: string
+  name?: string
+  firstMessage?: string
+  createdAt: string
+  lastUsedAt?: number
+  filePath: string
+  exists: boolean
+  /** fork 血缘（前缀条目继承自源文件，用量求和要跳过） */
+  parentSessionPath?: string
+  /** 文件大小（字节，用于 UI 详情/诊断） */
+  size?: number
+}
+
+// ---------- 用量（F6-b：只统计工具侧会话，面板不参与） ----------
+
+export interface TokenUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  totalTokens: number
+}
+
+export interface CostUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  total: number
+}
+
+export interface SessionUsage {
+  tokens: TokenUsage
+  /** cost 可能缺失/不可信（provider 未上报）→ UI 只能当下限 */
+  cost: CostUsage
+  byModel: { provider: string; model: string; tokens: TokenUsage; cost: CostUsage }[]
+  messageCount: number
+  computedAt: number
+  /** false = 至少一个 provider 有 token 却报 0 成本 → UI 标注「未上报 / ≥」 */
+  costReported: boolean
 }
 
 // ---------- 项目证据与归并 ----------
@@ -130,7 +180,12 @@ export interface AiToolAdapter {
   }
   discoverProjects?(): Promise<ProjectSource['projects']>
   listSessions?(cwd?: string): Promise<SessionRef[]>
-  describeSession?(id: CliSessionId): Promise<SessionInfo | undefined>
+  /** 会话列表（含 name/firstMessage/filePath；S5 与多会话 UI 用） */
+  listSessionInfos?(): Promise<SessionSummary[]>
+  /** 单会话用量（F6-b；口径由各 adapter 自己算） */
+  computeUsage?(sessionId: CliSessionId): Promise<SessionUsage | undefined>
+  /** withName=false 时只读 header（cwd 推导等场景不需要全量扫 name，避免读整份会话正文） */
+  describeSession?(id: CliSessionId, opts?: { withName?: boolean }): Promise<SessionInfo | undefined>
   /** launch 后校验 session 真的产生：必须绕缓存直读，且 size===0 视为未产生 */
   verify?(sessionId: CliSessionId): Promise<boolean>
   launch(ctx: LaunchContext): Promise<LaunchResult>

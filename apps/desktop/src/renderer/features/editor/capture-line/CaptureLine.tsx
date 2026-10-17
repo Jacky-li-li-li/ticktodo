@@ -6,7 +6,14 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 
-export function CaptureLine({ onSubmit }: { onSubmit: (title: string) => void }): React.JSX.Element {
+export function CaptureLine({
+  onSubmit,
+  focusSignal = 0,
+}: {
+  onSubmit: (title: string) => void
+  /** 全局快捷键「新建线索」时递增，用于把焦点放进输入态 */
+  focusSignal?: number
+}): React.JSX.Element {
   const [capturing, setCapturing] = useState(false)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -14,6 +21,13 @@ export function CaptureLine({ onSubmit }: { onSubmit: (title: string) => void })
   useEffect(() => {
     if (capturing) inputRef.current?.focus()
   }, [capturing])
+
+  useEffect(() => {
+    if (!focusSignal) return
+    setCapturing(true)
+    // 等输入框挂载后再聚焦
+    window.setTimeout(() => inputRef.current?.focus(), 0)
+  }, [focusSignal])
 
   const commit = () => {
     const title = draft.trim()
@@ -40,7 +54,8 @@ export function CaptureLine({ onSubmit }: { onSubmit: (title: string) => void })
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commit()
+            // 中文输入法选词时按回车不应提交（与 ChatPanel 保持一致）
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit()
             if (e.key === 'Escape') {
               setDraft('')
               setCapturing(false)

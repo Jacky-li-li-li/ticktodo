@@ -28,12 +28,29 @@ export interface SessionBinding {
   toolId: string
   sessionId: CliSessionId
   boundAt: string // ISO
+  /**
+   * 会话在工具侧的状态：
+   *  - pending  = 已在终端打开 pi，但用户还没发送第一条消息（剪贴板投递时正常）→ 还没有 session 文件
+   *  - verified = 会话文件已真实产生（verify 通过）
+   *  - 缺省     = 旧数据，按 verified 处理
+   *
+   * 为什么需要 pending：默认投递是剪贴板，pi 启动后不会立刻落盘；若坚持「verify 通过才绑定」，
+   * 默认路径会永远不绑定。所以先写 pending，再由后台对账改成 verified。
+   */
+  state?: 'pending' | 'verified'
+  /**
+   * 绑定时记下的会话文件路径（仅作为导出/诊断的**提示**，权威值仍向 adapter 现问）。
+   * 会话被删掉后仍能用它告诉用户"原始会话原来在哪"。
+   */
+  filePath?: string
 }
 
 /** 上次用哪个工具 + 哪个目录 —— 用户意图，一体记忆（拆开会在切工具时选错） */
 export interface LastLaunch {
   toolId: string
   projectPath: string
+  /** Tick 侧成功拉起的时间（ISO）。跨工具统一排序时钟；不要用 Todo.updatedAt 代替。 */
+  launchedAt?: string
 }
 
 // ---------- Todo ----------
@@ -70,6 +87,163 @@ export interface TodoPatch {
   lastLaunch?: LastLaunch
 }
 
+// ---------- 会话（S5 / 多会话绑定 UI） ----------
+
+/** 会话列表项（adapter 元数据 + Tick 侧绑定关系） */
+export interface SessionView {
+  toolId: string
+  sessionId: CliSessionId
+  cwd: string
+  name?: string
+  firstMessage?: string
+  createdAt: string
+  lastUsedAt?: number
+  filePath: string
+  exists: boolean
+  boundTodoId?: string
+  boundTodoTitle?: string
+}
+
+/** 某条 todo 下的会话（绑定详情；会话文件可能已被删 → exists=false） */
+export interface TodoSessionView extends SessionView {
+  boundAt: string
+  state?: 'pending' | 'verified'
+  primary: boolean
+  /** false = 会话文件已不在本机（只能看/解绑，不能 resume） */
+  missing: boolean
+}
+
+export const SessionsIpc = {
+  /** 全部会话（含已绑定；S5 只看未绑定） */
+  list: 'sessions:list',
+  /** 某条 todo 的绑定会话详情 */
+  forTodo: 'sessions:for-todo',
+  /** S5：用历史会话建 todo 并绑定 */
+  claim: 'sessions:claim',
+  /** 把历史会话绑到已有 todo */
+  bind: 'sessions:bind',
+  setPrimary: 'sessions:set-primary',
+  unbind: 'sessions:unbind',
+} as const
+
+/** 单会话用量（F6-b）：只统计工具侧会话，面板 Chat 永不参与 */
+export const UsageIpc = {
+  get: 'usage:get',
+} as const
+
+// ---------- 导出（F8） ----------
+
+export type ExportScope = 'all' | 'open' | 'todo'
+
+export interface ExportRequest {
+  scope: ExportScope
+  todoId?: string
+}
+
+export interface ExportResult {
+  jsonPath: string
+  markdownPath: string
+  todoCount: number
+  sessionCount: number
+}
+
+export const ExportIpc = {
+  run: 'export:run',
+  /** 在 Finder 里定位产物 */
+  reveal: 'export:reveal',
+} as const
+
+export interface SessionsListOptions {
+  /** 只看未绑定（S5） */
+  unboundOnly?: boolean
+  /** 按项目预筛（S5 从 todo 展开时带入） */
+  projectPath?: string
+}
+
+// ---------- 设置（F4-b） ----------
+
+export type LaunchDeliverSetting = 'clipboard' | 'argv'
+export type DefaultProjectSetting = 'home' | 'recent' | 'ask'
+
+// ---------- 面板 Chat 自配 Provider（PRD F5 来源 2，M3 尾巴） ----------
+
+/**
+ * 自配 provider 的**非敏感**配置。apiKey 本身不进这里、也不进 data/：
+ * 它经 Electron safeStorage（系统钥匙串支撑）加密后存 userData 目录，
+ * settings.json 只记 `keyStored` 标记（TECH-ARCH §7/§9 凭据纪律）。
+ */
+export interface CustomProviderConfig {
+  /** OpenAI 兼容 endpoint，如 https://api.openai.com/v1 或任意网关/代理地址 */
+  baseUrl: string
+  /** 模型 id（手填，或从「测试连接」拉回的列表里选） */
+  model: string
+  /** 展示名（选填；面板顶栏模型名处展示） */
+  name?: string
+  /** true = apiKey 已存入系统钥匙串（data/ 里永远不出现 key 本身） */
+  keyStored: boolean
+  /** 最近一次连接测试结果；null = 从未测试 */
+  lastTest?: {
+    ok: boolean
+    message: string
+    at: string
+  } | null
+}
+
+/** provider:test 的返回：ok + 一句话说明 +（成功时）可选的模型 id 列表 */
+export interface ProviderTestResult {
+  ok: boolean
+  message: string
+  models?: string[]
+}
+
+/** provider:save 的入参（apiKey 走 safeStorage，不进 settings.json） */
+export interface ProviderSaveInput {
+  name?: string
+  baseUrl: string
+  model: string
+  /** 留空 = 保持已存的 key 不变；有值 = 覆盖 */
+  apiKey?: string
+}
+
+/** 首版设置项（PRD F4-b + F6-b 用量开关 + M3 自配 provider） */
+export interface AppSettings {
+  /** 拉起时的投递方式：默认剪贴板（可审阅） */
+  deliver: LaunchDeliverSetting
+  /** 默认项目：home（确定兜底）/ recent（最近使用，猜）/ ask（每次必问） */
+  defaultProject: DefaultProjectSetting
+  /** 单会话用量统计（默认关；M3） */
+  usageEnabled: boolean
+  /** 面板 Chat 自配 provider（null = 跟随 pi 凭据）。含 keyStored 标记但不含 key */
+  customProvider?: CustomProviderConfig | null
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  deliver: 'clipboard',
+  defaultProject: 'home',
+  usageEnabled: false,
+  customProvider: null,
+}
+
+export const SettingsIpc = {
+  get: 'settings:get',
+  update: 'settings:update',
+  changed: 'settings:changed',
+  /** 打开 ~/.ticktodo（设置里标注备份哪一层） */
+  openDataDir: 'settings:open-data-dir',
+} as const
+
+/** 自配 provider（M3 尾巴）：非敏感配置走 settings，key 走 safeStorage，不混 */
+export const ProviderIpc = {
+  /** 当前自配配置（不含 key） */
+  get: 'provider:get',
+  /** 保存自配配置（key 进钥匙串）并重建面板对话 */
+  save: 'provider:save',
+  /** 清除自配（key 一并删除）→ 回到 pi 凭据 */
+  clear: 'provider:clear',
+  /** 连接测试（用输入框里的值测，不落盘） */
+  test: 'provider:test',
+} as const
+
 // ---------- IPC 通道 ----------
 
 export const TodosIpc = {
@@ -84,6 +258,8 @@ export const TodosIpc = {
 export const WindowIpc = {
   hide: 'window:hide',
   quit: 'window:quit',
+  /** 全局快捷键新建线索：main → renderer，让捕获行聚焦 */
+  newTodo: 'window:new-todo',
 } as const
 
 /** 项目索引（M1）：list=首帧取缓存；refresh=手动重扫；updated=main 后台扫完推送 */
@@ -91,6 +267,10 @@ export const ProjectsIpc = {
   list: 'projects:list',
   refresh: 'projects:refresh',
   updated: 'projects:updated',
+  /** 打开系统目录选择器并 pin 为项目（F3：pi 不可用时也能手动添加） */
+  add: 'projects:add',
+  /** 失效项目重新定位：只做 old→new 映射，不移动 agent 自己的会话文件（F3） */
+  relocate: 'projects:relocate',
 } as const
 
 /** 工具就绪探测（Q14 双出口空态的判据） */
@@ -120,6 +300,10 @@ export interface ChatState {
   reason?: string
   /** 当前使用的模型（provider/modelId），便于用户确认走的是哪条凭据 */
   model?: string
+  /** 面板对话的工作目录（默认 home，可切换；PRD F5） */
+  cwd?: string
+  /** 凭据来源：pi 本体（默认） / 自配 provider（M3 尾巴） */
+  source?: 'pi' | 'custom'
 }
 
 export const ChatIpc = {
@@ -128,6 +312,7 @@ export const ChatIpc = {
   abort: 'chat:abort',
   updated: 'chat:updated',
   reset: 'chat:reset',
+  setCwd: 'chat:set-cwd',
 } as const
 
 // ---------- 拉起 / 恢复（M2，ai-picker） ----------
@@ -152,6 +337,11 @@ export interface LaunchOutcome {
   /** verify 未通过 / spawn 失败时的原因 */
   reason?: string
   delivered: DeliveredMode
+  /**
+   * true = 会话尚未产生内容（绑定已写为 pending）。
+   * 剪贴板投递的正常结果：pi 已在终端打开，用户发送第一条消息后由后台对账转 verified。
+   */
+  pending?: boolean
 }
 
 export interface ResumeRequest {
