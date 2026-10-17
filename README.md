@@ -114,9 +114,9 @@ tick/
 ### 4. M3 + F8 功能（UI 已按 UI-SPEC 第二轮 Calm Panel 对齐）
 
 - **macOS 纯菜单栏模式**：`app.dock.hide()` + 打包 `LSUIElement=true`，不显示 Dock 图标；常驻 Tray 模板图标（左键显隐面板，右键菜单：显示/隐藏、新建线索、退出；悬停 tooltip 显示 `Ticktodo-<open 线索数>个`）；图标源 `build/trayTemplate.svg`，打包时经 `extraResources` 带进 App。
-- **应用图标**：源文件 `apps/desktop/build/icon.svg`（深色玻璃 squircle + T 形线索 + 当前节点；浅色备选 `icon-light.svg`），
+- **应用图标**：源文件 `apps/desktop/build/icon.svg`（深色玻璃 squircle + 图钉云豆 mascot；浅色备选 `icon-light.svg`），
   产物 `icon.png`（1024）与 `icon.icns`；electron-builder 默认从 `build/` 取 `icon.icns`（无需额外配置），dev 下 main 会把 Dock 图标指到 `icon.png`。
-- **首页顶栏**：右侧对话入口改为 14×14 会话气泡图标（去掉不存在的「⌘对话」假快捷键；`⋯` 仍是归档/设置/导出菜单）；左侧品牌位为「小尺寸 T 线索图标 + Ticktodo」（归档页仍显示「归档」；图标来源见 `build/icon.svg`，UI 组件 `features/brand/TickMark.tsx`）。
+- **首页顶栏**：右侧对话入口改为 14×14 会话气泡图标（去掉不存在的「⌘对话」假快捷键；`⋯` 仍是归档/设置/导出菜单）；左侧品牌位为「小尺寸云豆+图钉图标 + Ticktodo」（归档页仍显示「归档」；图标来源见 `build/icon.svg`，UI 组件 `features/brand/TickMark.tsx`）。
 - **Todo**：点整行在当前行位置**原地展开**为线索卡片（焦点卡材质：白 10%→3% + Accent 8%，§3.3；不再统一挪到列表顶部），点卡片头/标题或卡片外空白折叠——卡片头可勾选归档、
   「上次停在哪」显示主会话最后一条 user 消息（adapter 流式扫描，按文件 (mtime,size) 缓存元数据；卡片打开时窗口聚焦/15s 刷新）、动作三态（0 会话=新建会话；
   1 会话=「在 <项目> 中打开 pi」；N 会话=接着做 + 查看列表带角标）；卡片内可编辑标题/正文（标题必填）；

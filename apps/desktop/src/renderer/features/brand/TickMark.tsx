@@ -1,8 +1,9 @@
 /**
- * TickMark — 顶栏品牌位使用的小尺寸 T 形线索标记（与 build/icon.svg 同源）。
+ * TickMark — 顶栏品牌位使用的小尺寸云豆 + 图钉标记（与 build/icon.svg 同源 IP）。
  *
  * 为什么不用 1024 图标直接缩到 16px：应用图标带 macOS 外边距 + 完整 squircle，
- * 16px 下 T 只剩约 5px；这里为 UI 单独做 16px 网格的紧凑版（深色圆角底 + 白 T + Accent 节点）。
+ * 16px 下云豆细节会糊掉；这里为 UI 单独做 16px 网格的紧凑版
+ * （深色圆角底 + 白色云豆轮廓 + 双眼 + Accent 图钉）。
  */
 
 import React from 'react'
@@ -27,20 +28,18 @@ export function TickMark({ size = 16 }: { size?: number }): React.JSX.Element {
         stroke="rgba(255,255,255,0.14)"
         strokeWidth="0.6"
       />
+      {/* cloud body */}
       <path
-        d="M3.1 5.05C4.9 5.45 11.1 5.45 12.85 5.05"
-        stroke="#F3F7FE"
-        strokeWidth="1.8"
-        strokeLinecap="round"
+        d="M3.2 9.2c0-1.5 1.1-2.5 2.4-2.5.3-1 1.2-1.7 2.4-1.7s2.1.7 2.4 1.7c1.3 0 2.4 1 2.4 2.5 0 1.4-1.2 2.4-2.8 2.4H6c-1.6 0-2.8-1-2.8-2.4z"
+        fill="#F3F7FE"
       />
-      <path
-        d="M8 5.25V12.6"
-        stroke="#F3F7FE"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <circle cx="12.7" cy="5.05" r="1.1" fill="#0A84FF" />
-      <circle cx="8" cy="12.65" r="0.58" stroke="#C9D8EC" strokeOpacity="0.55" strokeWidth="0.5" />
+      <circle cx="6.3" cy="8.6" r="0.85" fill="#121A27" />
+      <circle cx="9.7" cy="8.6" r="0.85" fill="#121A27" />
+      <circle cx="6.55" cy="8.4" r="0.25" fill="#F3F7FE" />
+      <circle cx="9.95" cy="8.4" r="0.25" fill="#F3F7FE" />
+      {/* pin */}
+      <circle cx="8" cy="3.6" r="0.7" fill="#0A84FF" />
+      <rect x="7.75" y="4.2" width="0.5" height="0.85" fill="#0A84FF" />
     </svg>
   )
 }
