@@ -5,9 +5,13 @@
  * 常驻语义：关窗 = 隐藏（app 不退）；Cmd+Q 退出。DPI/多屏修正随 M3 的\"位置记忆\"细化。
  */
 
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, clipboard, shell } from 'electron'
 import path from 'node:path'
+import { ProjectsIpc } from '@tick/shared'
+import { AiToolRegistry } from '@tick/ai-core'
+import { PiAdapter } from '@tick/ai-pi'
 import { ensureDirs, resolveDirs } from './services/storage'
+import { ProjectIndexService } from './services/project-index'
 import { TodoStore } from './store'
 import { createPanelWindow, installAppMenu, saveWindowState } from './window'
 import { registerIpc } from './ipc'
@@ -34,9 +38,42 @@ app.whenReady().then(() => {
   const store = new TodoStore(path.join(dirs.data, 'todos.json'))
   store.ensureFile()
 
+  // ---------- M1：adapter 注册表 + 项目索引 ----------
+  const registry = new AiToolRegistry()
+  const pi = new PiAdapter({
+    clipboardWrite: (text) => clipboard.writeText(text), // 剪贴板投递出口（ai 包不依赖 Electron）
+  })
+  registry.register(pi)
+
+  // 跨工具时钟：todos.lastLaunch{projectPath} → 路径 → 最近拉起时间
+  const launchClock = (): Map<string, number> => {
+    const map = new Map<string, number>()
+    for (const t of store.list()) {
+      if (!t.lastLaunch) continue
+      const ms = Date.parse(t.updatedAt)
+      const prev = map.get(t.lastLaunch.projectPath)
+      if (prev === undefined || ms > prev) map.set(t.lastLaunch.projectPath, ms)
+    }
+    return map
+  }
+  const projectIndex = new ProjectIndexService(pi, path.join(dirs.cache, 'projects.json'), {
+    launchClock,
+  })
+
   panel = createPanelWindow(dirs)
   installAppMenu(panel)
-  registerIpc(store, { panel: () => panel })
+  registerIpc(store, { panel: () => panel }, { projectIndex }, registry.list())
+
+  // 冷启动纪律：UI 先拿缓存；后台扫完推送给 renderer
+  void (async () => {
+    try {
+      await projectIndex.ready()
+      const fresh = await projectIndex.refresh()
+      panel?.webContents.send(ProjectsIpc.updated, fresh)
+    } catch (e) {
+      console.error('[tick] 项目索引首扫失败:', e)
+    }
+  })()
 
   panel.on('close', (e) => {
     // 常驻：点关窗只是隐藏；真正退出走 Cmd+Q（before-quit 时 willClose 允许）

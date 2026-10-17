@@ -1,5 +1,12 @@
 # Tick 项目长期记忆
 
+## 工程现状（M0 已落地，2026-10-17）
+- **git 已 init**，首提 = M0（脚手架+面板空壳+TodoCRUD+pi 1.3.0）。开发：`pnpm dev`（根）。
+- **Electron 44.8.0（内置 Node 24.22.0 ≥ 22.19 ✅）→ 无需 sidecar 预案**。pnpm 用 `node-linker=hoisted`（.npmrc；环境的 fs broker 拦 isolated-linker 的 symlink 覆盖）。
+- **宿主大坑：WorkBuddy shell 自带 `ELECTRON_RUN_AS_NODE=1`** → electron 被 run-as-node 拉起。dev script 已 `unset ELECTRON_RUN_AS_NODE`。vite config root=src/renderer 时 electron 插件 outDir 必须绝对路径指回 app 根。
+- 代码地图：main=main.ts/window.ts/store.ts(TodoStore)/services/storage.ts(TICK_HOME 四层 0700/0600+README+atomicWriteJson+FileLock)；preload 白名单桥（RPC 走 @tick/shared 通道常量）；renderer=App/CaptureLine/TodoList(ThreadRow)/Toast/relTime + styles.css 按 UI-SPEC 令牌全套；`packages/shared`（Todo/SessionBinding/LastLaunch/CliSessionId 品牌）；`packages/ai/core`（合同+Registry+ProjectSource/Entry）；`packages/ai/pi`（detect 已实装，launch/resume/verify M1）。TodoStore CRUD 冒烟过（空标题拒绝等）。
+- pi 已升 1.3.0；**用户有两个 pi TUI 活进程，~/.pi/agent/*.lock 目录锁勿动**。
+
 ## 定位与语言
 - Tick = 置顶 Todo 工作台 = 「AI 会话的索引层」：Todo 是索引，pi session 是被索引对象。飞书能力 v0.3 已移除。
 - 语言/运行时（2026-10-17）：**全仓 TypeScript 单语言 + Electron**。决定性理由：面板 Chat 进程内跑 pi-durable（Node 包，Node≥22.19）→ 运行时必是 Node，Tauri/Rust 只会变两套运行时；pi 是 npm/TS 生态，adapter 直接 import 类型。**坑：Electron 内置 Node 须≥22.19（进 M2 验证清单），不够则 ChatAgentHost 移独立 Node 侧进程**。

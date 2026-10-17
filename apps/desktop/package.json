@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tick/shared": "workspace:*"
+    "@tick/shared": "workspace:*",
+    "@tick/ai-core": "workspace:*",
+    "@tick/ai-pi": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -79,3 +79,15 @@ export const WindowIpc = {
   hide: 'window:hide',
   quit: 'window:quit',
 } as const
+
+/** 项目索引（M1）：list=首帧取缓存；refresh=手动重扫；updated=main 后台扫完推送 */
+export const ProjectsIpc = {
+  list: 'projects:list',
+  refresh: 'projects:refresh',
+  updated: 'projects:updated',
+} as const
+
+/** 工具就绪探测（Q14 双出口空态的判据） */
+export const ToolsIpc = {
+  status: 'tools:status',
+} as const

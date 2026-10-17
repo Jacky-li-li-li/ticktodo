@@ -10,6 +10,12 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../../packages/ai/core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../../packages/ai/pi
       '@tick/shared':
         specifier: workspace:*
         version: link:../../packages/shared
