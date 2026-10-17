@@ -1,15 +1,24 @@
 # Tick 项目长期记忆
 
-## 工程现状（M0 已落地，2026-10-17）
-- **git 已 init**，首提 = M0（脚手架+面板空壳+TodoCRUD+pi 1.3.0）。开发：`pnpm dev`（根）。
+## 工程现状（M0/M1/M2 已落地，2026-10-17）
+- **git 已 init**，提交：M0 首提 → `6e543a0` M1 → `f44c839` M2。开发：`pnpm dev`（根：先 build tick-extension 再起 desktop）。
 - **Electron 44.8.0（内置 Node 24.22.0 ≥ 22.19 ✅）→ 无需 sidecar 预案**。pnpm 用 `node-linker=hoisted`（.npmrc；环境的 fs broker 拦 isolated-linker 的 symlink 覆盖）。
-- **宿主大坑：WorkBuddy shell 自带 `ELECTRON_RUN_AS_NODE=1`** → electron 被 run-as-node 拉起。dev script 已 `unset ELECTRON_RUN_AS_NODE`。vite config root=src/renderer 时 electron 插件 outDir 必须绝对路径指回 app 根。
-- 代码地图：main=main.ts/window.ts/store.ts(TodoStore)/services/storage.ts(TICK_HOME 四层 0700/0600+README+atomicWriteJson+FileLock)；preload 白名单桥（RPC 走 @tick/shared 通道常量）；renderer=App/CaptureLine/TodoList(ThreadRow)/Toast/relTime + styles.css 按 UI-SPEC 令牌全套；`packages/shared`（Todo/SessionBinding/LastLaunch/CliSessionId 品牌）；`packages/ai/core`（合同+Registry+ProjectSource/Entry）；`packages/ai/pi`（detect 已实装，launch/resume/verify M1）。TodoStore CRUD 冒烟过（空标题拒绝等）。
-- pi 已升 1.3.0；**用户有两个 pi TUI 活进程，~/.pi/agent/*.lock 目录锁勿动**。
+- **宿主大坑：WorkBuddy shell 自带 `ELECTRON_RUN_AS_NODE=1`** → electron 被 run-as-node 拉起。dev script 已 `unset ELECTRON_RUN_AS_NODE`。vite config root=src/renderer 时 electron 插件 outDir 必须绝对路径指回 app 根（产物落 apps/desktop/dist-electron）。
+- 代码地图：main=main.ts（装配）/window.ts/store.ts(TodoStore)/services/{storage,project-index,chat-host,launch}.ts；preload 白名单桥（RPC 走 @tick/shared 通道常量）；renderer=App/CaptureLine/TodoList/Toast/AiPicker/ChatPanel + styles.css 按 UI-SPEC 令牌全套；`packages/shared`（Todo/SessionBinding/LastLaunch/CliSessionId + IPC 通道）；`packages/ai/core`（合同+Registry+mergeProjects+canonicalPath）；`packages/ai/pi`（detect/launch/resume/verify/listSessions/discoverProjects 全实装）；`packages/tick-extension`（create_todo/list_todos：todos-file.ts 领域逻辑 + index.ts(CLI registerTool) + durable.ts(pi-durable defineTool) + build.mjs）。
+- **验证手段**：dev 开 CDP `127.0.0.1:9223`（仅 dev）+ renderer console 转发到终端 → Node 原生 WebSocket 直连 `Runtime.evaluate` 驱动/断言 UI。
+- pi 已升 1.3.0；**用户若有 pi TUI 活进程，~/.pi/agent/*.lock 目录锁勿动**。
+
+## M2 事实（pi-durable / extension / 凭据）
+- **pi 两套扩展 API 不通用**：coding-agent `ExtensionAPI.registerTool(ToolDefinition)`（TypeBox、返回 `{content,details}`、`ctx.sessionManager.getSessionId()/ctx.cwd`）；pi-durable `defineTool`+`defineExtension`（`execute(args,api,ctx)` 返回 `{output,details}`）。共用只能落在领域逻辑层。
+- **面板 Chat 数据面**：`Harness.open(openNodeJsonlStorage(dir, BACKGROUND_CONTEXT), {models, registry}, ctx)` → `harness.root(ctx,{agent:{model:{provider,modelId},cwd}})` → `harness.resume()` → `conversation.viewState(ctx).subscribe(v)`；`v.entries[].model[0]` 是消息，`v.docs['pi.live']` = `{run?,generation?.message,tools}`（流式尾与忙闲都在这）。`submit({type:'input',content,requestId})` → `submission.wait()` 得 `{status:'done'|'unanswered',reason?}`。
+- **凭据只读原则（实测定案）**：`ModelRuntime.create()` 默认会给 `~/.pi/agent/auth.json` 加 proper-lockfile 锁；在受限宿主里会 `EEXIST auth.json.lock` 直接打不开面板。→ 面板固定传**只读 CredentialStore**（直读 auth.json），不抢锁不写；OAuth 续期归 pi 本体。`getAvailable()` 拿可用模型（本机 462 个）。
+- **模型选择**：settings 默认必须在 available 里命中 → 同 provider 第一个 → 全局第一个；本机默认是免费档 `opencode-zen-free/deepseek-v4.1-flash-free`，常 429。
+- **extension 部署**：App 启动按 sha256 幂等写 `~/.pi/agent/extensions/tick/index.js`（`PI_CODING_AGENT_DIR` 可覆盖）；`packages/tick-extension/dist/index.js` 是 esbuild 单文件（typebox 内联），**dist 不进 git**，首次需 `pnpm --filter @tick/tick-extension build`。dist-electron→repo 根是三级 `../../..`。
+- **拉起纪律**：cwd 三级（绑定会话 cwd → lastLaunch → home；home 显示 `~`）；投递默认 clipboard；**verify 通过才写 bindings**；main 用 `fs.watch(data/)` 监听 todos.json → `todos:changed` 推 UI（extension 共写的同步路径）。
 
 ## 定位与语言
 - Tick = 置顶 Todo 工作台 = 「AI 会话的索引层」：Todo 是索引，pi session 是被索引对象。飞书能力 v0.3 已移除。
-- 语言/运行时（2026-10-17）：**全仓 TypeScript 单语言 + Electron**。决定性理由：面板 Chat 进程内跑 pi-durable（Node 包，Node≥22.19）→ 运行时必是 Node，Tauri/Rust 只会变两套运行时；pi 是 npm/TS 生态，adapter 直接 import 类型。**坑：Electron 内置 Node 须≥22.19（进 M2 验证清单），不够则 ChatAgentHost 移独立 Node 侧进程**。
+- 语言/运行时（2026-10-17）：**全仓 TypeScript 单语言 + Electron**。决定性理由：面板 Chat 进程内跑 pi-durable（Node 包，Node≥22.19）→ 运行时必是 Node，Tauri/Rust 只会变两套运行时；pi 是 npm/TS 生态，adapter 直接 import 类型。Electron 内置 Node 已验证 24.22.0。
 
 ## 凭据与对外（Q14 修订 / Q15 / F6-c）
 - 凭据双来源：来源1=pi 本体（默认，`pi auth check` 探测）；来源2（M3+）=自配 OpenAI 兼容 endpoint（内置 pi-ai）。**Key 只进系统钥匙串（safeStorage），永不进 `~/.ticktodo/data/`**。没 pi 的用户：面板双出口（装 pi 或自配），CLI/索引仍不可用（依赖会话目录）。
