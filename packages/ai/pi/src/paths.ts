@@ -202,42 +202,50 @@ export async function readSessionMeta(file: string): Promise<SessionMeta> {
     const rs = createReadStream(file, { encoding: 'utf8' })
     const meta: SessionMeta = {}
     let pending = ''
+    const consume = (line: string): void => {
+      if (line.includes('"session_info"')) {
+        try {
+          const parsed = JSON.parse(line) as { type?: string; name?: string }
+          if (parsed.type === 'session_info' && typeof parsed.name === 'string' && parsed.name) {
+            meta.name = parsed.name
+          }
+        } catch {
+          /* 坏行忽略 */
+        }
+      } else if (line.includes('"role":"user"')) {
+        // 注意：不能把「还没找到首条」作为整个分支的条件，否则找到 first 后
+        // 后续 user 消息不会再被扫描，lastUserText 会永远停在第一条。
+        try {
+          const parsed = JSON.parse(line) as {
+            type?: string
+            message?: { role?: string; content?: unknown }
+          }
+          if (parsed.type === 'message' && parsed.message?.role === 'user') {
+            const text = messageText(parsed.message.content)
+            if (text.trim()) {
+              if (meta.firstUserText === undefined) meta.firstUserText = text
+              meta.lastUserText = text
+            }
+          }
+        } catch {
+          /* 坏行忽略 */
+        }
+      }
+    }
     rs.on('data', (chunk) => {
       pending += chunk
       let idx = pending.indexOf('\n')
       while (idx >= 0) {
-        const line = pending.slice(0, idx)
+        consume(pending.slice(0, idx))
         pending = pending.slice(idx + 1)
-        if (line.includes('"session_info"')) {
-          try {
-            const parsed = JSON.parse(line) as { type?: string; name?: string }
-            if (parsed.type === 'session_info' && typeof parsed.name === 'string' && parsed.name) {
-              meta.name = parsed.name
-            }
-          } catch {
-            /* 坏行忽略 */
-          }
-        } else if (meta.firstUserText === undefined && line.includes('"role":"user"')) {
-          try {
-            const parsed = JSON.parse(line) as {
-              type?: string
-              message?: { role?: string; content?: unknown }
-            }
-            if (parsed.type === 'message' && parsed.message?.role === 'user') {
-              const text = messageText(parsed.message.content)
-              if (text.trim()) {
-                if (meta.firstUserText === undefined) meta.firstUserText = text
-                meta.lastUserText = text
-              }
-            }
-          } catch {
-            /* 坏行忽略 */
-          }
-        }
         idx = pending.indexOf('\n')
       }
     })
-    rs.on('end', () => resolve(meta))
+    rs.on('end', () => {
+      // 写入中的会话可能最后一行还没换行，不能丢
+      if (pending) consume(pending)
+      resolve(meta)
+    })
     rs.on('error', reject)
   })
 }

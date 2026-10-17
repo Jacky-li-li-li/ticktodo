@@ -1,5 +1,6 @@
 /**
  * ArchiveList — 归档页（PRD F2：完成只改状态；恢复 = 改回 open，绑定不清空）。
+ * 与首页同构：展开态在点击的那一行原地替换成线索卡片。
  */
 
 import React from 'react'
@@ -16,10 +17,15 @@ export function ArchiveList({
   todos,
   onRestore,
   onOpen,
+  activeId,
+  renderDetail,
 }: {
   todos: Todo[]
   onRestore: (todo: Todo) => void
   onOpen: (todo: Todo) => void
+  /** 当前展开的线索 id：命中时该行原地替换成卡片 */
+  activeId?: string | null
+  renderDetail?: (todo: Todo) => React.ReactNode
 }): React.JSX.Element {
   if (todos.length === 0) {
     return (
@@ -31,21 +37,45 @@ export function ArchiveList({
   }
   return (
     <>
-      {todos.map((todo) => (
-        <div className="thread-row done" key={todo.id} onClick={(e) => e.stopPropagation()}>
-          <span className="check" aria-hidden>
-            <Check />
-          </span>
-          <button className="title title-button" onClick={() => onOpen(todo)}>
-            {todo.title}
-          </button>
-          <span className="time">{relTime(todo.updatedAt, new Date())}</span>
-          {/* §4.2 归档页悬停：「恢复」胶囊（次按钮，撤销是唯一动作） */}
-          <button className="action secondary" onClick={() => onRestore(todo)}>
-            恢复
-          </button>
-        </div>
-      ))}
+      {todos.map((todo) => {
+        if (activeId === todo.id && renderDetail) {
+          return <React.Fragment key={todo.id}>{renderDetail(todo)}</React.Fragment>
+        }
+        return (
+          <div
+            className="thread-row done"
+            key={todo.id}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen(todo)
+            }}
+          >
+            <span className="check" aria-hidden>
+              <Check />
+            </span>
+            <button
+              className="title title-button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpen(todo)
+              }}
+            >
+              {todo.title}
+            </button>
+            <span className="time">{relTime(todo.updatedAt, new Date())}</span>
+            {/* §4.2 归档页悬停：「恢复」胶囊（次按钮，撤销是唯一动作） */}
+            <button
+              className="action secondary"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRestore(todo)
+              }}
+            >
+              恢复
+            </button>
+          </div>
+        )
+      })}
     </>
   )
 }

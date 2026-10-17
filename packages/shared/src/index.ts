@@ -262,6 +262,9 @@ export const WindowIpc = {
   quit: 'window:quit',
   /** 全局快捷键新建线索：main → renderer，让捕获行聚焦 */
   newTodo: 'window:new-todo',
+  /** 置顶开关：开启时 alwaysOnTop；关闭时失焦自动隐藏 */
+  getPinned: 'window:get-pinned',
+  setPinned: 'window:set-pinned',
 } as const
 
 /** 项目索引（M1）：list=首帧取缓存；refresh=手动重扫；updated=main 后台扫完推送 */

@@ -3,11 +3,13 @@
  *
  * 页面结构：捕获行 → 线索卡片 → 次要线索（列表仍在下方，点卡片外空白折叠）。
  * 卡片内容（§6.2）：标题 → 「上次停在哪」user 消息 → 动作（按会话数三态）→ 次要操作。
+ * 「上次停在哪」= 主会话文件里**最后一条 user 消息**；main 侧按 (mtime,size) 缓存元数据，
+ * 卡片打开期间在窗口重新聚焦/回前台时刷新，并每 15s 轮询一次（文件没变只 stat，不重扫正文）。
  * 会话浮层（§4.5）：「查看列表」按钮正下方右对齐；实心点=已落盘会话，空心点=待发送；
  * 每行两行文字（时间+状态 / 上次停在哪）；footer「＋ 新建会话 · 认领历史会话」。
  */
 
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import type { Todo, TodoPatch, TodoSessionView } from '@tick/shared'
 import type { SessionUsage } from '@tick/ai-core'
 import { relTime } from '../list/relTime'
@@ -50,17 +52,35 @@ export function TodoDetail({
   const [showSessions, setShowSessions] = useState(false)
   const [usages, setUsages] = useState<Record<string, SessionUsage | undefined>>({})
 
-  const loadSessions = (): void => {
+  const loadSessions = useCallback((): void => {
     void window.tick.sessions
       .forTodo(todo.id)
       .then(setSessions)
       .catch(() => setSessions([]))
-  }
+  }, [todo.id])
 
   useEffect(() => {
     loadSessions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todo.id, todo.primarySessionId, todo.bindings.length])
+  }, [loadSessions, todo.primarySessionId, todo.bindings.length])
+
+  // 会话文件会在终端里持续写入：面板重新获得焦点 / 回到前台时刷新「上次停在哪」，
+  // 卡片打开期间每 15s 再对一次（main 侧 meta 缓存让未变更文件只 stat 不重扫）。
+  useEffect(() => {
+    const refresh = (): void => loadSessions()
+    const onVisibility = (): void => {
+      if (!document.hidden) loadSessions()
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisibility)
+    const timer = window.setInterval(() => {
+      if (!document.hidden) loadSessions()
+    }, 15_000)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.clearInterval(timer)
+    }
+  }, [loadSessions])
 
   // 用量只在设置开启时按需算（F6-b：默认关；只算这条 todo 的会话）
   useEffect(() => {
@@ -168,19 +188,20 @@ export function TodoDetail({
         </>
       ) : (
         <>
-          <div className="card-head">
+          {/* 点击卡片头（标题/时间/空白）收起；勾选按钮单独 stopPropagation，仍然只做归档/恢复 */}
+          <div className="card-head" onClick={onClose} title="点击收起">
             <button
               className="check"
-              onClick={() => onSetStatus(todo.status === 'done' ? 'open' : 'done')}
+              onClick={(e) => {
+                e.stopPropagation()
+                onSetStatus(todo.status === 'done' ? 'open' : 'done')
+              }}
               aria-label={todo.status === 'done' ? `恢复「${todo.title}」` : `归档「${todo.title}」`}
             >
               {todo.status === 'done' && <Check />}
             </button>
             <span className={`card-title ${todo.status === 'done' ? 'done' : ''}`}>{todo.title}</span>
             <span className="card-time">{relTime(todo.updatedAt, new Date())}</span>
-            <button className="card-close" onClick={onClose} aria-label="收起">
-              ✕
-            </button>
           </div>
 
           {stopped && (

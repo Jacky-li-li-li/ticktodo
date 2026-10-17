@@ -24,6 +24,9 @@ import { SessionPicker } from '../features/sessions/SessionPicker'
 import { useTodos } from './useTodos'
 import { useProjects } from './useProjects'
 import { useSettings } from './useSettings'
+import { TickMark } from '../features/brand/TickMark'
+import { ChatIcon } from '../features/icons/ChatIcon'
+import { PinIcon } from '../features/icons/PinIcon'
 
 type View = 'threads' | 'archive' | 'chat'
 
@@ -41,6 +44,7 @@ export default function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sessionPicker, setSessionPicker] = useState<{ todo: Todo | null } | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [pinned, setPinned] = useState(true)
   const [expanded, setExpanded] = useState(false)
   const [focusSignal, setFocusSignal] = useState(0)
   const toastTimer = useRef<number>()
@@ -54,6 +58,44 @@ export default function App(): React.JSX.Element {
   useEffect(() => () => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current)
   }, [])
+
+  // 鼠标点击后不显示 focus ring（系统 accent 橙色框），键盘 Tab 仍保留可见焦点。
+  useEffect(() => {
+    const root = document.documentElement
+    const markPointer = (): void => root.classList.add('using-pointer')
+    const markKeyboard = (): void => root.classList.remove('using-pointer')
+    document.addEventListener('pointerdown', markPointer, true)
+    document.addEventListener('keydown', markKeyboard, true)
+    return () => {
+      document.removeEventListener('pointerdown', markPointer, true)
+      document.removeEventListener('keydown', markKeyboard, true)
+    }
+  }, [])
+
+  // 置顶开关：main 持久化在 cache/window-state.json；关闭后失焦自动隐藏
+  useEffect(() => {
+    let alive = true
+    void window.tick.window
+      .getPinned()
+      .then((v) => {
+        if (alive) setPinned(v)
+      })
+      .catch(() => {
+        /* 读取失败保持默认置顶 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const togglePinned = useCallback(() => {
+    const next = !pinned
+    setPinned(next)
+    void window.tick.window
+      .setPinned(next)
+      .then(setPinned)
+      .catch(() => setPinned(!next))
+  }, [pinned])
 
   // 全局快捷键「新建线索」：main → renderer（无论在哪个视图/浮层，都回到线索页并聚焦捕获行）
   useEffect(
@@ -91,10 +133,58 @@ export default function App(): React.JSX.Element {
   // sheet 里的 todo 可能被归档/删除：跟着列表走，找不到就关掉
   const activePicker = picker ? (open.find((t) => t.id === picker.id) ?? null) : null
   const activeDetail = detail ? (todos.find((t) => t.id === detail.id) ?? null) : null
-  const visibleOpen = expanded ? open : open.slice(0, 5)
+  const baseOpen = expanded ? open : open.slice(0, 5)
+  // 展开的线索若因排序/收起不在前 5 条里，也补进列表，避免卡片凭空消失
+  const visibleOpen =
+    view === 'threads' && activeDetail?.status === 'open' && !baseOpen.some((t) => t.id === activeDetail.id)
+      ? [...baseOpen, activeDetail]
+      : baseOpen
+
+  const renderDetail = (todo: Todo): React.ReactNode => (
+    <TodoDetail
+      key={todo.id}
+      todo={todo}
+      onClose={() => setDetail(null)}
+      onSave={async (p) => {
+        const updated = await patch(todo.id, p)
+        return Boolean(updated)
+      }}
+      onSetStatus={(status) => {
+        void setStatus(todo.id, status)
+        setDetail(null)
+        // §4.3：归档 toast 必须带撤销（列表勾选与卡片勾选同口径）
+        if (status === 'done') {
+          showToast(`已归档「${todo.title}」`, () => {
+            void setStatus(todo.id, 'open')
+            setToast(null)
+          })
+        } else {
+          showToast('已恢复')
+        }
+      }}
+      onDelete={() => {
+        void remove(todo.id).then((ok) => {
+          showToast(ok ? '已删除（会话文件未动）' : '删除失败')
+        })
+      }}
+      onContinue={() => {
+        setDetail(null)
+        setPicker(todo)
+      }}
+      onClaimSessions={() => {
+        setDetail(null)
+        setSessionPicker({ todo })
+      }}
+      onSessionsChanged={() => void refreshTodos()}
+      onToast={showToast}
+      usageEnabled={settings.usageEnabled}
+    />
+  )
 
   return (
-    <div className="panel">
+    // 点面板任意非交互空白（面板 padding、顶栏、捕获行、内容区空处）都折叠卡片；
+    // 行/卡片/content 各自处理点击并 stopPropagation，不会被这里误折叠。
+    <div className="panel" onClick={() => setDetail(null)}>
       {activePicker ? (
         /* §6.4 新建会话：整页，非弹层 */
         <AiPicker
@@ -120,11 +210,32 @@ export default function App(): React.JSX.Element {
                 ‹
               </button>
             ) : null}
-            <span className="topbar-title">{view === 'archive' ? '归档' : '线索'}</span>
+            {view === 'archive' ? (
+              <span className="topbar-title">归档</span>
+            ) : (
+              <span className="topbar-title topbar-brand">
+                <TickMark size={16} />
+                <span className="brand-name">Ticktodo</span>
+              </span>
+            )}
             <div className="topbar-right">
+              <button
+                className={`topbar-icon ${pinned ? 'is-on' : ''}`}
+                title={pinned ? '已置顶：点击取消（取消后点击外部会自动收起）' : '置顶窗口'}
+                aria-label={pinned ? '取消置顶' : '置顶窗口'}
+                aria-pressed={pinned}
+                onClick={togglePinned}
+              >
+                <PinIcon />
+              </button>
               {view === 'threads' && (
-                <button className="topbar-menu" title="对话（面板 Chat）" onClick={() => setView('chat')}>
-                  ⌘对话
+                <button
+                  className="topbar-icon"
+                  title="对话（面板 Chat）"
+                  aria-label="打开对话"
+                  onClick={() => setView('chat')}
+                >
+                  <ChatIcon />
                 </button>
               )}
               <button
@@ -207,48 +318,14 @@ export default function App(): React.JSX.Element {
           )}
 
           <div className="content" onClick={() => setDetail(null)}>
-            {/* §5 展开态：线索卡片 + 次要线索（点卡片外空白折叠，§6.1） */}
-            {activeDetail && (
-              <TodoDetail
-                todo={activeDetail}
-                onClose={() => setDetail(null)}
-                onSave={async (p) => {
-                  const updated = await patch(activeDetail.id, p)
-                  return Boolean(updated)
-                }}
-                onSetStatus={(status) => {
-                  void setStatus(activeDetail.id, status)
-                  setDetail(null)
-                  // §4.3：归档 toast 必须带撤销（列表勾选与卡片勾选同口径）
-                  if (status === 'done') {
-                    showToast(`已归档「${activeDetail.title}」`, () => {
-                      void setStatus(activeDetail.id, 'open')
-                      setToast(null)
-                    })
-                  } else {
-                    showToast('已恢复')
-                  }
-                }}
-                onDelete={() => {
-                  void remove(activeDetail.id).then((ok) => {
-                    showToast(ok ? '已删除（会话文件未动）' : '删除失败')
-                  })
-                }}
-                onContinue={() => {
-                  setDetail(null)
-                  setPicker(activeDetail)
-                }}
-                onClaimSessions={() => {
-                  setDetail(null)
-                  setSessionPicker({ todo: activeDetail })
-                }}
-                onSessionsChanged={() => void refreshTodos()}
-                onToast={showToast}
-                usageEnabled={settings.usageEnabled}
-              />
-            )}
             {view === 'archive' ? (
-              <ArchiveList todos={done} onRestore={restore} onOpen={(t) => setDetail(t)} />
+              <ArchiveList
+                todos={done}
+                onRestore={restore}
+                onOpen={(t) => setDetail(t)}
+                activeId={activeDetail?.id ?? null}
+                renderDetail={renderDetail}
+              />
             ) : open.length === 0 && done.length === 0 ? (
               <div className="empty">
                 <div className="empty-title">想到什么就丢进来</div>
@@ -272,6 +349,8 @@ export default function App(): React.JSX.Element {
                   onArchive={archive}
                   onContinue={(t) => setPicker(t)}
                   onOpen={(t) => setDetail(t)}
+                  activeId={activeDetail?.id ?? null}
+                  renderDetail={renderDetail}
                 />
                 {open.length > 5 && (
                   <button

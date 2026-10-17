@@ -158,6 +158,9 @@ const api = {
   },
   window: {
     hide: (): void => ipcRenderer.send(WindowIpc.hide),
+    getPinned: (): Promise<boolean> => ipcRenderer.invoke(WindowIpc.getPinned),
+    setPinned: (pinned: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(WindowIpc.setPinned, pinned),
     /** 全局快捷键「新建线索」：main 推给 renderer 聚焦捕获行 */
     onNewTodo: (cb: () => void): (() => void) => {
       const listener = (): void => cb()

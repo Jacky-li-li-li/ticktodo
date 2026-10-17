@@ -6,7 +6,7 @@
  * 常驻语义：关窗 = 隐藏（app 不退）；Cmd+Q 退出。
  */
 
-import { app, BrowserWindow, clipboard, globalShortcut, shell } from 'electron'
+import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeImage, shell, Tray } from 'electron'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -25,7 +25,15 @@ import { SessionService } from './services/sessions'
 import { ExportService } from './services/export'
 import { createTerminalLauncher } from './services/terminal-launch'
 import { TodoStore } from './store'
-import { createPanelWindow, installAppMenu, saveWindowState } from './window'
+import {
+  createPanelWindow,
+  getPanelPinned,
+  installAppMenu,
+  MIN_W,
+  saveWindowState,
+  setBlurHideSuppressed,
+  setPanelPinned,
+} from './window'
 import { registerIpc } from './ipc'
 
 // userData 稳定化：自配 provider 的 key 密文在 userData（系统钥匙串支撑），
@@ -45,6 +53,7 @@ if (!app.isPackaged) {
 
 let panel: BrowserWindow | null = null
 let chat: ChatAgentHost | undefined
+let tray: Tray | null = null
 
 app.on('second-instance', () => {
   if (panel) {
@@ -54,7 +63,45 @@ app.on('second-instance', () => {
   }
 })
 
+/**
+ * 面板内容尺寸口径（与 renderer/styles.css 对应，改动布局时要同步）：
+ * - 顶部 chrome：panel padding 14*2 + topbar 26 + gap 12*2 + capture 46 = 126
+ * - 每条线索行 44，content 子元素 gap 2；默认最多展示 5 条
+ */
+const PANEL_CHROME_H = 126
+const ROW_H = 44
+const ROW_GAP = 2
+const MAX_VISIBLE_ROWS = 5
+
+function minPanelHeight(openCount: number): number {
+  const rows = Math.min(Math.max(openCount, 0), MAX_VISIBLE_ROWS)
+  const listH = rows === 0 ? 120 : rows * ROW_H + Math.max(0, rows - 1) * ROW_GAP
+  return PANEL_CHROME_H + listH
+}
+
+/** Tray 悬停提示：Ticktodo-<open 线索数>个 */
+function updateTrayTooltip(openCount: number): void {
+  tray?.setToolTip(`Ticktodo-${openCount}个`)
+}
+
+/** 动态最小尺寸：只收紧最小高度，不设最大；新增 todo 时只向上长、不自动缩 */
+function applyTodoWindowMetrics(win: BrowserWindow | null, openCount: number): void {
+  if (!win || win.isDestroyed()) return
+  const minH = minPanelHeight(openCount)
+  win.setMinimumSize(MIN_W, minH)
+  const [w, h] = win.getSize()
+  if (h < minH) win.setSize(w, minH)
+}
+
 app.whenReady().then(() => {
+  // 纯菜单栏模式：不在 Dock 显示，只保留菜单栏 Tray 与全局快捷键。
+  // 打包版另外在 electron-builder 的 mac.extendInfo 里写了 LSUIElement=true，
+  // 避免启动瞬间先闪一下 Dock 图标；dev 下用 app.dock.hide() 等价处理。
+  if (process.platform === 'darwin') {
+    app.dock?.hide()
+    console.log('[tick] macOS 纯菜单栏模式：Dock 图标已隐藏')
+  }
+
   const dirs = resolveDirs()
   ensureDirs(dirs)
 
@@ -107,6 +154,7 @@ app.whenReady().then(() => {
   })
 
   panel = createPanelWindow(dirs)
+  applyTodoWindowMetrics(panel, store.list().filter((t) => t.status === 'open').length)
   installAppMenu(panel)
 
   // ---------- 面板 Chat：凭据来源可切换（pi 本体 / 自配 provider），切换 = 重建 host ----------
@@ -129,7 +177,12 @@ app.whenReady().then(() => {
 
   registerIpc(
     store,
-    { panel: () => panel },
+    {
+      panel: () => panel,
+      getPinned: () => getPanelPinned(),
+      setPinned: (pinned) => (panel ? setPanelPinned(dirs, panel, pinned) : false),
+      setBlurHideSuppressed,
+    },
     {
       projectIndex,
       launch: launchService,
@@ -159,6 +212,42 @@ app.whenReady().then(() => {
     showPanel()
     panel?.webContents.send(WindowIpc.newTodo)
   }
+
+  // ---------- macOS 菜单栏常驻（Tray） ----------
+  // 模板图标（trayTemplate.png/@2x）只保留 alpha，系统会自动适配浅色/深色菜单栏。
+  const trayIconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'trayTemplate.png')
+    : path.join(__dirname, '../build/trayTemplate.png')
+  const trayImage = nativeImage.createFromPath(trayIconPath)
+  const trayImage2x = nativeImage.createFromPath(trayIconPath.replace(/\.png$/, '@2x.png'))
+  if (!trayImage2x.isEmpty()) {
+    trayImage.addRepresentation({ scaleFactor: 2, buffer: trayImage2x.toPNG() })
+  }
+  if (!trayImage.isEmpty()) {
+    if (process.platform === 'darwin') trayImage.setTemplateImage(true)
+    tray = new Tray(trayImage)
+    updateTrayTooltip(store.list().filter((t) => t.status === 'open').length)
+    const trayMenu = Menu.buildFromTemplate([
+      { label: '显示 / 隐藏面板', click: () => togglePanel() },
+      { label: '新建线索', click: () => newTodo() },
+      { type: 'separator' },
+      { label: '退出 Ticktodo', click: () => app.quit() },
+    ])
+    // 左键切换面板；右键弹菜单（不把左键变成菜单，保持“点一下显隐”的直觉）。
+    // 鼠标在 Tray 上时抑制「失焦自动隐藏」：否则点菜单栏会先 blur 隐藏、再被 click 显示。
+    tray.on('mouse-enter', () => setBlurHideSuppressed(true))
+    tray.on('mouse-leave', () => setBlurHideSuppressed(false))
+    tray.on('click', () => togglePanel())
+    tray.on('right-click', () => {
+      setBlurHideSuppressed(true)
+      trayMenu.once('menu-will-close', () => setBlurHideSuppressed(false))
+      tray?.popUpContextMenu(trayMenu)
+    })
+    console.log('[tick] 菜单栏图标已创建')
+  } else {
+    console.warn('[tick] 菜单栏图标缺失:', trayIconPath)
+  }
+
   const shortcuts: [string, () => void][] = [
     ['CommandOrControl+Alt+T', togglePanel],
     ['CommandOrControl+Alt+N', newTodo],
@@ -172,7 +261,11 @@ app.whenReady().then(() => {
       console.error(`[tick] 全局快捷键异常：${accelerator}`, e)
     }
   }
-  app.on('will-quit', () => globalShortcut.unregisterAll())
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
+    tray?.destroy()
+    tray = null
+  })
 
   // ---------- M2：pi extension 安装 + 面板 Chat ----------
   // 没装 pi 时不往 ~/.pi 写东西（Q14：功能随工具降级）
@@ -311,7 +404,11 @@ function watchTodosFile(store: TodoStore, dataDir: string): void {
       if (filename !== 'todos.json') return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
-        panel?.webContents.send(TodosIpc.changed, store.list())
+        const todos = store.list()
+        const openCount = todos.filter((t) => t.status === 'open').length
+        applyTodoWindowMetrics(panel, openCount)
+        updateTrayTooltip(openCount)
+        panel?.webContents.send(TodosIpc.changed, todos)
       }, 150)
     })
     watcher.on('error', (e) => console.error('[tick] todos.json watch 失败:', e))

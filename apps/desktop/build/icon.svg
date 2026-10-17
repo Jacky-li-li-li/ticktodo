@@ -1,0 +1,78 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B2740"/>
+      <stop offset="0.52" stop-color="#0E1522"/>
+      <stop offset="1" stop-color="#06080F"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(330 235) rotate(36) scale(640)">
+      <stop offset="0" stop-color="#2F7BFF" stop-opacity="0.32"/>
+      <stop offset="0.52" stop-color="#2F7BFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#2F7BFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="512" cy="500" r="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.32"/>
+    </radialGradient>
+    <linearGradient id="glass" x1="512" y1="96" x2="512" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.07"/>
+      <stop offset="0.42" stop-color="#FFFFFF" stop-opacity="0.015"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="thread" x1="302" y1="352" x2="706" y2="706" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.52" stop-color="#E1EAF8"/>
+      <stop offset="1" stop-color="#B7C8DF"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="682" y1="328" x2="730" y2="378" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A6D4FF"/>
+      <stop offset="0.42" stop-color="#3E9BFF"/>
+      <stop offset="1" stop-color="#0A84FF"/>
+    </linearGradient>
+    <filter id="softGlow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="28"/>
+    </filter>
+    <filter id="threadGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+    <clipPath id="shape">
+      <rect x="96" y="96" width="832" height="832" rx="186"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#shape)">
+    <rect x="96" y="96" width="832" height="832" fill="url(#bg)"/>
+    <rect x="96" y="96" width="832" height="832" fill="url(#glow)"/>
+    <rect x="96" y="96" width="832" height="832" fill="url(#glass)"/>
+    <rect x="96" y="96" width="832" height="832" fill="url(#vignette)"/>
+  </g>
+
+  <!-- rim -->
+  <rect x="97.5" y="97.5" width="829" height="829" rx="184.5" stroke="url(#rim)" stroke-width="3"/>
+
+  <!-- 线索：一条 T 形的线，右端是当前节点，底端是下一站 -->
+  <g filter="url(#lift)">
+    <path d="M284 348C424 373 590 373 728 348" stroke="#0A84FF" stroke-opacity="0.20" stroke-width="90" stroke-linecap="round" filter="url(#threadGlow)"/>
+    <path d="M506 368C506 486 506 598 506 712" stroke="#0A84FF" stroke-opacity="0.18" stroke-width="90" stroke-linecap="round" filter="url(#threadGlow)"/>
+
+    <path d="M284 348C424 373 590 373 728 348" stroke="url(#thread)" stroke-width="70" stroke-linecap="round"/>
+    <path d="M506 368C506 486 506 598 506 712" stroke="url(#thread)" stroke-width="70" stroke-linecap="round"/>
+
+    <!-- current node -->
+    <circle cx="728" cy="348" r="27" fill="url(#accent)"/>
+    <circle cx="728" cy="348" r="27" fill="#2F8DFF" fill-opacity="0.5" filter="url(#softGlow)"/>
+    <circle cx="721" cy="340" r="7.5" fill="white" fill-opacity="0.55"/>
+
+    <!-- next stop -->
+    <circle cx="506" cy="712" r="15" fill="none" stroke="#DCE7F7" stroke-opacity="0.55" stroke-width="9"/>
+    <circle cx="506" cy="712" r="40" fill="#0A84FF" fill-opacity="0.10" filter="url(#softGlow)"/>
+  </g>
+</svg>

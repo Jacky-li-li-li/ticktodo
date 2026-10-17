@@ -10,25 +10,29 @@
 :root {
   /* 色板（§2.1） */
   --accent: #0a84ff;
-  --accent-text: #9ec5ff;
+  --accent-text: #0a5fbf; /* 浅底上的可点/强调文字用深 Accent */
   --success: #34c759;
   --danger: #ff6b6b;
-  --panel-base: rgba(18, 20, 31, 0.45);
+  --panel-base: rgba(18, 20, 31, 0.2); /* 用户偏好：比 UI-SPEC §3.1 的 45% 更透；设计稿值保留在规范里 */
   --board-bg: #0c0d12;
 
-  /* 白透明度文字层级（§2.1 表） */
-  --t-title: rgba(255, 255, 255, 0.92);
-  --t-row: rgba(255, 255, 255, 0.85);
-  --t-body: rgba(255, 255, 255, 0.75);
-  --t-secondary: rgba(255, 255, 255, 0.58);
-  --t-label: rgba(255, 255, 255, 0.5);
-  --t-weak: rgba(255, 255, 255, 0.38);
-  --t-faint: rgba(255, 255, 255, 0.32);
-  --t-time: rgba(255, 255, 255, 0.35); /* §4.2 行内时间：10 Regular 白 35% */
-  --t-done: rgba(255, 255, 255, 0.45); /* §4.3 完成态标题变淡到 45% */
+  /* 黑透明度文字层级（用户偏好：浅色玻璃 + 黑字；层级档位沿用 §2.1） */
+  --t-title: rgba(0, 0, 0, 0.9);
+  --t-row: rgba(0, 0, 0, 0.85);
+  --t-body: rgba(0, 0, 0, 0.75);
+  --t-secondary: rgba(0, 0, 0, 0.58);
+  --t-label: rgba(0, 0, 0, 0.5);
+  --t-weak: rgba(0, 0, 0, 0.38);
+  --t-faint: rgba(0, 0, 0, 0.32);
+  --t-time: rgba(0, 0, 0, 0.42); /* 行内时间（黑 42%，浅底上足够） */
+  --t-done: rgba(0, 0, 0, 0.45); /* 完成态标题变淡到 45% */
+  --danger-text: #c62828;
+  --success-text: #1b7f3a;
+  --warn-text: #8a5a00;
 
   /* 圆角（§2.3） */
-  --r-panel: 20px;
+  --r-panel: 20px; /* 设计稿外框半径；实际 macOS 外窗受原生 vibrant mask 限制，见 --r-window */
+  --r-window: 10px; /* 外窗圆角：macOS 原生窗口 10 / vibrant mask 9，面板跟随原生形状 */
   --r-card: 16px;
   --r-pop: 14px; /* 弹层 / 浮层 / 菜单 */
   --r-row: 12px;
@@ -61,6 +65,25 @@ body,
   cursor: default;
 }
 
+/* ---------- 焦点可见性 ---------- */
+/* 键盘操作时用面板 Accent 做 focus ring；鼠标点击后由 html.using-pointer 抑制，
+   避免 macOS 系统 accent（橙色）焦点框一直挂在按钮上。 */
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.6);
+  outline-offset: 1px;
+}
+
+html.using-pointer button:focus,
+html.using-pointer button:focus-visible,
+html.using-pointer [role='button']:focus,
+html.using-pointer [role='button']:focus-visible,
+html.using-pointer a:focus,
+html.using-pointer a:focus-visible {
+  outline: none;
+}
+
 /* ---------- 面板容器（§3.1 面板材质） ---------- */
 
 .panel {
@@ -69,9 +92,9 @@ body,
   flex-direction: column;
   gap: var(--gap-std);
   padding: var(--pad-panel);
-  border-radius: var(--r-panel);
+  border-radius: var(--r-window);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 30%, rgba(255, 255, 255, 0) 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 30%, rgba(255, 255, 255, 0) 62%),
     var(--panel-base);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
@@ -97,6 +120,59 @@ body,
   font-weight: 600;
   color: var(--t-label);
   letter-spacing: 0.2px;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--t-title);
+}
+
+.topbar-brand .brand-mark {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.topbar-brand .brand-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  color: var(--t-title);
+}
+
+.topbar-icon {
+  -webkit-app-region: no-drag;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-faint);
+}
+
+.topbar-icon svg {
+  display: block;
+}
+
+.topbar-icon:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--t-title);
+}
+
+.topbar-icon.is-on {
+  color: var(--accent-text);
+  background: rgba(10, 132, 255, 0.14);
+}
+
+.topbar-icon.is-on:hover {
+  color: var(--accent-text);
+  background: rgba(10, 132, 255, 0.22);
 }
 
 .topbar-menu {
@@ -456,6 +532,186 @@ body,
 
 .chat-send:disabled {
   opacity: 0.45;
+}
+
+/* ---------- 面板对话 Markdown（assistant 消息，GFM） ---------- */
+/*
+ * 只作用于 assistant 气泡：用户消息仍按原文显示（pre-wrap），避免用户输入被当作 markdown 重排。
+ * 所有取值走面板令牌/白透明度，不引入新的硬编码色相；代码块用等宽字族，长内容横向滚动。
+ */
+
+.chat-bubble.markdown {
+  white-space: normal;
+}
+
+.md {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre,
+.md .md-table {
+  margin: 0 0 6px;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 8px 0 4px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--t-title);
+}
+
+.md h1 {
+  font-size: 13px;
+}
+
+.md h2 {
+  font-size: 12.5px;
+}
+
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 12px;
+}
+
+.md strong {
+  font-weight: 600;
+  color: var(--t-title);
+}
+
+.md del {
+  color: var(--t-weak);
+}
+
+.md a {
+  color: var(--accent-text);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(158, 197, 255, 0.35);
+  cursor: pointer;
+}
+
+.md a:hover {
+  color: #fff;
+  border-bottom-color: var(--accent-text);
+}
+
+.md-link-blocked {
+  color: var(--t-row);
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.25);
+}
+
+.md ul,
+.md ol {
+  padding-left: 1.2em;
+}
+
+.md li {
+  margin: 1px 0;
+}
+
+.md li::marker {
+  color: var(--t-label);
+}
+
+.md li > p {
+  margin: 0;
+}
+
+.md blockquote {
+  padding: 1px 0 1px 8px;
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+  color: var(--t-secondary);
+}
+
+.md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.md pre {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.md pre code {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--t-row);
+}
+
+.md-table {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 10.5px;
+  min-width: 100%;
+}
+
+.md th,
+.md td {
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-title);
+  font-weight: 600;
+}
+
+.md hr {
+  margin: 8px 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.md input[type='checkbox'] {
+  width: 11px;
+  height: 11px;
+  margin: 0 4px 0 0;
+  vertical-align: -1px;
+  accent-color: var(--accent);
+}
+
+.md .md-image {
+  color: var(--t-faint);
+  font-style: italic;
 }
 
 /* ---------- AiPicker 浮层（R3 同款材质） ---------- */
@@ -1326,6 +1582,7 @@ button.sheet-row:hover {
   display: flex;
   align-items: center;
   gap: 9px;
+  cursor: pointer; /* 点击卡片头/标题收起 */
 }
 
 .card-head .check {
@@ -1369,21 +1626,6 @@ button.sheet-row:hover {
   line-height: 1.4;
 }
 
-.card-close {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--t-weak);
-  font-size: 11px;
-}
-
-.card-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--t-title);
-}
 
 /* 「上次停在哪」：user 消息摘录（§6.2 先给消息树，再给动作） */
 .card-stopped {
@@ -1774,4 +2016,407 @@ button.sheet-row:hover {
 
 .tool-card-retry:disabled {
   opacity: 0.55;
+}
+
+/* ==========================================================================
+   浅色玻璃主题覆盖（用户偏好：黑字）
+   --------------------------------------------------------------------------
+   版式/尺寸/圆角仍按 UI-SPEC；这里只翻明度：
+   - 文字：黑字 + 黑透明度层级（token 在 :root）
+   - 表面：面板保留暗色 tint（0.20）叠加 vibrancy；浮层/弹层/Toast 改为浅色
+   - 描边/悬停：白色改为低透明度黑色，避免浅底上看不见
+   - 语义色：成功/危险/警告文字换成深色变体，供浅底使用
+   这是工作区覆盖，不是设计稿 token；回退深色主题时删除本段并还原 :root 文字 token。
+   ========================================================================== */
+
+/* ---------- 文本 / 图标 ---------- */
+.thread-row .title-button {
+  color: var(--t-row);
+}
+
+.thread-row .action {
+  color: #0b1a2a;
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.thread-row .action.secondary {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.03));
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    0 6px 18px rgba(20, 30, 50, 0.12);
+}
+
+.capture-line .plus,
+.capture-line-input::placeholder {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.pill,
+.sheet-actions .primary,
+.ns-tools .pill {
+  color: #0b1a2a;
+}
+
+.pill.primary {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.pill.secondary {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.03));
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.ns-tools .pill.on {
+  border-color: rgba(10, 132, 255, 0.55);
+}
+
+.thread-card {
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.card-stopped {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.topbar-menu,
+.topbar-icon,
+.topbar-back,
+.sheet-close {
+  color: var(--t-weak);
+}
+
+.topbar-menu:hover,
+.topbar-icon:hover,
+.topbar-back:hover,
+.sheet-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--t-title);
+}
+
+.card-secondary .mini.danger,
+.sheet-actions .danger {
+  color: var(--danger-text);
+}
+
+.card-secondary .mini.danger.confirm {
+  border-color: rgba(198, 40, 40, 0.35);
+  background: rgba(198, 40, 40, 0.12);
+  color: #7a1010;
+}
+
+/* ---------- 主要表面：卡片 / 行 hover ---------- */
+.thread-row:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.thread-row .check,
+.card-head .check {
+  border-color: rgba(0, 0, 0, 0.28);
+}
+
+.thread-row:hover .check {
+  border-color: rgba(0, 0, 0, 0.42);
+}
+
+.list-more,
+.empty-action,
+.boot-retry {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--t-secondary);
+}
+
+.list-more:hover,
+.empty-action:hover,
+.boot-retry:hover {
+  background: rgba(0, 0, 0, 0.09);
+  color: var(--t-title);
+}
+
+/* ---------- 小型控件 ---------- */
+.mini {
+  background: rgba(0, 0, 0, 0.045);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: rgba(0, 0, 0, 0.62);
+}
+
+.mini:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--t-title);
+}
+
+.mini.primary {
+  background: rgba(10, 132, 255, 0.16);
+  border-color: rgba(10, 132, 255, 0.35);
+  color: #0b1a2a;
+}
+
+.chip {
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--t-secondary);
+}
+
+.chip.on {
+  background: rgba(10, 132, 255, 0.16);
+  border-color: rgba(10, 132, 255, 0.4);
+  color: var(--t-title);
+}
+
+.badge {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--t-title);
+}
+
+.session-tag {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--t-secondary);
+}
+
+.badge,
+.session-tag,
+.chip {
+  font-weight: 500;
+}
+
+/* ---------- 浮层 / 弹层 / Sheet：浅色表面 ---------- */
+.sheet,
+.menu-pop,
+.sessions-pop {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.8)),
+    rgba(247, 248, 251, 0.97);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.85),
+    0 16px 36px rgba(20, 30, 50, 0.22);
+}
+
+.sheet-backdrop {
+  background: rgba(20, 24, 36, 0.25);
+}
+
+.session-group-head {
+  background: rgba(250, 250, 253, 0.97);
+}
+
+.project-list {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.menu-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--t-title);
+}
+
+.project-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.project-item.current {
+  background: rgba(10, 132, 255, 0.14);
+}
+
+.project-group-toggle {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--t-secondary);
+}
+
+.project-group-toggle:hover {
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--t-title);
+}
+
+.project-add {
+  border-color: rgba(0, 0, 0, 0.14);
+  color: var(--t-label);
+}
+
+.project-add:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--t-title);
+}
+
+.sheet-row {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+button.sheet-row:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.sheet-input,
+.sheet-textarea,
+.provider-field .text-input,
+.ns-prompt {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: var(--t-title);
+}
+
+.segmented {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.segmented button {
+  color: var(--t-secondary);
+}
+
+.segmented button.on {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--t-title);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.sheet-actions .secondary {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--t-row);
+}
+
+/* ---------- 会话行 / 认领 sheet ---------- */
+.session-item,
+.todo-session {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.session-item:hover,
+.todo-session:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.session-line:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.sessions-pop-footer {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.session-line-top .current {
+  color: var(--accent-text);
+}
+
+/* ---------- 对话 / Markdown ---------- */
+.chat-msg.user .chat-bubble {
+  color: rgba(0, 0, 0, 0.9);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.chat-msg.assistant .chat-bubble {
+  background: rgba(0, 0, 0, 0.035);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.chat-send {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--t-row);
+}
+
+.chat-send:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.md a {
+  color: var(--accent-text);
+  border-bottom-color: rgba(10, 95, 191, 0.35);
+}
+
+.md a:hover {
+  color: #063f8f;
+  border-bottom-color: var(--accent-text);
+}
+
+.md-link-blocked {
+  border-bottom-color: rgba(0, 0, 0, 0.25);
+}
+
+.md pre {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.md code {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.md pre code {
+  background: transparent;
+  border: 0;
+}
+
+.md blockquote {
+  border-left-color: rgba(0, 0, 0, 0.15);
+}
+
+.md th,
+.md td {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.md th {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.md hr {
+  border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- Toast：浅色语义表面 ---------- */
+.toast {
+  color: rgba(0, 0, 0, 0.9);
+  background:
+    linear-gradient(180deg, rgba(52, 199, 89, 0.18), rgba(52, 199, 89, 0.12)),
+    rgba(250, 252, 250, 0.96);
+  border-color: rgba(52, 199, 89, 0.45);
+  box-shadow: 0 10px 26px rgba(20, 30, 50, 0.22);
+}
+
+.toast .undo {
+  color: var(--accent-text);
+}
+
+/* ---------- 扩展屏：设置 / Provider / 启动兜底 ---------- */
+.project-hint,
+.ns-note.warn,
+.project-item.stale .path {
+  color: var(--warn-text);
+}
+
+.provider-status.ok {
+  background: rgba(52, 199, 89, 0.14);
+  color: var(--success-text);
+}
+
+.provider-status.bad,
+.provider-error {
+  background: rgba(198, 40, 40, 0.08);
+  color: var(--danger-text);
+}
+
+.chat-project {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.chat-project:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.tool-card {
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.boot-fallback {
+  background: rgba(250, 250, 253, 0.96);
+  color: var(--t-secondary);
+}
+
+.boot-title {
+  color: var(--t-title);
+}
+
+.session-dot.hollow {
+  border-color: rgba(10, 95, 191, 0.75);
 }

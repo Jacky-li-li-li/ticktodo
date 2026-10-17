@@ -31,10 +31,23 @@
         "zip"
       ],
       "identity": null,
-      "darkModeSupport": true
+      "darkModeSupport": true,
+      "extendInfo": {
+        "LSUIElement": true
+      }
     },
     "npmRebuild": false,
-    "electronDist": "../../node_modules/electron/dist"
+    "electronDist": "../../node_modules/electron/dist",
+    "extraResources": [
+      {
+        "from": "build/trayTemplate.png",
+        "to": "trayTemplate.png"
+      },
+      {
+        "from": "build/trayTemplate@2x.png",
+        "to": "trayTemplate@2x.png"
+      }
+    ]
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.3.0",
@@ -44,7 +57,9 @@
     "@tick/ai-pi": "workspace:*",
     "@tick/shared": "workspace:*",
     "@tick/tick-extension": "workspace:*",
-    "openai": "7.19.0"
+    "openai": "7.19.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

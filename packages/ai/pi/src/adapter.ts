@@ -41,6 +41,7 @@ import {
   readSessionMeta,
   resolveSessionRoots,
   toSessionTitle,
+  type SessionMeta,
   type SessionRoot,
 } from './paths'
 import { computeUsageFromFile, inheritedEntriesOf } from './usage'
@@ -109,6 +110,8 @@ export class PiAdapter implements AiToolAdapter {
   private resolvedVersion: string | null = null
   /** 用量缓存：key=file，value 带 (mtime,size)，文件变了才重算 */
   private usageCache = new Map<string, { mtimeMs: number; size: number; usage: SessionUsage }>()
+  /** name/first/last 元数据缓存：会话正文可能很大，文件没变就不重复流式扫 */
+  private metaCache = new Map<string, { mtimeMs: number; size: number; meta: SessionMeta }>()
 
   constructor(deps: PiAdapterDeps = {}) {
     this.deps = deps
@@ -265,9 +268,7 @@ export class PiAdapter implements AiToolAdapter {
         if (st.size === 0) continue
         const header = readFirstLineHeader(file)
         if (!header?.cwd || !header.id) continue
-        const meta: { name?: string; firstUserText?: string } = await readSessionMeta(file).catch(
-          () => ({}),
-        )
+        const meta: SessionMeta = await this.sessionMeta(file, st.mtimeMs, st.size)
         out.push({
           toolId: this.id,
           sessionId: newCliSessionId(header.id),
@@ -287,27 +288,35 @@ export class PiAdapter implements AiToolAdapter {
     return out
   }
 
-  /** 单会话元数据（含 name —— 需要流式扫 session_info 行，不缓存正文） */
+  /** name/first/last 元数据：按 (mtime,size) 缓存，文件没变就不重复扫正文 */
+  private async sessionMeta(file: string, mtimeMs: number, size: number): Promise<SessionMeta> {
+    const cached = this.metaCache.get(file)
+    if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached.meta
+    const meta = await readSessionMeta(file).catch(() => ({}))
+    this.metaCache.set(file, { mtimeMs, size, meta })
+    return meta
+  }
+
+  /** 单会话元数据（含 name/lastMessage —— 流式扫，按 mtime 缓存） */
   async describeSession(id: string, opts: { withName?: boolean } = {}): Promise<SessionInfo | undefined> {
     const file = this.findFile(id)
     if (!file) return undefined
+    let st
+    try {
+      st = statSync(file)
+    } catch {
+      return undefined
+    }
+    if (st.size === 0) return undefined
     let header
     try {
-      if (statSync(file).size === 0) return undefined
       header = readFirstLineHeader(file)
     } catch {
       return undefined
     }
     if (!header) return undefined
-    let mtime: number | undefined
-    try {
-      mtime = statSync(file).mtimeMs
-    } catch {
-      /* 已确认存在，mtime 失败罕见 */
-    }
     // name/first/lastMessage 需要全量扫；调用方只要 cwd 时（withName:false）别白读 MB 级正文
-    const meta: { name?: string; firstUserText?: string; lastUserText?: string } =
-      opts.withName === false ? {} : await readSessionMeta(file).catch(() => ({}))
+    const meta: SessionMeta = opts.withName === false ? {} : await this.sessionMeta(file, st.mtimeMs, st.size)
     return {
       toolId: this.id,
       sessionId: newCliSessionId(header.id ?? id),
@@ -315,8 +324,8 @@ export class PiAdapter implements AiToolAdapter {
       name: meta.name,
       firstMessage: toSessionTitle(meta.firstUserText),
       lastMessage: toSessionTitle(meta.lastUserText),
-      createdAt: header.timestamp ?? (mtime ? new Date(mtime).toISOString() : ''),
-      lastUsedAt: mtime,
+      createdAt: header.timestamp ?? new Date(st.mtimeMs).toISOString(),
+      lastUsedAt: st.mtimeMs,
       filePath: file,
       exists: true,
       resumable: true,

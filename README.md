@@ -1,7 +1,7 @@
 # Tick — 置顶 Todo 工作台（AI 会话的索引层）
 
 > **线索（Todo）是索引，agent 会话是被索引对象。**
-> 产品文档：`docs/已对齐/PRD-tick.md`（v0.3） · 架构：`docs/已对齐/TECH-ARCH-tick.md` · 设计规范：`docs/已对齐/UI-SPEC-tick.md`
+> 产品文档：`docs/已对齐/PRD-tick.md`（v0.3） · 架构：`docs/已对齐/TECH-ARCH-tick.md`
 
 ## 快速开始
 
@@ -12,6 +12,12 @@ pnpm typecheck      # 全仓 tsc --noEmit
 ```
 
 > 本机环境注意：WorkBuddy 宿主 shell 会带 `ELECTRON_RUN_AS_NODE=1`，dev script 已内置 unset；直接跑 `vite` 时需先 `unset ELECTRON_RUN_AS_NODE`。
+>
+> 窗口层圆角：Electron 44 只会给保留 `NSWindowStyleMaskTitled` 的窗口应用 vibrancy 圆角 mask（9px）；`frame:false` 会让方形毛玻璃层从面板圆角外露出。因此窗口改为 `frame:true + titleBarStyle:'hidden'` 并隐藏红绿灯，外窗圆角为 10px（UI-SPEC §2.3 的 20 是设计稿值，面板内部组件圆角不受影响）。窗口层取舍：保留 macOS 原生 10px 圆角 + vibrancy。
+>
+> 面板玻璃透明度：底色 `rgba(18,20,31)` 的 alpha 按用户偏好从 0.45 调到 **0.20**，顶部白色渐变同步减淡（0.12→0.05）；UI-SPEC §3.1 的 45% 保留为设计稿值。
+>
+> 文字：按用户偏好改为**黑色层级**（`--t-*` 用黑透明度），浮层/弹层/Toast 同步换成浅色表面，语义色改用深色变体（`--danger-text` / `--success-text` / `--warn-text`）；UI-SPEC §2.1/§3 的暗色玻璃值保留为设计稿基准。
 
 ## 运行环境（M0 已验证）
 
@@ -25,7 +31,7 @@ pnpm typecheck      # 全仓 tsc --noEmit
 
 ## 里程碑进度
 
-- [x] **M0** 仓库脚手架 + 置顶悬浮面板（360×520，min 320×420 / max 480×720，右上贴边 16px）+ Todo CRUD（原子写 + 文件锁 + 业务规则 1/4/5 结构）+ pi 升级 1.3.0
+- [x] **M0** 仓库脚手架 + 置顶悬浮面板（默认 360×520，右上贴边 16px；当前只保留最小宽度 320，高度按最多 5 条线索动态设最小、不设最大值）+ Todo CRUD（原子写 + 文件锁 + 业务规则 1/4/5 结构）+ pi 升级 1.3.0
 - [x] **M1** ProjectIndex + PiAdapter 实装（**终端拉起 TUI** / `--session-id` / `--session <file>` / `--name` / 版本校验 / verify 绕缓存直读）；2026-10-17 修复：headless spawn、stale cwd、resume cwd
 - [x] **M2** `create_todo` extension（CLI + 面板共用，**replay=unsafe + requestId 幂等**）+ 面板 Chat（pi-durable@1.3.0，pin 版本）+ AiPicker（继续 → 项目/投递/接着做 + **pending 绑定对账**）；修复：跨进程锁丢写
 - [x] **M3** 多会话绑定 UI + S5 反向建索引 + 快捷键/位置记忆 + 单会话用量（默认关）+ Todo 编辑/归档 + 设置（投递/默认项目）+ 手动项目/失效重定位 + **面板自配 provider**（`CredentialSource` 双来源，Key 只进系统钥匙串 safeStorage）
@@ -85,7 +91,11 @@ tick/
   - 只读是刻意的：面板不该抢 `auth.json.lock`，也不该改用户的 pi 凭据；
   - 代价：OAuth 令牌过期时面板会直接报错（续期交给 pi 本体），M3 的自配 provider 是另一个 `CredentialSource` 实现
 - 失败一定有反馈：durable 的 `settled.status === 'unanswered'` 会渲染成一条「这轮没答出来：…」
+- assistant 消息按 GFM Markdown 渲染（`react-markdown` + `remark-gfm`：标题/列表/表格/代码块/引用/链接）；
+  用户消息保持原文。安全口径：原始 HTML 不渲染、远程图片不加载、链接只放行 https 并交给系统浏览器
+  （main 的 `setWindowOpenHandler`）；实现见 `renderer/features/panel-chat/MarkdownMessage.tsx`
 - 面板用量不统计（D15），`pi.usage` 有但不读
+- 注意：面板 Chat 与 CLI 会话是**命名空间隔离**的两套存储；「上次停在哪」只读 Todo 绑定的 CLI 会话文件，不会读取面板 Chat 的消息
 
 ### 3. 「继续」→ AiPicker
 
@@ -103,16 +113,23 @@ tick/
 
 ### 4. M3 + F8 功能（UI 已按 UI-SPEC 第二轮 Calm Panel 对齐）
 
-- **Todo**：点标题展开为**线索卡片**（焦点卡材质：白 10%→3% + Accent 8%，§3.3）——卡片头可勾选归档、
-  「上次停在哪」显示主会话最后一条 user 消息（adapter 流式扫描，不缓存正文）、动作三态（0 会话=新建会话；
+- **macOS 纯菜单栏模式**：`app.dock.hide()` + 打包 `LSUIElement=true`，不显示 Dock 图标；常驻 Tray 模板图标（左键显隐面板，右键菜单：显示/隐藏、新建线索、退出；悬停 tooltip 显示 `Ticktodo-<open 线索数>个`）；图标源 `build/trayTemplate.svg`，打包时经 `extraResources` 带进 App。
+- **应用图标**：源文件 `apps/desktop/build/icon.svg`（深色玻璃 squircle + T 形线索 + 当前节点；浅色备选 `icon-light.svg`），
+  产物 `icon.png`（1024）与 `icon.icns`；electron-builder 默认从 `build/` 取 `icon.icns`（无需额外配置），dev 下 main 会把 Dock 图标指到 `icon.png`。
+- **首页顶栏**：右侧对话入口改为 14×14 会话气泡图标（去掉不存在的「⌘对话」假快捷键；`⋯` 仍是归档/设置/导出菜单）；左侧品牌位为「小尺寸 T 线索图标 + Ticktodo」（归档页仍显示「归档」；图标来源见 `build/icon.svg`，UI 组件 `features/brand/TickMark.tsx`）。
+- **Todo**：点整行在当前行位置**原地展开**为线索卡片（焦点卡材质：白 10%→3% + Accent 8%，§3.3；不再统一挪到列表顶部），点卡片头/标题或卡片外空白折叠——卡片头可勾选归档、
+  「上次停在哪」显示主会话最后一条 user 消息（adapter 流式扫描，按文件 (mtime,size) 缓存元数据；卡片打开时窗口聚焦/15s 刷新）、动作三态（0 会话=新建会话；
   1 会话=「在 <项目> 中打开 pi」；N 会话=接着做 + 查看列表带角标）；卡片内可编辑标题/正文（标题必填）；
-  点卡片外空白折叠；首页默认 5 条，超过可「展开全部」；⋯ 菜单进归档页。
+  点卡片头/标题或卡片外空白折叠；首页默认 5 条，超过可「展开全部」；⋯ 菜单进归档页。
 - **会话浮层（§4.5）**：查看列表 → 触发按钮正下方右对齐浮层，标签「这条线上的对话」，实心点=已落盘会话 /
   空心点=待发送，每行两行文字（时间+状态 / 上次停在哪），footer「＋ 新建会话 · 认领历史会话」。
 - **新建会话页（§6.4 整页）**：← 顶栏 → 线索名 → 可编辑的发送内容 → 工具胶囊（检测到 N 个，由用户选；
   检测不到时中性蓝提示卡，§4.6）→ 项目（已推导，可改）→ 底部主按钮「复制文案并打开 pi」（44 高，Spacer 压底）。
 - **归档**：列表勾选或卡片勾选 → 立即归档，toast 3 秒「已归档「X」· 撤销」；归档页同构，悬停「恢复」（次胶囊）。
 - **设置**（`data/settings.json`，点 ⋯ → 设置）：拉起投递方式（复制文案 / 直接发送）、默认项目（主目录 ~ / 最近使用 / 每次必问）、用量统计开关、打开数据目录、自配 provider。
+- **窗口尺寸**：只保留最小宽度 320；最小高度按当前 open 线索数动态计算（最多默认展示 5 条），无最大尺寸；新增线索时若窗口低于所需高度会自动向下扩展，但不会自动缩。
+- **置顶开关**：顶栏图钉按钮；开 = `alwaysOnTop(floating)`；关 = 取消置顶并开启「失焦立即收起」（点到其它 app/桌面就隐藏到菜单栏，Tray / 快捷键可再唤出）。状态存 `cache/window-state.json` 的 `pinned`；鼠标在 Tray 上或打开目录选择器期间临时豁免，避免菜单栏点击竞态。
+- **焦点环**：鼠标点击不显示 focus ring（避免 macOS 系统 accent 橙框挂在按钮上）；键盘 Tab 仍保留 Accent 蓝色焦点环。
 - **快捷键**：`⌘⌥T` 显隐面板、`⌘⌥N` 新建线索（全局，可在设置里看到说明）。
 - **项目**：AiPicker 里「＋ 添加本地目录…」走系统目录选择器并 pin（pi 不可用也能加）；失效项目显示「重新定位…」（只做 old→new 映射，不移动 pi 的文件）；主目录固定首项；低频 Downloads/tmp 目录折叠进「其他」。
 - **多会话**：线索详情里列出全部绑定会话 → 「接着做」/「设为默认」/「解绑」；S5 从 ⋯ → 认领历史会话，按项目分组（默认近 30 天、可切全部），选中可「建线索」或「直接打开」，不批量生成。

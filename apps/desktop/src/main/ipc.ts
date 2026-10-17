@@ -50,6 +50,9 @@ import type { ExportService } from './services/export'
 
 export interface IpcWindows {
   panel: () => BrowserWindow | null
+  getPinned: () => boolean
+  setPinned: (pinned: boolean) => boolean
+  setBlurHideSuppressed: (value: boolean) => void
 }
 
 export interface IpcServices {
@@ -108,12 +111,18 @@ export function registerIpc(
   ipcMain.handle(ProjectsIpc.relocate, async (_e, oldPath: string) => {
     await services.projectIndex.ready()
     const parent = windows.panel()
-    const result = parent
-      ? await dialog.showOpenDialog(parent, {
-          title: '选择项目的新位置（只做映射，不移动 pi 的会话文件）',
-          properties: ['openDirectory'],
-        })
-      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    windows.setBlurHideSuppressed(true)
+    let result
+    try {
+      result = parent
+        ? await dialog.showOpenDialog(parent, {
+            title: '选择项目的新位置（只做映射，不移动 pi 的会话文件）',
+            properties: ['openDirectory'],
+          })
+        : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    } finally {
+      windows.setBlurHideSuppressed(false)
+    }
     if (result.canceled || result.filePaths.length === 0) {
       return { projects: services.projectIndex.getCachedProjects(), relocated: undefined }
     }
@@ -123,12 +132,18 @@ export function registerIpc(
   ipcMain.handle(ProjectsIpc.add, async () => {
     await services.projectIndex.ready()
     const parent = windows.panel()
-    const result = parent
-      ? await dialog.showOpenDialog(parent, {
-          title: '添加本地项目目录',
-          properties: ['openDirectory', 'createDirectory'],
-        })
-      : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    windows.setBlurHideSuppressed(true)
+    let result
+    try {
+      result = parent
+        ? await dialog.showOpenDialog(parent, {
+            title: '添加本地项目目录',
+            properties: ['openDirectory', 'createDirectory'],
+          })
+        : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    } finally {
+      windows.setBlurHideSuppressed(false)
+    }
     if (result.canceled || result.filePaths.length === 0) {
       return services.projectIndex.getCachedProjects()
     }
@@ -247,4 +262,6 @@ export function registerIpc(
   // 常驻语义：隐藏 ≠ 销毁；退出走 Cmd+Q / dock quit
   ipcMain.on(WindowIpc.hide, () => windows.panel()?.hide())
   ipcMain.on(WindowIpc.quit, () => app.quit())
+  ipcMain.handle(WindowIpc.getPinned, () => windows.getPinned())
+  ipcMain.handle(WindowIpc.setPinned, (_e, pinned: boolean) => windows.setPinned(Boolean(pinned)))
 }

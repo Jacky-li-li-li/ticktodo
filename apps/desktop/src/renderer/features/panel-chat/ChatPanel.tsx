@@ -5,11 +5,13 @@
  * 口径：
  *  - 面板对话**不显示用量**（D15）；模型名只作为“走哪条凭据”的说明
  *  - 面板 cwd 默认 home，可切换（F5）；切换只改 agent cwd，不新建会话
+ *  - assistant 消息按 GFM Markdown 渲染（MarkdownMessage）；用户消息保持原文，错误消息保持纯文本
  */
 
 import React, { useEffect, useRef, useState } from 'react'
 import type { ProjectEntry } from '@tick/ai-core'
 import { useChat } from './useChat'
+import { MarkdownMessage } from './MarkdownMessage'
 
 export function ChatPanel({
   onBack,
@@ -132,11 +134,17 @@ export function ChatPanel({
             <div className="empty-hint">这里建的线索会进同一个列表；干活的长会话仍然交给 pi</div>
           </div>
         ) : (
-          chat.messages.map((m) => (
-            <div className={`chat-msg ${m.role}`} key={m.id}>
-              <div className="chat-bubble">{m.text}</div>
-            </div>
-          ))
+          chat.messages.map((m) => {
+            // assistant 走 GFM Markdown；错误消息保留纯文本，避免把堆栈/路径当 markdown 重排
+            const markdown = m.role === 'assistant' && !m.text.startsWith('这轮没答出来：')
+            return (
+              <div className={`chat-msg ${m.role}`} key={m.id}>
+                <div className={`chat-bubble ${markdown ? 'markdown' : ''}`}>
+                  {markdown ? <MarkdownMessage text={m.text} /> : m.text}
+                </div>
+              </div>
+            )
+          })
         )}
       </div>
 
