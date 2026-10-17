@@ -96,6 +96,8 @@ export interface SessionView {
   cwd: string
   name?: string
   firstMessage?: string
+  /** 最后一条 user 消息（展开卡片「上次停在哪」） */
+  lastMessage?: string
   createdAt: string
   lastUsedAt?: number
   filePath: string

@@ -3,6 +3,12 @@ import { createRoot } from 'react-dom/client'
 import App from './app/App'
 import './styles.css'
 
+// UI-SPEC §2.2：唯一字族 Inter，字重只用 400/500/600/700 四档（本地打包，无网络依赖）
+import '@fontsource/inter/400.css'
+import '@fontsource/inter/500.css'
+import '@fontsource/inter/600.css'
+import '@fontsource/inter/700.css'
+
 /**
  * 启动兜底：
  *  - preload 还没加载好（dev 下 vite-plugin-electron 重建 preload 的瞬时窗口）→ 不挂载 App，

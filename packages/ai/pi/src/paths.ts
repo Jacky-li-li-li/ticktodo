@@ -188,6 +188,8 @@ export interface SessionMeta {
   name?: string
   /** 首条 user 消息的纯文本（用于 name 缺失时的标题回退） */
   firstUserText?: string
+  /** 最后一条 user 消息的纯文本（UI-SPEC §6.2 展开卡片「上次停在哪」） */
+  lastUserText?: string
 }
 
 /**
@@ -223,7 +225,10 @@ export async function readSessionMeta(file: string): Promise<SessionMeta> {
             }
             if (parsed.type === 'message' && parsed.message?.role === 'user') {
               const text = messageText(parsed.message.content)
-              if (text.trim()) meta.firstUserText = text
+              if (text.trim()) {
+                if (meta.firstUserText === undefined) meta.firstUserText = text
+                meta.lastUserText = text
+              }
             }
           } catch {
             /* 坏行忽略 */

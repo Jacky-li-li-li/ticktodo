@@ -24,6 +24,8 @@ export interface SessionInfo {
   name?: string
   /** name 缺失时的回退：首条 user 消息（压成一行）。S5 建 todo 的标题用 */
   firstMessage?: string
+  /** 最后一条 user 消息（展开卡片「上次停在哪」用；与 firstMessage 同一次流式扫描） */
+  lastMessage?: string
   createdAt: string
   lastUsedAt?: number
   exists: boolean

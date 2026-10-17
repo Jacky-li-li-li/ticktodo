@@ -28,7 +28,7 @@ export function TodoList({
   return (
     <>
       {todos.map((todo) => (
-        <div className="thread-row" key={todo.id}>
+        <div className="thread-row" key={todo.id} onClick={(e) => e.stopPropagation()}>
           <button
             className="check"
             onClick={() => onArchive(todo)}

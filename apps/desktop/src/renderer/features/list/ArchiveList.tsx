@@ -6,6 +6,12 @@ import React from 'react'
 import type { Todo } from '@tick/shared'
 import { relTime } from './relTime'
 
+const Check = (): React.JSX.Element => (
+  <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+    <path d="M1.5 4.8L3.6 7L7.5 2.2" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
 export function ArchiveList({
   todos,
   onRestore,
@@ -26,15 +32,16 @@ export function ArchiveList({
   return (
     <>
       {todos.map((todo) => (
-        <div className="thread-row done" key={todo.id}>
-          <span className="check done" aria-hidden>
-            ✓
+        <div className="thread-row done" key={todo.id} onClick={(e) => e.stopPropagation()}>
+          <span className="check" aria-hidden>
+            <Check />
           </span>
           <button className="title title-button" onClick={() => onOpen(todo)}>
             {todo.title}
           </button>
           <span className="time">{relTime(todo.updatedAt, new Date())}</span>
-          <button className="action" onClick={() => onRestore(todo)}>
+          {/* §4.2 归档页悬停：「恢复」胶囊（次按钮，撤销是唯一动作） */}
+          <button className="action secondary" onClick={() => onRestore(todo)}>
             恢复
           </button>
         </div>

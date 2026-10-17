@@ -95,7 +95,17 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="panel">
-      {view === 'chat' ? (
+      {activePicker ? (
+        /* §6.4 新建会话：整页，非弹层 */
+        <AiPicker
+          todo={activePicker}
+          projects={projects}
+          settings={settings}
+          refreshProjects={refreshProjects}
+          onClose={() => setPicker(null)}
+          onResult={(text) => showToast(text)}
+        />
+      ) : view === 'chat' ? (
         <ChatPanel
           onBack={() => setView('threads')}
           projects={projects}
@@ -196,7 +206,47 @@ export default function App(): React.JSX.Element {
             />
           )}
 
-          <div className="content">
+          <div className="content" onClick={() => setDetail(null)}>
+            {/* §5 展开态：线索卡片 + 次要线索（点卡片外空白折叠，§6.1） */}
+            {activeDetail && (
+              <TodoDetail
+                todo={activeDetail}
+                onClose={() => setDetail(null)}
+                onSave={async (p) => {
+                  const updated = await patch(activeDetail.id, p)
+                  return Boolean(updated)
+                }}
+                onSetStatus={(status) => {
+                  void setStatus(activeDetail.id, status)
+                  setDetail(null)
+                  // §4.3：归档 toast 必须带撤销（列表勾选与卡片勾选同口径）
+                  if (status === 'done') {
+                    showToast(`已归档「${activeDetail.title}」`, () => {
+                      void setStatus(activeDetail.id, 'open')
+                      setToast(null)
+                    })
+                  } else {
+                    showToast('已恢复')
+                  }
+                }}
+                onDelete={() => {
+                  void remove(activeDetail.id).then((ok) => {
+                    showToast(ok ? '已删除（会话文件未动）' : '删除失败')
+                  })
+                }}
+                onContinue={() => {
+                  setDetail(null)
+                  setPicker(activeDetail)
+                }}
+                onClaimSessions={() => {
+                  setDetail(null)
+                  setSessionPicker({ todo: activeDetail })
+                }}
+                onSessionsChanged={() => void refreshTodos()}
+                onToast={showToast}
+                usageEnabled={settings.usageEnabled}
+              />
+            )}
             {view === 'archive' ? (
               <ArchiveList todos={done} onRestore={restore} onOpen={(t) => setDetail(t)} />
             ) : open.length === 0 && done.length === 0 ? (
@@ -224,56 +274,19 @@ export default function App(): React.JSX.Element {
                   onOpen={(t) => setDetail(t)}
                 />
                 {open.length > 5 && (
-                  <button className="list-more" onClick={() => setExpanded((v) => !v)}>
+                  <button
+                    className="list-more"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setExpanded((v) => !v)
+                    }}
+                  >
                     {expanded ? '收起' : `展开全部（${open.length}）`}
                   </button>
                 )}
               </>
             )}
           </div>
-
-          {activePicker && (
-            <AiPicker
-              todo={activePicker}
-              projects={projects}
-              settings={settings}
-              refreshProjects={refreshProjects}
-              onClose={() => setPicker(null)}
-              onResult={(text) => showToast(text)}
-            />
-          )}
-
-          {activeDetail && (
-            <TodoDetail
-              todo={activeDetail}
-              onClose={() => setDetail(null)}
-              onSave={async (p) => {
-                const updated = await patch(activeDetail.id, p)
-                return Boolean(updated)
-              }}
-              onSetStatus={(status) => {
-                void setStatus(activeDetail.id, status)
-                setDetail(null)
-                showToast(status === 'done' ? '已归档' : '已恢复')
-              }}
-              onDelete={() => {
-                void remove(activeDetail.id).then((ok) => {
-                  showToast(ok ? '已删除（会话文件未动）' : '删除失败')
-                })
-              }}
-              onContinue={() => {
-                setDetail(null)
-                setPicker(activeDetail)
-              }}
-              onClaimSessions={() => {
-                setDetail(null)
-                setSessionPicker({ todo: activeDetail })
-              }}
-              onSessionsChanged={() => void refreshTodos()}
-              onToast={showToast}
-              usageEnabled={settings.usageEnabled}
-            />
-          )}
 
           {sessionPicker && (
             <SessionPicker
@@ -292,10 +305,11 @@ export default function App(): React.JSX.Element {
               onToast={showToast}
             />
           )}
-
-          {toast && <Toast text={toast.text} onUndo={toast.onUndo} />}
         </div>
       )}
+
+      {/* toast 在所有页面（线索/新建会话/面板对话）都可浮于捕获行上方 */}
+      {toast && <Toast text={toast.text} onUndo={toast.onUndo} />}
     </div>
   )
 }

@@ -69,7 +69,7 @@ export function ChatPanel({
         <button className="topbar-back" onClick={onBack} aria-label="返回线索">
           ‹
         </button>
-        <span className="topbar-title">对话</span>
+        <span className="topbar-title page">对话</span>
         <span className="chat-model" title={chat.model ?? ''}>
           {chat.status === 'busy'
             ? '正在回复…'

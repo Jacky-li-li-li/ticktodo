@@ -113,6 +113,7 @@ export class SessionService {
         cwd: info?.cwd ?? '',
         name: info?.name,
         firstMessage: info?.firstMessage,
+        lastMessage: info?.lastMessage,
         createdAt: info?.createdAt ?? binding.boundAt,
         lastUsedAt: info?.lastUsedAt,
         filePath: info?.filePath ?? binding.filePath ?? '',

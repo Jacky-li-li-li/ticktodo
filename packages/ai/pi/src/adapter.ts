@@ -305,8 +305,8 @@ export class PiAdapter implements AiToolAdapter {
     } catch {
       /* 已确认存在，mtime 失败罕见 */
     }
-    // name/firstMessage 需要全量扫；调用方只要 cwd 时（withName:false）别白读 MB 级正文
-    const meta: { name?: string; firstUserText?: string } =
+    // name/first/lastMessage 需要全量扫；调用方只要 cwd 时（withName:false）别白读 MB 级正文
+    const meta: { name?: string; firstUserText?: string; lastUserText?: string } =
       opts.withName === false ? {} : await readSessionMeta(file).catch(() => ({}))
     return {
       toolId: this.id,
@@ -314,6 +314,7 @@ export class PiAdapter implements AiToolAdapter {
       cwd: header.cwd ?? homedir(),
       name: meta.name,
       firstMessage: toSessionTitle(meta.firstUserText),
+      lastMessage: toSessionTitle(meta.lastUserText),
       createdAt: header.timestamp ?? (mtime ? new Date(mtime).toISOString() : ''),
       lastUsedAt: mtime,
       filePath: file,

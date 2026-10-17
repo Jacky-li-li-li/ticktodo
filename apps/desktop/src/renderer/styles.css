@@ -24,11 +24,17 @@
   --t-label: rgba(255, 255, 255, 0.5);
   --t-weak: rgba(255, 255, 255, 0.38);
   --t-faint: rgba(255, 255, 255, 0.32);
+  --t-time: rgba(255, 255, 255, 0.35); /* §4.2 行内时间：10 Regular 白 35% */
+  --t-done: rgba(255, 255, 255, 0.45); /* §4.3 完成态标题变淡到 45% */
 
   /* 圆角（§2.3） */
   --r-panel: 20px;
   --r-card: 16px;
+  --r-pop: 14px; /* 弹层 / 浮层 / 菜单 */
   --r-row: 12px;
+  --r-pill: 15px; /* 胶囊按钮（= 高度一半） */
+  --r-check: 9px; /* 完成态勾选框（= 直径一半） */
+  --r-chip: 14px; /* 小标签 chip */
 
   /* 间距（§2.4） */
   --pad-panel: 14px;
@@ -95,13 +101,15 @@ body,
 
 .topbar-menu {
   -webkit-app-region: no-drag;
-  width: 28px;
+  min-width: 26px;
   height: 24px;
+  padding: 0 5px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   color: var(--t-faint);
-  font-size: 13px;
+  font-size: 14px; /* §4.4：⋯ 14×14 白 32% */
+  line-height: 1;
   background: transparent;
   border: none;
 }
@@ -130,7 +138,7 @@ body,
 }
 
 .capture-line .plus {
-  font-size: 15px;
+  font-size: 13px; /* §3.2：图标 13×13 */
   color: rgba(255, 255, 255, 0.38);
   font-weight: 400;
   line-height: 1;
@@ -204,7 +212,7 @@ body,
 
 /* 已完成（归档态勾选 = §4.3 Success 实心 + 白勾） */
 .thread-row.done .check {
-  border-radius: 9px;
+  border-radius: var(--r-check);
   background: var(--success);
   border-color: var(--success);
 }
@@ -224,7 +232,7 @@ body,
 }
 
 .thread-row.done .title {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--t-done); /* §4.3：45% + 删除线 */
   text-decoration-line: line-through;
 }
 
@@ -232,7 +240,7 @@ body,
 .thread-row .action {
   flex-shrink: 0;
   font-size: 10px;
-  color: var(--t-weak);
+  color: var(--t-time);
   line-height: 1.4;
 }
 
@@ -242,7 +250,7 @@ body,
   align-items: center;
   height: 30px;
   padding: 0 14px;
-  border-radius: 15px;
+  border-radius: var(--r-pill);
   font-size: 11px;
   font-weight: 600;
   color: #fff;
@@ -251,6 +259,16 @@ body,
   box-shadow:
     inset 0 1px 2px rgba(255, 255, 255, 0.38),
     0 6px 18px rgba(10, 132, 255, 0.3);
+  backdrop-filter: blur(24px);
+}
+
+/* §4.2 归档页：恢复 = 次胶囊（白 18%→6%，描边白 20%，inner 白 22%，drop 黑 28%） */
+.thread-row .action.secondary {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.22),
+    0 6px 18px rgba(0, 0, 0, 0.28);
 }
 
 .thread-row:hover .action {
@@ -458,17 +476,18 @@ body,
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 9px;
+  padding: 14px; /* §2.4 卡片内边距 14 */
   border-radius: var(--r-card);
+  /* §3.6 浮层/弹层：SOLID rgb(20,23,33) @97% + 白 14% 描边 + blur 32 + drop 黑 50% y16 r36 */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03) 42%, rgba(255, 255, 255, 0)),
-    rgba(16, 18, 28, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0)),
+    rgba(20, 23, 33, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.16),
-    0 18px 48px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(56px) saturate(1.3);
+    inset 0 1px 2px rgba(255, 255, 255, 0.14),
+    0 16px 36px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(32px) saturate(1.2);
 }
 
 .sheet-head {
@@ -702,7 +721,6 @@ button.sheet-row:hover {
   border: none;
   background: transparent;
   color: inherit;
-  font: inherit;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -714,7 +732,7 @@ button.sheet-row:hover {
 }
 
 .thread-row.done .title {
-  color: var(--t-weak);
+  color: var(--t-done);
   text-decoration: line-through;
 }
 
@@ -748,22 +766,24 @@ button.sheet-row:hover {
   top: 36px;
   right: 14px;
   z-index: 6;
-  min-width: 128px;
-  padding: 5px;
-  border-radius: 12px;
+  min-width: 132px;
+  padding: 6px; /* §2.4 弹层内边距 6 */
+  border-radius: var(--r-pop); /* §2.3 弹层 14 */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
-    rgba(16, 18, 28, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(40px);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    rgba(20, 23, 33, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.14),
+    0 16px 36px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(32px);
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
 .menu-item {
-  padding: 8px 10px;
+  padding: 8px 10px; /* §2.4 弹层列表项内 8 */
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -915,7 +935,7 @@ button.sheet-row:hover {
 .chip {
   padding: 4px 9px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
+  border-radius: var(--r-chip); /* §2.3 chip 14 */
   background: transparent;
   color: var(--t-label);
   font-size: 9.5px;
@@ -958,7 +978,7 @@ button.sheet-row:hover {
   padding: 4px 2px;
   font-size: 9px;
   color: var(--t-faint);
-  background: rgba(16, 18, 28, 0.92);
+  background: rgba(20, 23, 33, 0.97); /* §3.6 弹层底，盖住滚动内容 */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1079,7 +1099,7 @@ button.sheet-row:hover {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   color: var(--t-weak);
-  font-size: 8.5px;
+  font-size: 9px; /* §2.2 注释档下限 9 */
   font-weight: 400;
 }
 
@@ -1093,7 +1113,7 @@ button.sheet-row:hover {
 
 .project-group-label {
   padding: 6px 8px 2px;
-  font-size: 8.5px;
+  font-size: 9px; /* §2.2 注释档下限 9 */
   color: var(--t-faint);
 }
 
@@ -1281,4 +1301,477 @@ button.sheet-row:hover {
   flex: none;
   margin-top: 8px;
   padding: 0 18px;
+}
+
+/* ---------- 线索卡片（§3.3 + §5 展开态 + §6.2） ---------- */
+
+.thread-card {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px; /* §2.4 卡片内边距 14 */
+  border-radius: var(--r-card);
+  /* §3.3：白 10%→3% 渐变 + Accent 8%（焦点卡）+ 描边白 8% + blur 32 */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03) 48%, rgba(255, 255, 255, 0)),
+    rgba(10, 132, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(32px);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.card-head .check {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.card-head .check:not(:empty) {
+  border-radius: var(--r-check);
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px; /* §2.2 卡片标题 15 / SemiBold */
+  font-weight: 600;
+  color: var(--t-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-title.done {
+  color: var(--t-done);
+  text-decoration: line-through;
+}
+
+.card-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--t-time);
+  line-height: 1.4;
+}
+
+.card-close {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-weak);
+  font-size: 11px;
+}
+
+.card-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--t-title);
+}
+
+/* 「上次停在哪」：user 消息摘录（§6.2 先给消息树，再给动作） */
+.card-stopped {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: var(--r-row);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.card-stopped-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--t-label);
+}
+
+.card-stopped-text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--t-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.card-actions .pill {
+  min-width: 0;
+  padding: 0 14px;
+  flex: none;
+  flex-shrink: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.card-actions .pill:first-child {
+  flex: 1;
+}
+
+.card-secondary {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.card-secondary .mini.danger {
+  color: rgba(255, 140, 140, 0.92);
+}
+
+.card-secondary .mini.danger.confirm {
+  border-color: rgba(255, 120, 120, 0.45);
+  background: rgba(255, 80, 80, 0.16);
+  color: #fff;
+}
+
+.card-body {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--t-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  cursor: text;
+  padding: 0 2px;
+}
+
+.card-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---------- 会话浮层（§4.5：触发按钮正下方右对齐） ---------- */
+
+.sessions-pop {
+  position: absolute;
+  top: 100%;
+  right: 10px;
+  z-index: 7;
+  width: min(78%, 280px);
+  margin-top: 6px;
+  padding: 6px; /* §2.4 弹层内边距 6 */
+  border-radius: var(--r-pop);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    rgba(20, 23, 33, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.14),
+    0 16px 36px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(32px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sessions-pop-label {
+  padding: 6px 8px 4px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--t-label);
+}
+
+.session-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+
+.session-line:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* 实心点=CLI 已落盘；空心点=待发送（§4.5 实心/空心区分会话存储） */
+.session-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 5px rgba(10, 132, 255, 0.7);
+}
+
+.session-dot.hollow {
+  background: transparent;
+  border: 1.5px solid rgba(158, 197, 255, 0.75);
+  box-shadow: none;
+}
+
+.session-line-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-line-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: var(--t-weak);
+  line-height: 1.4;
+}
+
+.session-line-top .current {
+  color: var(--accent-text);
+}
+
+.session-line-stop {
+  font-size: 10px;
+  color: var(--t-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessions-pop-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 8px 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 4px;
+}
+
+.sessions-pop-footer .link {
+  border: none;
+  background: transparent;
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.sessions-pop-footer .dot-sep {
+  color: var(--t-faint);
+  font-size: 10px;
+}
+
+/* ---------- 新建会话页（§6.4 整页） ---------- */
+
+.topbar-title.page {
+  /* §4.4 页面级：标题 13 SemiBold 白 90% */
+  font-size: 13px;
+  color: var(--t-title);
+}
+
+.new-session {
+  gap: 12px; /* §2.4 新建会话页子元素间距 11–12 */
+  padding-top: 2px;
+}
+
+.ns-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ns-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t-label);
+}
+
+.ns-todo-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ns-prompt {
+  width: 100%;
+  min-height: 96px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: var(--r-row);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-body);
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  user-select: text;
+  cursor: text;
+}
+
+.ns-prompt:focus {
+  border-color: rgba(10, 132, 255, 0.5);
+}
+
+.ns-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ns-tools .pill {
+  flex: none;
+  padding: 0 14px; /* §2.4 胶囊左右 14 */
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.ns-tools .pill.on {
+  /* §3.4 Hover / 高亮态：Accent 34%→16% + 亮边 #9EC5FF 50% */
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.34), rgba(10, 132, 255, 0.16));
+  border-color: rgba(158, 197, 255, 0.5);
+}
+
+.ns-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  min-height: 34px;
+  border: none;
+  border-radius: var(--r-row);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t-body);
+  font-size: 11px;
+  text-align: left;
+}
+
+.ns-project:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ns-project .ns-project-name {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--t-title);
+}
+
+.ns-project .ns-project-path {
+  flex: 1;
+  font-size: 10px;
+  color: var(--t-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ns-project .chevron {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.ns-project-list {
+  margin-top: 2px;
+  max-height: 168px;
+}
+
+.ns-note {
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--t-weak);
+}
+
+.ns-note.warn {
+  color: rgba(255, 196, 120, 0.86);
+}
+
+.ns-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* §6.4 主按钮：Spacer 压到底（底部大按钮） */
+.ns-go {
+  width: 100%;
+  height: 44px; /* §2.5 主按钮高 44 */
+  border-radius: 12px; /* §2.3 主按钮 12 */
+  font-size: 12px;
+  font-weight: 600;
+  flex: none;
+}
+
+.ns-note.center {
+  text-align: center;
+}
+
+/* ---------- 工具检测提示卡（§4.6：中性蓝，非红） ---------- */
+
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--r-row);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tool-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.tool-card-hint {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--t-secondary);
+}
+
+.tool-card-scan {
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--t-weak);
+}
+
+.tool-card-retry {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(10, 132, 255, 0.16);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tool-card-retry:hover:not(:disabled) {
+  background: rgba(10, 132, 255, 0.26);
+}
+
+.tool-card-retry:disabled {
+  opacity: 0.55;
 }
