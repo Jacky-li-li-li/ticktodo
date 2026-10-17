@@ -1,0 +1,330 @@
+/*
+ * styles.css — UI-SPEC-tick §2 令牌 + §3.1/3.2 材质 + §4 组件（M0 落首页骨架）。
+ *
+ * 硬约束（UI-SPEC §1）：
+ *  - 无压力：不计数、不催、不庆祝；归档是「收好」
+ *  - 常驻可见 / 不夺焦（窗口层在 main/window.ts）
+ *  - 滚动规则：只有列表区滚，顶栏与捕获行固定；面板不随内容变高
+ */
+
+:root {
+  /* 色板（§2.1） */
+  --accent: #0a84ff;
+  --accent-text: #9ec5ff;
+  --success: #34c759;
+  --danger: #ff6b6b;
+  --panel-base: rgba(18, 20, 31, 0.45);
+  --board-bg: #0c0d12;
+
+  /* 白透明度文字层级（§2.1 表） */
+  --t-title: rgba(255, 255, 255, 0.92);
+  --t-row: rgba(255, 255, 255, 0.85);
+  --t-body: rgba(255, 255, 255, 0.75);
+  --t-secondary: rgba(255, 255, 255, 0.58);
+  --t-label: rgba(255, 255, 255, 0.5);
+  --t-weak: rgba(255, 255, 255, 0.38);
+  --t-faint: rgba(255, 255, 255, 0.32);
+
+  /* 圆角（§2.3） */
+  --r-panel: 20px;
+  --r-card: 16px;
+  --r-row: 12px;
+
+  /* 间距（§2.4） */
+  --pad-panel: 14px;
+  --gap-std: 12px;
+
+  font-family: 'Inter', -apple-system, 'PingFang SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--t-title);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+/* ---------- 面板容器（§3.1 面板材质） ---------- */
+
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-std);
+  padding: var(--pad-panel);
+  border-radius: var(--r-panel);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 30%, rgba(255, 255, 255, 0) 62%),
+    var(--panel-base);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.18),
+    0 30px 80px rgba(3, 5, 13, 0.55);
+  /* BACKGROUND_BLUR 40：窗体级交给 vibrancy；层内 widget 用 backdrop-filter */
+  backdrop-filter: blur(40px) saturate(1.4);
+}
+
+/* ---------- 顶栏（§4.4） ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 2px 2px 0;
+  -webkit-app-region: drag; /* 无边框窗拖拽区 */
+}
+
+.topbar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-label);
+  letter-spacing: 0.2px;
+}
+
+.topbar-menu {
+  -webkit-app-region: no-drag;
+  width: 28px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--t-faint);
+  font-size: 13px;
+  background: transparent;
+  border: none;
+}
+
+.topbar-menu:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 捕获行（§4.1 / §3.2） ---------- */
+
+.capture-line {
+  flex-shrink: 0;
+  height: 46px;
+  border-radius: var(--r-card);
+  padding: 0 var(--pad-panel);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(20px);
+  color: var(--t-weak);
+  font-size: 13px;
+  cursor: text;
+}
+
+.capture-line .plus {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.38);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.capture-line-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--t-title);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.capture-line-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ---------- 内容区（唯一可滚动） ---------- */
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.content::-webkit-scrollbar {
+  width: 0;
+}
+
+/* ---------- 线索行（§4.2 ThreadRow） ---------- */
+
+.thread-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: var(--r-row);
+  transition: background 0.12s ease;
+}
+
+.thread-row:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.thread-row .check {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: all 0.12s ease;
+}
+
+.thread-row:hover .check {
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.thread-row .check svg {
+  display: none;
+}
+
+/* 已完成（归档态勾选 = §4.3 Success 实心 + 白勾） */
+.thread-row.done .check {
+  border-radius: 9px;
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.thread-row.done .check svg {
+  display: block;
+}
+
+.thread-row .title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t-row);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thread-row.done .title {
+  color: rgba(255, 255, 255, 0.45);
+  text-decoration-line: line-through;
+}
+
+.thread-row .time,
+.thread-row .action {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--t-weak);
+  line-height: 1.4;
+}
+
+/* 悬停：时间让位给动作（不并存，§4.2） */
+.thread-row .action {
+  display: none;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 15px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.62), rgba(10, 132, 255, 0.3));
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.38),
+    0 6px 18px rgba(10, 132, 255, 0.3);
+}
+
+.thread-row:hover .action {
+  display: inline-flex;
+}
+
+.thread-row:hover .time {
+  display: none;
+}
+
+/* ---------- 空态（R1） ---------- */
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-secondary);
+}
+
+.empty-hint {
+  font-size: 10px;
+  color: var(--t-weak);
+  line-height: 1.45;
+}
+
+/* ---------- Toast（§3.5：覆盖捕获行，3s，不占布局） ---------- */
+
+.toast {
+  position: absolute;
+  top: 43px;
+  left: 14px;
+  right: 14px;
+  height: 46px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  background:
+    linear-gradient(180deg, rgba(52, 199, 89, 0.16), rgba(52, 199, 89, 0.16) 100%),
+    rgba(15, 23, 31, 0.92);
+  border: 1px solid rgba(52, 199, 89, 0.34);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(24px);
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.toast .undo {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* toast 覆盖层容器：绝对定位基准 */
+.panel-inner {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-std);
+}

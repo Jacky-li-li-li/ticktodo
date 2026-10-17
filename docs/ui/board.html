@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Tick 面板 · UI Board（磨砂半透明玻璃）</title>
+<!--
+  Tick 面板设计稿 · 视觉源：docs/ui/UI-LOCK.md
+  - 真机尺寸：面板 360×520（对齐 apps/desktop/src/main/index.ts 的 BrowserWindow）
+  - 视觉：iOS 磨砂半透明玻璃（backdrop-filter blur 30px / saturate 180%）
+  - 帧内元素可点击（顶栏 ··· / 待办·已完成 / 竖条数字 / 绑 AI 三步 / 3 秒自动关）
+  - 帧号 01–13 与 UI-LOCK 一致（代码注释按帧号引用），补齐态为 14–19
+  - 壁纸素材来自 Wikimedia Commons（CC BY-SA 4.0），仅用于演示玻璃背景，见页脚署名
+-->
+<style>
+@property --p { syntax: '<percentage>'; inherits: false; initial-value: 100%; }
+
+:root{
+  color-scheme: dark;
+  --font: -apple-system, "PingFang SC", "Hiragino Sans GB", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* —— 面板（磨砂玻璃）—— */
+  --p-w: 360px; --p-h: 520px;
+  --blur: 30px; --sat: 180%;
+  --glass: rgba(20,22,34,.50);
+  --glass-sheen: rgba(255,255,255,.10);
+  --stroke: rgba(255,255,255,.16);
+  --stroke-soft: rgba(255,255,255,.09);
+  --shadow: 0 30px 70px rgba(6,8,18,.55), 0 4px 14px rgba(6,8,18,.35);
+  --inner-hi: inset 0 1px 0 rgba(255,255,255,.22);
+
+  /* —— 弹层 / 卡片 —— */
+  --pop: rgba(24,26,40,.84);
+  --card: rgba(255,255,255,.10);
+  --card-hi: rgba(255,255,255,.16);
+
+  /* —— 文字 —— */
+  --ink: #fff;
+  --ink2: rgba(255,255,255,.74);
+  --ink3: rgba(255,255,255,.60);
+
+  /* —— 语义色 —— */
+  --accent: #0a84ff;
+  --accent-ink: #9ec5ff;
+  --ok: #34c759;
+  --danger: #ff6b6b;
+
+  /* —— 圆角 / 字号 —— */
+  --r-win: 18px; --r-card: 12px; --r-ctl: 9px;
+  --fs-title: 13px; --fs-body: 13px; --fs-meta: 11px; --fs-label: 10px;
+}
+
+*{ box-sizing: border-box; margin: 0; }
+body{
+  background: #0d0e13; color: #e8eaf0; font: 14px/1.5 var(--font);
+  padding: 44px 48px 64px; -webkit-font-smoothing: antialiased;
+}
+
+/* ============ 画板外壳 ============ */
+.head{ max-width: 2112px; }
+.head h1{ font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
+.head p{ margin-top: 6px; font-size: 13px; color: #8b93a7; }
+.tokens{ display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 16px; }
+.tok{ display: flex; align-items: center; gap: 7px; font: 11px/1 var(--mono); color: #9aa2b6; }
+.sw{ width: 20px; height: 20px; border-radius: 6px; border: 1px solid rgba(255,255,255,.22); flex: none; }
+
+.sec{ display: flex; align-items: baseline; gap: 12px; margin: 40px 0 18px;
+  padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.10); }
+.sec h2{ font-size: 12px; font-weight: 600; letter-spacing: .10em; color: #7fa4ff; text-transform: uppercase; }
+.sec span{ font-size: 12px; color: #6f7688; }
+.grid{ display: flex; flex-wrap: wrap; gap: 30px 26px; }
+
+.cell{ display: flex; flex-direction: column; gap: 9px; }
+.cap{ display: flex; align-items: baseline; gap: 9px; font: 11px/1 var(--mono); }
+.cap b{ color: #ccd3e4; font-weight: 600; }
+.cap span{ color: #7c8296; }
+.fhint{ font: 11px/1.35 var(--font); color: #6a7183; max-width: 400px; }
+
+/* ============ 桌面舞台（壁纸 + 悬浮玻璃面板）============ */
+.stage{
+  position: relative; width: 400px; height: 560px; border-radius: 26px; overflow: hidden;
+  display: grid; place-items: center;
+  border: 1px solid rgba(255,255,255,.07);
+  background-color: #1a2136;
+}
+.stage .wp{
+  position: absolute; inset: 0; background-size: cover; background-position: center;
+  background-repeat: no-repeat;
+}
+.stage[data-wp="dark"] .wp{
+  background-image:
+    linear-gradient(180deg, rgba(8,10,20,.14), rgba(8,10,20,.44)),
+    url("https://thumb.wikimedia.org/wikipedia/commons/thumb/0/03/1_moraine_lake_pano_2019.jpg/1920px-1_moraine_lake_pano_2019.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail");
+}
+.stage[data-wp="light"] .wp{
+  background-image:
+    linear-gradient(180deg, rgba(20,16,30,.16), rgba(20,16,30,.34)),
+    url("https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Lake_Sylvester_during_the_sunrise%2C_Kahurangi%2C_New_Zealand.jpg/1920px-Lake_Sylvester_during_the_sunrise%2C_Kahurangi%2C_New_Zealand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail");
+}
+
+/* ============ 面板本体 ============ */
+.panel{
+  position: relative; width: var(--p-w); height: var(--p-h); border-radius: var(--r-win);
+  overflow: hidden; display: flex; flex-direction: column; color: var(--ink);
+  font: 400 var(--fs-body)/1.4 var(--font);
+  background-image: linear-gradient(180deg, var(--glass-sheen), rgba(255,255,255,.02) 34%, rgba(255,255,255,0) 62%);
+  background-color: var(--glass);
+  backdrop-filter: blur(var(--blur)) saturate(var(--sat));
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat));
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow), var(--inner-hi);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+  .panel{ background-color: rgba(24,26,40,.86); }
+}
+
+/* 顶栏 */
+.topbar{ display: flex; align-items: center; gap: 8px; padding: 12px 12px 9px; flex: none; }
+.seg{ flex: 1; display: flex; gap: 2px; padding: 2px; border-radius: 10px;
+  background: rgba(255,255,255,.10); border: 1px solid var(--stroke-soft); }
+.seg button{ flex: 1; appearance: none; border: 0; background: transparent; color: var(--ink3);
+  font: 600 12px/1 var(--font); padding: 7px 0; border-radius: 8px; cursor: pointer; transition: .16s; }
+.seg button:hover{ color: var(--ink2); }
+.seg button.on{ background: rgba(255,255,255,.22); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.28); }
+.seg.sm button{ font-size: 11px; padding: 5px 0; }
+.subseg{ flex: none; padding: 0 12px 9px; }
+.icon{ width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 10px;
+  background: rgba(255,255,255,.12); border: 1px solid var(--stroke-soft); color: var(--ink2);
+  font-size: 13px; line-height: 1; cursor: pointer; transition: .16s; }
+.icon:hover{ background: rgba(255,255,255,.22); color: #fff; }
+.icon.dim{ opacity: .5; }
+
+/* 列表 */
+.list{ flex: 1; min-height: 0; overflow: auto; padding: 0 12px 4px;
+  display: flex; flex-direction: column; gap: 7px; scrollbar-width: none; }
+.list::-webkit-scrollbar{ display: none; }
+.row{ display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: var(--r-card);
+  background: var(--card); border: 1px solid var(--stroke-soft); flex: none; transition: .16s; }
+.row:hover{ background: var(--card-hi); }
+.row.done{ background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.06); }
+.tick{ width: 19px; height: 19px; flex: none; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.42);
+  background: transparent; color: #04160c; display: grid; place-items: center;
+  font: 700 11px/1 var(--font); cursor: pointer; padding: 0; }
+.tick:hover{ border-color: #fff; }
+.tick.on{ background: var(--ok); border-color: var(--ok); }
+.main{ flex: 1; min-width: 0; text-align: left; background: none; border: 0; color: inherit;
+  cursor: pointer; display: flex; flex-direction: column; gap: 2px; padding: 0; }
+.t{ font-size: var(--fs-title); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.n{ font-size: var(--fs-meta); color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row.done .t{ color: rgba(255,255,255,.40); text-decoration: line-through; text-decoration-thickness: 1px; }
+.stack{ display: flex; align-items: center; gap: 5px; flex: none; padding: 4px 6px 4px 5px;
+  border-radius: 7px; background: rgba(10,132,255,.16); cursor: pointer; transition: .16s; }
+.stack:hover{ background: rgba(10,132,255,.30); }
+.stack i{ display: block; width: 2px; height: 13px; border-radius: 2px; background: var(--accent); }
+.stack b{ font: 700 12px/1 var(--font); color: var(--accent-ink); }
+.empty{ flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 7px; text-align: center; padding: 0 30px; }
+.empty b{ font-size: 13px; font-weight: 600; }
+.empty span{ font-size: var(--fs-meta); color: var(--ink3); line-height: 1.6; }
+
+/* 添加行 */
+.add{ flex: none; display: flex; gap: 8px; margin: 8px 12px 12px; }
+.add .btn{ flex: 1; height: 38px; border-radius: var(--r-card); background: rgba(255,255,255,.10);
+  border: 1px dashed rgba(255,255,255,.22); color: var(--ink2); font: 500 12px var(--font); cursor: pointer; transition: .16s; }
+.add .btn:hover{ background: rgba(255,255,255,.16); color: #fff; border-color: rgba(255,255,255,.34); }
+.add .btn.focus{ background: rgba(10,132,255,.16); border: 1px solid rgba(10,132,255,.45); color: var(--accent-ink); }
+.add input{ flex: 1; height: 38px; border-radius: var(--r-card); background: rgba(255,255,255,.14);
+  border: 1px solid rgba(10,132,255,.55); color: #fff; padding: 0 11px; font: 400 13px var(--font); outline: none; }
+.add input::placeholder{ color: rgba(255,255,255,.45); }
+
+/* 对话 */
+.chead{ display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; flex: none; }
+.chead .ct{ flex: 1; min-width: 0; text-align: center; font: 600 13px/1.3 var(--font);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chead .spacer{ width: 32px; height: 32px; flex: none; }
+.log{ flex: 1; min-height: 0; overflow: auto; padding: 2px 12px 6px; display: flex;
+  flex-direction: column; gap: 8px; scrollbar-width: none; }
+.log::-webkit-scrollbar{ display: none; }
+.msg{ max-width: 78%; padding: 8px 11px; border-radius: 14px; font-size: 13px; line-height: 1.45;
+  text-wrap: pretty; word-break: break-word; }
+.msg.me{ align-self: flex-end; background: linear-gradient(180deg,#3d9bff,#0a7cf0);
+  border: 1px solid rgba(255,255,255,.18); }
+.msg.ai{ align-self: flex-start; background: rgba(255,255,255,.15); border: 1px solid var(--stroke-soft); }
+.compose{ flex: none; display: flex; gap: 8px; padding: 8px 12px 12px; border-top: 1px solid rgba(255,255,255,.09); }
+.compose input{ flex: 1; min-width: 0; height: 38px; border-radius: var(--r-card); background: rgba(255,255,255,.12);
+  border: 1px solid var(--stroke-soft); color: #fff; padding: 0 11px; font: 400 13px var(--font); outline: none; }
+.compose input::placeholder{ color: rgba(255,255,255,.45); }
+.primary{ height: 38px; padding: 0 15px; border: 0; border-radius: var(--r-card);
+  background: linear-gradient(180deg,#3d9bff,#0a7cf0); color: #fff; font: 600 12px var(--font);
+  cursor: pointer; box-shadow: 0 4px 14px rgba(10,132,255,.32); flex: none; }
+.primary:disabled{ opacity: .38; box-shadow: none; cursor: default; }
+.guide{ flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 22px; }
+.guide .card{ width: 100%; padding: 18px 14px; border-radius: 14px; text-align: center;
+  background: rgba(255,255,255,.10); border: 1px solid var(--stroke-soft); }
+.guide b{ display: block; font-size: 13px; margin-bottom: 6px; }
+.guide span{ font-size: var(--fs-meta); color: var(--ink3); }
+.guide .cta{ display: inline-block; margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 999px;
+  background: linear-gradient(180deg,#3d9bff,#0a7cf0); color: #fff; font: 600 12px var(--font); cursor: pointer; }
+
+/* 遮罩 + 弹层（遮罩固定在弹层之下，杜绝透底/重叠伪影）*/
+.scrim{ position: absolute; inset: 0; z-index: 20; background: rgba(8,10,18,.34); cursor: default; }
+.sheet{ position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 30; padding: 14px;
+  border-radius: 16px; background: var(--pop); border: 1px solid var(--stroke);
+  box-shadow: 0 18px 44px rgba(0,0,0,.50), var(--inner-hi);
+  backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); }
+.sheet h3{ font: 600 var(--fs-title)/1.35 var(--font); margin-bottom: 4px; }
+.sheet .sub{ font-size: var(--fs-meta); color: var(--ink3); margin-bottom: 11px; }
+.menu{ position: absolute; top: 52px; right: 10px; width: 174px; z-index: 30; padding: 5px;
+  border-radius: 13px; background: var(--pop); border: 1px solid var(--stroke);
+  box-shadow: 0 18px 40px rgba(0,0,0,.50), var(--inner-hi);
+  backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); }
+.mi{ display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; background: none; color: var(--ink); font: 400 13px var(--font);
+  border-radius: 9px; cursor: pointer; text-align: left; }
+.mi:hover{ background: rgba(255,255,255,.12); }
+.mi.check .mark{ color: var(--accent-ink); font-weight: 700; }
+.divider{ height: 1px; margin: 5px 4px; background: rgba(255,255,255,.12); }
+
+/* 会话 / 工具 行 */
+.si{ display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; margin-bottom: 7px;
+  border-radius: var(--r-card); background: rgba(255,255,255,.09); border: 1px solid var(--stroke-soft);
+  text-align: left; color: inherit; cursor: pointer; transition: .16s; }
+.si:hover{ background: rgba(255,255,255,.15); }
+.si .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.si .dot.busy{ background: #ffcc00; }
+.si .dot.bad{ background: var(--danger); }
+.si .body{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.si .nm{ font: 600 12px/1.3 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.si .meta{ font-size: var(--fs-meta); color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.si .go{ margin-left: auto; color: var(--accent-ink); font: 600 11px/1 var(--font); flex: none; }
+.si.new{ justify-content: center; color: var(--accent-ink); background: rgba(10,132,255,.14);
+  border-color: rgba(10,132,255,.28); font: 600 12px var(--font); }
+.si.new:hover{ background: rgba(10,132,255,.24); }
+.si.on{ background: rgba(10,132,255,.16); border-color: rgba(10,132,255,.30); }
+.btns{ display: flex; gap: 8px; }
+.btns .grow{ flex: 1; }
+.tiny{ height: 32px; padding: 0 12px; border-radius: var(--r-ctl); background: rgba(255,255,255,.12);
+  border: 1px solid var(--stroke-soft); color: var(--ink); font: 500 12px var(--font); cursor: pointer; flex: none; }
+.tiny:hover{ background: rgba(255,255,255,.20); }
+.tiny.danger{ background: rgba(255,107,107,.20); border-color: rgba(255,107,107,.34); color: #ffc9c9; }
+.cwd{ display: flex; gap: 8px; margin-bottom: 12px; }
+.cwd .path{ flex: 1; min-width: 0; height: 38px; display: flex; align-items: center; padding: 0 11px;
+  border-radius: var(--r-card); background: rgba(255,255,255,.12); border: 1px solid var(--stroke-soft);
+  font: 400 12px var(--mono); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wiz{ text-align: center; padding: 6px 2px 2px; }
+.wiz .spin{ width: 34px; height: 34px; margin: 4px auto 12px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.18); border-top-color: var(--accent);
+  animation: spin 900ms linear infinite; }
+@keyframes spin{ to{ transform: rotate(360deg); } }
+.ring{ position: relative; width: 56px; height: 56px; margin: 4px auto 12px; border-radius: 50%;
+  background: conic-gradient(var(--ok) var(--p,100%), rgba(255,255,255,.13) 0); }
+.ring::before{ content: ""; position: absolute; inset: 5px; border-radius: 50%; background: rgba(24,26,40,.94); }
+.ring::after{ content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--ok); font: 700 20px/1 var(--font); }
+.ring.run{ animation: ringfill 3s linear forwards; }
+@keyframes ringfill{ from{ --p: 0%; } to{ --p: 100%; } }
+.wiz h3{ font: 600 var(--fs-title)/1.35 var(--font); margin-bottom: 4px; }
+.wiz .sub{ font-size: var(--fs-meta); color: var(--ink3); line-height: 1.6; }
+.err{ display: flex; gap: 8px; padding: 9px 10px; margin-bottom: 11px; border-radius: var(--r-card);
+  background: rgba(255,107,107,.16); border: 1px solid rgba(255,107,107,.36);
+  color: #ffd6d6; font-size: 12px; line-height: 1.5; }
+.toast{ position: absolute; left: 12px; right: 12px; bottom: 62px; z-index: 25; padding: 9px 11px;
+  border-radius: var(--r-card); background: rgba(52,199,89,.20); border: 1px solid rgba(52,199,89,.40);
+  color: #ccf6d8; font-size: 12px; text-align: center; }
+
+/* 字段 / 模型配置视图 */
+.view{ flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.vhead{ display: flex; align-items: center; gap: 8px; padding: 12px; flex: none;
+  border-bottom: 1px solid rgba(255,255,255,.09); }
+.vhead .vt{ flex: 1; text-align: center; font: 600 13px var(--font); }
+.vhead .spacer{ width: 52px; height: 24px; flex: none; }
+.vbody{ flex: 1; min-height: 0; overflow: auto; padding: 14px 12px 16px;
+  display: flex; flex-direction: column; gap: 13px; scrollbar-width: none; }
+.vbody::-webkit-scrollbar{ display: none; }
+/* 供应商下拉展开时会顶高内容：压缩间距并收起说明，保证整屏不裁切 */
+.vbody.picking{ gap: 10px; }
+.vbody.picking .note{ display: none; }
+.linkish{ border: 0; background: none; color: var(--accent-ink); font: 500 12px var(--font);
+  cursor: pointer; padding: 0; width: 52px; text-align: left; }
+.field label{ display: block; font: 500 var(--fs-label)/1 var(--font); letter-spacing: .05em;
+  color: var(--ink3); margin-bottom: 6px; }
+.field .ctl{ display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 40px;
+  padding: 0 11px; border-radius: var(--r-card); background: rgba(255,255,255,.10);
+  border: 1px solid var(--stroke-soft); font-size: 13px; cursor: pointer; }
+.field .ctl:hover{ background: rgba(255,255,255,.16); }
+.field .ctl .side{ font-size: var(--fs-meta); color: var(--ink3); flex: none; }
+.field .ctl.mono{ font-family: var(--mono); font-size: 12px; }
+.picker{ margin-top: 6px; border-radius: var(--r-card); background: var(--pop);
+  border: 1px solid var(--stroke); padding: 4px; }
+.picker button{ display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 8px 10px; border: 0; background: none; color: var(--ink); font: 400 13px var(--font);
+  border-radius: 8px; cursor: pointer; text-align: left; }
+.picker button:hover{ background: rgba(255,255,255,.12); }
+.picker button.on{ background: rgba(10,132,255,.18); color: #fff; }
+.note{ font-size: var(--fs-meta); color: var(--ink3); line-height: 1.6; }
+
+/* 托盘帧 */
+.menubar{ position: absolute; top: 0; left: 0; right: 0; height: 30px; z-index: 5;
+  display: flex; align-items: center; gap: 12px; padding: 0 10px; font-size: 11px; color: rgba(255,255,255,.90);
+  background: rgba(16,18,30,.42); backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%); border-bottom: 1px solid rgba(255,255,255,.12); }
+.menubar .mb-left{ flex: 1; display: flex; gap: 11px; }
+.menubar .mb-right{ display: flex; gap: 10px; align-items: center; }
+.tray-ico{ padding: 3px 7px; border-radius: 6px; background: rgba(255,255,255,.22);
+  border: 1px solid rgba(255,255,255,.30); font-weight: 600; }
+.tray-menu{ position: absolute; top: 36px; right: 10px; width: 194px; z-index: 6; padding: 5px;
+  border-radius: 13px; background: var(--pop); border: 1px solid var(--stroke);
+  box-shadow: 0 18px 40px rgba(0,0,0,.50), var(--inner-hi);
+  backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); }
+.stage-note{ position: absolute; left: 12px; bottom: 12px; z-index: 5; font: 10px/1.5 var(--mono);
+  color: rgba(255,255,255,.62); background: rgba(10,12,20,.42); padding: 5px 8px; border-radius: 8px; }
+
+footer{
+  margin-top: 52px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.10);
+  font-size: 11px; color: #6f7688; line-height: 1.9; max-width: 2112px;
+}
+footer code{ font-family: var(--mono); color: #9aa2b6; }
+footer ol{ margin: 6px 0 0 18px; }
+</style>
+</head>
+<body>
+<header class="head">
+  <h1>Tick 面板 · UI Board</h1>
+  <p>磨砂半透明玻璃 · 面板 360×520（与 BrowserWindow 一致）· 帧内元素可点击 · 帧号 01–13 锁定，14–19 为补齐态</p>
+  <div class="tokens">
+    <span class="tok"><i class="sw" style="background:rgba(20,22,34,.5)"></i>glass rgba(20,22,34,.50)</span>
+    <span class="tok"><i class="sw" style="background:linear-gradient(135deg,rgba(255,255,255,.5),rgba(255,255,255,.08))"></i>blur 30px · saturate 180%</span>
+    <span class="tok"><i class="sw" style="background:#0a84ff"></i>accent #0a84ff</span>
+    <span class="tok"><i class="sw" style="background:#34c759"></i>ok #34c759</span>
+    <span class="tok"><i class="sw" style="background:#ff6b6b"></i>danger #ff6b6b</span>
+    <span class="tok">圆角 18 / 12 / 9</span>
+    <span class="tok">字号 13 / 11 / 10</span>
+  </div>
+</header>
+<main id="board"></main>
+<footer>
+  壁纸仅用于验证玻璃在深/浅底上的表现（装饰，不属产品界面）：
+  Moraine Lake © Chensiyuan（CC BY-SA 4.0）· Lake Sylvester © Michal Klajban（CC BY-SA 4.0），均来自 Wikimedia Commons。
+  <ol>
+    <li>取真实高度：<code>CHROME --headless=new --dump-dom file://$PWD/docs/ui/board.html | grep -o 'data-h="[0-9]*"'</code></li>
+    <li>截图（用上一步的高度，避免留白/截断）：<code>CHROME --headless=new --hide-scrollbars --window-size=2208,&lt;高度&gt; --screenshot=docs/ui/Tick-UI-Board.png file://$PWD/docs/ui/board.html</code></li>
+  </ol>
+  <code>CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"</code>
+</footer>
+
+<script>
+/* ---------- 数据（真实文案，非占位） ---------- */
+const SEED = {
+  open: [
+    { id: "t1", title: "写本周周报", note: "发给 Jacky 前过一遍数据", sessions: [
+      { id: "t1-0", tool: "pi", name: "周报草稿", cwd: "~/Projects/tick", when: "今天" },
+      { id: "t1-1", tool: "pi", name: "数据核对", cwd: "~/Projects/tick", when: "今天" },
+      { id: "t1-2", tool: "Claude", name: "大纲", cwd: "~/Documents/work", when: "昨天" }] },
+    { id: "t2", title: "面板 UI 评审", note: "", sessions: [
+      { id: "t2-0", tool: "pi", name: "UI 走查", cwd: "~/Projects/tick", when: "今天" }] },
+    { id: "t3", title: "买咖啡豆", note: "", sessions: [] },
+    { id: "t4", title: "预约体检", note: "", sessions: [] }
+  ],
+  done: [
+    { id: "d1", title: "订周四会议室", when: "今天 14:20" },
+    { id: "d2", title: "回复工程 PAT", when: "今天 11:05" },
+    { id: "d3", title: "写周报大纲", when: "昨天" }
+  ]
+};
+const CHAT_SESSIONS = [
+  { title: "明早评审面板", when: "刚刚" },
+  { title: "周报整理", when: "昨天" },
+  { title: "咖啡豆采购", when: "周二" }
+];
+const CHAT_MSGS = [
+  { who: "me", text: "帮我加一条：明早 10 点评审" },
+  { who: "ai", text: "已创建待办「明早 10 点评审面板」。" },
+  { who: "me", text: "再把买咖啡豆标完成" },
+  { who: "ai", text: "好的，已标记完成。" }
+];
+
+/* ---------- 帧清单（01–13 沿用 UI-LOCK，14–19 为补齐态） ---------- */
+const SECTIONS = [
+  { title: "01 · 核心页面", note: "待办列表 · 空态 · 编辑", wp: "dark", frames: [
+    { no: "01", name: "待办 / 未完成", hint: "点标题→编辑 · 点竖条数字→会话 · 点圆圈→完成", st: { tab: "todos" } },
+    { no: "02", name: "待办 / 已完成", hint: "变淡 + 标题横线，点圆圈可恢复为未完成", st: { tab: "todos", sub: "done" } },
+    { no: "14", name: "待办 / 空列表", hint: "空态文案 + 底部添加行（首个待办入口）", st: { tab: "todos", empty: true } },
+    { no: "13", name: "编辑待办", hint: "删除 / 取消 / 保存（标题必填）", st: { tab: "todos", sheet: "edit" } },
+    { no: "19", name: "编辑 · 标题为空", hint: "保存禁用 + 顶部错误提示", st: { tab: "todos", sheet: "edit", editTitle: "", editErr: "标题必填" } }
+  ]},
+  { title: "02 · 对话", note: "多会话 · 会话列表 · 模型配置", wp: "light", frames: [
+    { no: "03", name: "对话", hint: "回车发送；左上 ☰ 展开会话列表", st: { tab: "chat" } },
+    { no: "04", name: "对话 / 会话列表", hint: "会话列表浮层 + 新建会话", st: { tab: "chat", chatList: true } },
+    { no: "06", name: "对话 / 未配置模型", hint: "引导卡 → 点「去配置」进模型配置", st: { tab: "chat", chatGuide: true } },
+    { no: "07", name: "模型配置", hint: "供应商 / 模型 / API Key / 测试连接", st: { model: true } },
+    { no: "18", name: "模型配置 / 供应商选择", hint: "供应商下拉展开态", st: { model: true, providerOpen: true } }
+  ]},
+  { title: "03 · 绑 AI 流程", note: "选工具 → cwd → 启动 → 成功 / 失败 → 会话回跳", wp: "dark", frames: [
+    { no: "09", name: "绑 AI / 选工具", hint: "点工具选中 → 下一步；可「跳过，稍后再绑」", st: { tab: "todos", sheet: "bind-pick", wizard: "pick" } },
+    { no: "10", name: "绑 AI / 确认 cwd", hint: "文件夹按钮打开系统选目录；cwd 必填", st: { tab: "todos", sheet: "bind-cwd", wizard: "cwd" } },
+    { no: "15", name: "绑 AI / 启动中", hint: "「正在拉起…」期间不可关闭", st: { tab: "todos", sheet: "bind-launching", wizard: "launching" } },
+    { no: "11", name: "绑 AI / 成功", hint: "环 3 秒走满后自动关闭（无「完成」按钮）", st: { tab: "todos", sheet: "bind-done", wizard: "done" } },
+    { no: "16", name: "绑 AI / 启动失败", hint: "按实际报错；可返回重试或关闭", st: { tab: "todos", sheet: "bind-error", wizard: "error",
+      wizardMsg: "未能拉起 pi：Terminal 未返回 pid（macOS 需在「隐私与安全性」允许终端控制）" } }
+  ]},
+  { title: "04 · 会话回跳 · 顶栏 / 托盘", note: "多会话列表 · 跳回结果 · ··· 菜单 · 托盘", wp: "light", frames: [
+    { no: "12", name: "会话列表 / 再绑", hint: "点会话→在 Terminal 打开；底部→再绑一个 AI", st: { tab: "todos", sheet: "sessions", sessionsId: "t1" } },
+    { no: "17", name: "会话回跳 / 失败", hint: "点「打开」先进入 busy，再按结果反馈", st: { tab: "todos", sheet: "sessions", sessionsId: "t2",
+      resumeErr: "resume 失败：工作目录不存在 ~/Projects/old-repo", resumeFailId: "t2-0" } },
+    { no: "05", name: "顶栏 ··· 菜单", hint: "置顶 / 隐藏 / 模型配置；点遮罩关闭", st: { tab: "todos", menu: true } },
+    { no: "08", name: "托盘菜单", hint: "菜单栏托盘图标下的菜单（窗体外）", tray: true }
+  ]}
+];
+
+/* ---------- 状态 ---------- */
+function baseState(over){
+  return Object.assign({
+    tab: "todos", sub: "open", empty: false,
+    menu: false, addOpen: false, addText: "",
+    sheet: null, editId: "t1", editTitle: "写本周周报", editNote: "发给 Jacky 前过一遍数据", editErr: "",
+    sessionsId: null, resumeBusy: null, resumeOk: null, resumeErr: "", resumeFailId: null,
+    wizard: null, wizardTool: "pi", cwd: "~/Projects/tick", wizardMsg: "", ringRun: false, bindTodoId: "t1",
+    chatList: false, chatIdx: 0, chatNew: false, chatMsgs: CHAT_MSGS.slice(), chatText: "", chatGuide: false,
+    model: false, provider: "DeepSeek", providerOpen: false, testMsg: "", keySaved: true,
+    open: SEED.open.map(cloneTodo), done: SEED.done.map(cloneTodo), toast: null, _n: 0
+  }, over || {});
+}
+function cloneTodo(t){ return JSON.parse(JSON.stringify(t)); }
+const STATES = [];
+const TIMERS = [];
+function later(i, ms, fn){ TIMERS[i] = setTimeout(fn, ms); }
+function clearTimers(i){ if (TIMERS[i]) { clearTimeout(TIMERS[i]); TIMERS[i] = null; } }
+
+/* ---------- 片段 ---------- */
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function seg(items, active, act, small){
+  return '<div class="seg' + (small ? " sm" : "") + '">' + items.map(([val, label]) =>
+    '<button type="button" class="' + (val === active ? "on" : "") + '" data-act="' + act + '" data-v="' + val + '">' + label + "</button>"
+  ).join("") + "</div>";
+}
+function topbar(s, i){
+  return '<div class="topbar">' +
+    seg([["todos", "待办"], ["chat", "对话"]], s.tab, "tab") +
+    '<button type="button" class="icon' + (s.menu ? " dim" : "") + '" data-act="menu" title="置顶 / 隐藏 / 模型配置">···</button>' +
+  "</div>";
+}
+function todoRow(t, i, done){
+  const n = (t.sessions || []).length;
+  return '<div class="row' + (done ? " done" : "") + '">' +
+    '<button type="button" class="tick' + (done ? " on" : "") + '" data-act="toggle" data-id="' + t.id + '" aria-label="' +
+      (done ? "恢复为未完成" : "标记完成") + '">' + (done ? "✓" : "") + "</button>" +
+    '<button type="button" class="main" data-act="edit" data-id="' + t.id + '">' +
+      '<span class="t">' + esc(t.title) + "</span>" +
+      '<span class="n">' + esc(done ? t.when : (t.note || (n ? n + " 个 AI 会话" : "未绑定 AI"))) + "</span>" +
+    "</button>" +
+    (n ? '<span class="stack" data-act="sessions" data-id="' + t.id + '" title="' + n + ' 个会话"><i></i><b>' + n + "</b></span>" : "") +
+  "</div>";
+}
+function todosTab(s, i){
+  const list = s.empty ? "" : (s.sub === "done" ? s.done : s.open).map((t) => todoRow(t, i, s.sub === "done")).join("");
+  const body = s.empty
+    ? '<div class="empty"><b>还没有待办</b><span>在下方输入标题，回车即可新建<br>新建后会立刻询问是否拉起 AI</span></div>'
+    : '<div class="list">' + list + "</div>";
+  const add = s.addOpen
+    ? '<div class="add"><input data-add-input placeholder="新待办标题 · 回车确认 · Esc 取消" value="' + esc(s.addText) + '"></div>'
+    : '<div class="add"><button type="button" class="btn' + (s.empty ? " focus" : "") + '" data-act="add-open">＋ 添加待办 · 回车确认</button></div>';
+  return topbar(s, i) +
+    '<div class="subseg">' + seg([["open", "待办"], ["done", "已完成"]], s.sub, "sub", true) + "</div>" +
+    body + add;
+}
+function chatTab(s, i){
+  const head = '<div class="chead">' +
+    '<button type="button" class="icon" data-act="chat-list" title="会话列表">☰</button>' +
+    '<span class="ct">' + esc(s.chatNew || !CHAT_SESSIONS[s.chatIdx] ? "新会话" : CHAT_SESSIONS[s.chatIdx].title) + "</span>" +
+    '<span class="spacer"></span></div>';
+  if (s.chatGuide){
+    return topbar(s, i) + head +
+      '<div class="guide"><div class="card"><b>先配置 AI 模型</b><span>还没有可用的模型</span><br>' +
+      '<button type="button" class="cta" data-act="model-open">去配置</button></div></div>' +
+      '<div class="compose"><input placeholder="和 AI 说点什么…" disabled><button class="primary" type="button" disabled>发送</button></div>';
+  }
+  const log = '<div class="log">' + (s.chatMsgs.length ? s.chatMsgs.map((m) =>
+    '<div class="msg ' + (m.who === "me" ? "me" : "ai") + '">' + esc(m.text) + "</div>").join("")
+    : '<div class="note" style="padding:2px 2px 0">和 AI 说点什么…（可说「建一条 todo：买咖啡豆」）</div>') + "</div>";
+  const drop = s.chatList ? '<div class="scrim" data-act="dismiss"></div>' +
+    '<div class="sheet" style="top:56px;bottom:auto">' +
+      CHAT_SESSIONS.map((c, idx) => '<button type="button" class="si' + (idx === s.chatIdx ? " on" : "") + '" data-act="chat-pick" data-v="' + idx + '">' +
+        '<span class="body"><span class="nm">' + esc(c.title) + "</span></span>" +
+        '<span class="meta">' + esc(c.when) + "</span></button>").join("") +
+      '<button type="button" class="si new" data-act="chat-new">＋ 新建会话</button>' +
+    "</div>" : "";
+  const compose = '<div class="compose"><input data-chat-input placeholder="和 AI 说点什么…" value="' + esc(s.chatText) + '">' +
+    '<button class="primary" type="button" data-act="chat-send"' + (s.chatText.trim() ? "" : " disabled") + ">发送</button></div>";
+  return topbar(s, i) + head + log + compose + drop;
+}
+function menuLayer(i){
+  return '<div class="menu">' +
+    '<button type="button" class="mi" data-act="pin"><span>置顶</span><span class="mark">✓</span></button>' +
+    '<button type="button" class="mi" data-act="hide"><span>隐藏</span></button>' +
+    '<button type="button" class="mi" data-act="model-open"><span>模型配置</span></button>' +
+  "</div>";
+}
+function sheetLayer(s, i){
+  const wrap = (inner) => '<div class="sheet">' + inner + "</div>";
+  const actions = (left, right) => '<div class="btns">' + left + '<div class="grow"></div>' + right + "</div>";
+
+  if (s.sheet === "edit"){
+    const todo = [...s.open, ...s.done].find((t) => t.id === s.editId) || s.open[0];
+    return wrap(
+      "<h3>编辑待办</h3><div class='sub'>标题必填 · 内容选填</div>" +
+      (s.editErr ? '<div class="err">' + esc(s.editErr) + "</div>" : "") +
+      '<div class="field" style="margin-bottom:11px"><label>标题 *</label>' +
+        '<div class="ctl" style="cursor:text">' + (esc(s.editTitle) || '<span style="color:rgba(255,255,255,.45)">写点什么…</span>') + "</div></div>" +
+      '<div class="field" style="margin-bottom:14px"><label>内容（选填）</label>' +
+        '<div class="ctl" style="cursor:text;height:auto;min-height:56px;align-items:flex-start;padding-top:10px">' +
+        esc(s.editNote || "") + "</div></div>" +
+      actions('<button class="tiny danger" type="button" data-act="edit-delete">删除</button>',
+        '<button class="tiny" type="button" data-act="dismiss">取消</button>' +
+        '<button class="primary" type="button" data-act="edit-save"' + (s.editTitle.trim() ? "" : " disabled") + ">保存</button>")
+    );
+  }
+  if (s.sheet === "sessions"){
+    const todo = s.open.find((t) => t.id === s.sessionsId) || s.open[0];
+    const rows = todo.sessions.map((x) => {
+      const busy = s.resumeBusy === x.id, ok = s.resumeOk === x.id, bad = s.resumeFailId === x.id;
+      return '<button type="button" class="si" data-act="resume" data-id="' + x.id + '">' +
+        '<span class="dot' + (busy ? " busy" : bad ? " bad" : " ok") + '"></span>' +
+        '<span class="body"><span class="nm">' + esc(x.tool + " · " + x.name) + "</span>" +
+        '<span class="meta">' + esc(x.cwd + " · " + x.when) + "</span></span>" +
+        '<span class="go">' + (busy ? "打开中…" : ok ? "已在 Terminal 打开" : "打开 ›") + "</span></button>";
+    }).join("");
+    return wrap(
+      "<h3>" + esc(todo.title) + " · 会话</h3><div class='sub'>点会话在 Terminal 打开（pi --session）· 可同时绑多个工具</div>" +
+      (s.resumeErr ? '<div class="err">' + esc(s.resumeErr) + "</div>" : "") +
+      rows +
+      '<button type="button" class="si new" data-act="bind-open" data-id="' + todo.id + '">＋ 再绑一个 AI</button>'
+    );
+  }
+  if (s.sheet === "bind-pick"){
+    const todo = s.open.find((t) => t.id === s.bindTodoId) || s.open[0];
+    return wrap(
+      "<h3>为「" + esc(todo.title) + "」选 AI</h3><div class='sub'>仅展示本机已检测到的工具（未安装不展示）</div>" +
+      '<button type="button" class="si" data-act="bind-pick-tool" data-id="pi">' +
+        '<span class="dot ok"></span><span class="body"><span class="nm">pi</span>' +
+        '<span class="meta">CLI · 剪贴板投递 · 已检测</span></span>' +
+        '<span class="go">' + (s.wizardTool === "pi" ? "已选 ✓" : "选择") + "</span></button>" +
+      actions('<button class="tiny" type="button" data-act="dismiss">跳过，稍后再绑</button>',
+        '<button class="primary" type="button" data-act="bind-next"' + (s.wizardTool ? "" : " disabled") + ">下一步</button>")
+    );
+  }
+  if (s.sheet === "bind-cwd"){
+    const todo = s.open.find((t) => t.id === s.bindTodoId) || s.open[0];
+    return wrap(
+      "<h3>启动 " + esc(s.wizardTool) + "</h3><div class='sub'>绑定到「" + esc(todo.title) + "」· cwd 必填，文案会写入剪贴板</div>" +
+      '<div class="field" style="margin-bottom:12px"><label>工作目录</label>' +
+        '<div class="cwd"><span class="path">' + esc(s.cwd) + "</span>" +
+        '<button class="tiny" type="button" data-act="pick-dir" title="打开系统选择目录">选择…</button></div></div>' +
+      actions('<button class="tiny" type="button" data-act="bind-back">返回</button>',
+        '<button class="primary" type="button" data-act="bind-launch"' + (s.cwd.trim() ? "" : " disabled") + ">启动</button>")
+    );
+  }
+  if (s.sheet === "bind-launching"){
+    return wrap('<div class="wiz"><div class="spin"></div><h3>正在拉起 ' + esc(s.wizardTool) + "…</h3>" +
+      "<div class='sub'>会在 Terminal 里打开会话<br>期间不要关闭这个面板</div></div>");
+  }
+  if (s.sheet === "bind-done"){
+    return wrap('<div class="wiz"><div class="ring' + (s.ringRun ? " run" : "") + '"></div>' +
+      "<h3>已绑定 " + esc(s.wizardTool) + "</h3>" +
+      "<div class='sub'>文案已复制，到会话里粘贴即可<br>3 秒后自动关闭</div></div>");
+  }
+  if (s.sheet === "bind-error"){
+    return wrap("<h3>启动失败</h3><div class='sub'>按实际报错展示，可返回重试</div>" +
+      '<div class="err">' + esc(s.wizardMsg) + "</div>" +
+      actions('<button class="tiny" type="button" data-act="bind-back">返回</button>',
+        '<button class="tiny" type="button" data-act="dismiss">关闭</button>'));
+  }
+  return "";
+}
+function modelView(s, i){
+  const providers = ["DeepSeek", "Anthropic", "OpenAI", "自定义"];
+  const picker = s.providerOpen
+    ? '<div class="picker">' + providers.map((p) =>
+        '<button type="button" class="' + (p === s.provider ? "on" : "") + '" data-act="provider-pick" data-v="' + p + '">' +
+        "<span>" + p + "</span><span>" + (p === s.provider ? "✓" : "") + "</span></button>").join("") + "</div>"
+    : "";
+  return '<div class="view">' +
+    '<div class="vhead"><button class="linkish" type="button" data-act="model-close">← 返回</button>' +
+      '<span class="vt">模型配置</span><span class="spacer"></span></div>' +
+    '<div class="vbody' + (s.providerOpen ? " picking" : "") + '">' +
+      '<div class="field"><label>供应商</label>' +
+        '<div class="ctl" data-act="provider-open"><span>' + esc(s.provider) + '</span><span class="side">›</span></div>' + picker + "</div>" +
+      '<div class="field"><label>模型</label><div class="ctl" data-act="provider-open"><span>deepseek-chat</span><span class="side">›</span></div></div>' +
+      '<div class="field"><label>API Key</label>' +
+        '<div class="ctl mono" data-act="noop"><span>' + (s.keySaved ? "sk-••••••••3f2a" : "未配置") + "</span>" +
+        '<span class="side">' + (s.keySaved ? "已保存" : "去填写") + "</span></div></div>" +
+      '<div class="field"><label>连接</label><div class="ctl" data-act="test"><span>测试连接</span>' +
+        '<span class="side">' + (s.testMsg ? esc(s.testMsg) : "未测试") + "</span></div></div>" +
+      '<div class="note">Key 只存在本机（pi 的 auth.json），不经我们的服务器。</div>' +
+      '<div class="btns" style="margin-top:auto"><div class="grow"></div>' +
+        '<button class="primary" type="button" data-act="model-close">保存</button></div>' +
+    "</div></div>";
+}
+function panel(i){
+  const s = STATES[i];
+  const inner = s.model ? modelView(s, i) : (s.tab === "todos" ? todosTab(s, i) : chatTab(s, i));
+  const scrim = (s.menu || s.sheet) ? '<div class="scrim" data-act="dismiss"></div>' : "";
+  const layer = s.sheet ? sheetLayer(s, i) : (s.menu ? menuLayer(i) : "");
+  const toast = s.toast ? '<div class="toast">' + esc(s.toast) + "</div>" : "";
+  return '<div class="panel">' + inner + scrim + layer + toast + "</div>";
+}
+function trayFrame(){
+  return '<div class="menubar">' +
+      '<span class="mb-left"><b>Tick</b><span>文件</span><span>编辑</span><span>显示</span></span>' +
+      '<span class="mb-right"><span>86%</span><span>Wi-Fi</span><span>18:26</span><span class="tray-ico">Tick</span></span>' +
+    "</div>" +
+    '<div class="tray-menu">' +
+      '<button type="button" class="mi" data-act="noop"><span>显示 Tick</span></button>' +
+      '<button type="button" class="mi" data-act="noop"><span>隐藏面板</span></button>' +
+      '<button type="button" class="mi" data-act="noop"><span>置顶</span><span class="mark" style="color:var(--accent-ink);font-weight:700">✓</span></button>' +
+      '<div class="divider"></div>' +
+      '<button type="button" class="mi" data-act="noop"><span>退出</span></button>' +
+    "</div>" +
+    '<div class="stage-note">菜单栏托盘菜单（窗体外 · 非玻璃面板）</div>';
+}
+
+/* ---------- 渲染 ---------- */
+const board = document.getElementById("board");
+SECTIONS.forEach((sec) => {
+  const h = document.createElement("div");
+  h.className = "sec";
+  h.innerHTML = "<h2>" + sec.title + "</h2><span>" + sec.note + " · " + (sec.wp === "dark" ? "深色壁纸" : "浅色壁纸") + "</span>";
+  board.appendChild(h);
+  const grid = document.createElement("div");
+  grid.className = "grid";
+  sec.frames.forEach((f) => {
+    const idx = STATES.length;
+    STATES.push(baseState(f.st));
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.innerHTML =
+      '<div class="cap"><b>' + f.no + "</b><span>" + f.name + "</span></div>" +
+      '<div class="stage" data-wp="' + sec.wp + '"' + (f.tray ? "" : ' data-i="' + idx + '"') + ">" +
+        '<div class="wp"></div><div class="mount"></div></div>' +
+      '<div class="fhint">' + f.hint + "</div>";
+    cell.dataset.frame = f.no;
+    grid.appendChild(cell);
+    if (f.tray) cell.querySelector(".mount").innerHTML = trayFrame();
+  });
+  board.appendChild(grid);
+});
+
+function stageOf(i){ return document.querySelector('.stage[data-i="' + i + '"]'); }
+function render(i, keepFocus){
+  const stage = stageOf(i); if (!stage) return;
+  const s = STATES[i];
+  const mount = stage.querySelector(".mount");
+  mount.innerHTML = panel(i);
+  if (keepFocus === "add"){ const el = mount.querySelector("[data-add-input]"); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+  if (keepFocus === "chat"){ const el = mount.querySelector("[data-chat-input]"); if (el) el.focus(); }
+}
+function rerenderAll(){ STATES.forEach((_, i) => { if (stageOf(i)) render(i); }); }
+STATES.forEach((_, i) => render(i));
+
+/* ---------- 交互 ---------- */
+document.addEventListener("click", (ev) => {
+  const stage = ev.target.closest(".stage");
+  if (!stage || !stage.dataset.i) return;
+  const i = Number(stage.dataset.i);
+  const s = STATES[i];
+  const el = ev.target.closest("[data-act]");
+  if (!el) return;
+  const act = el.dataset.act;
+  const v = el.dataset.v;
+  const id = el.dataset.id;
+  clearTimers(i);
+
+  switch (act){
+    case "noop": break;
+    case "tab": s.tab = v; s.menu = false; s.sheet = null; s.model = false; render(i); break;
+    case "sub": s.sub = v; s.empty = false; render(i); break;
+    case "menu": s.menu = !s.menu; s.sheet = null; render(i); break;
+    case "dismiss": s.menu = false; s.sheet = null; s.chatList = false; render(i); break;
+    case "pin": s.menu = false; s.toast = "已置顶：alwaysOnTop = true"; render(i);
+      later(i, 1600, () => { s.toast = null; render(i); }); break;
+    case "hide": s.menu = false; s.toast = "面板已隐藏（托盘菜单可恢复）"; render(i);
+      later(i, 1600, () => { s.toast = null; render(i); }); break;
+    case "model-open": s.menu = false; s.sheet = null; s.model = true; render(i); break;
+    case "model-close": s.model = false; s.providerOpen = false; render(i); break;
+    case "provider-open": s.providerOpen = !s.providerOpen; render(i); break;
+    case "provider-pick": s.provider = v; s.providerOpen = false; render(i); break;
+    case "test": s.testMsg = "连接正常 · 240ms"; render(i); break;
+
+    case "add-open": s.addOpen = true; s.empty = false; render(i, "add"); break;
+    case "toggle": {
+      const from = s.sub === "done" ? s.done : s.open, to = s.sub === "done" ? s.open : s.done;
+      const k = from.findIndex((t) => t.id === id);
+      if (k >= 0){ const [t] = from.splice(k, 1);
+        if (s.sub === "done") { t.note = ""; to.unshift(t); } else { t.when = "今天"; to.unshift(t); }
+      }
+      render(i); break;
+    }
+    case "edit": {
+      const t = [...s.open, ...s.done].find((x) => x.id === id);
+      s.editId = id; s.editTitle = t ? t.title : ""; s.editNote = t ? (t.note || "") : "";
+      s.editErr = ""; s.sheet = "edit"; s.empty = false; render(i); break;
+    }
+    case "edit-save": {
+      if (!s.editTitle.trim()){ s.editErr = "标题必填"; render(i); break; }
+      const t = [...s.open, ...s.done].find((x) => x.id === s.editId);
+      if (t){ t.title = s.editTitle.trim(); t.note = s.editNote.trim(); }
+      s.sheet = null; render(i); break;
+    }
+    case "edit-delete": s.open = s.open.filter((t) => t.id !== s.editId); s.sheet = null; render(i); break;
+
+    case "sessions": s.sessionsId = id; s.sheet = "sessions"; s.resumeBusy = null; s.resumeOk = null; render(i); break;
+    case "resume": {
+      const todo = s.open.find((t) => t.id === s.sessionsId);
+      const meta = todo && todo.sessions.find((x) => x.id === id);
+      if (!meta) break;
+      s.resumeBusy = id; s.resumeOk = null; s.resumeErr = ""; s.resumeFailId = null; render(i);
+      later(i, 900, () => { s.resumeBusy = null; s.resumeOk = id; render(i); });
+      break;
+    }
+    case "bind-open": s.bindTodoId = el.dataset.id || s.bindTodoId; s.sheet = "bind-pick"; s.wizard = "pick"; render(i); break;
+    case "bind-pick-tool": s.wizardTool = id; render(i); break;
+    case "bind-next": s.sheet = "bind-cwd"; s.wizard = "cwd"; render(i); break;
+    case "bind-back": s.sheet = s.wizard === "error" ? "bind-cwd" : "bind-pick"; s.wizard = s.sheet === "bind-cwd" ? "cwd" : "pick"; render(i); break;
+    case "pick-dir": s.cwd = "/Users/jacky/Projects/tick"; render(i); break;
+    case "bind-launch": {
+      if (!s.cwd.trim()) break;
+      s.sheet = "bind-launching"; s.wizard = "launching"; render(i);
+      later(i, 1300, () => {
+        const todo = s.open.find((t) => t.id === s.bindTodoId);
+        if (todo) todo.sessions.push({ id: "s" + (++s._n), tool: s.wizardTool, name: "新会话", cwd: s.cwd, when: "刚刚" });
+        s.sheet = "bind-done"; s.wizard = "done"; s.ringRun = true; render(i);
+        later(i, 3000, () => { s.sheet = null; s.ringRun = false; render(i); });
+      });
+      break;
+    }
+
+    case "chat-list": s.chatList = !s.chatList; render(i); break;
+    case "chat-pick": s.chatIdx = Number(v); s.chatNew = false; s.chatList = false; render(i); break;
+    case "chat-new": s.chatIdx = 0; s.chatNew = true; s.chatList = false; s.chatMsgs = []; render(i, "chat"); break;
+    case "chat-send": {
+      const t = s.chatText.trim(); if (!t) break;
+      s.chatMsgs.push({ who: "me", text: t });
+      s.chatMsgs.push({ who: "ai", text: "已创建待办「" + t.slice(0, 12) + "」，列表已刷新。" });
+      s.chatText = ""; render(i); break;
+    }
+    default: break;
+  }
+});
+
+document.addEventListener("input", (ev) => {
+  const stage = ev.target.closest(".stage"); if (!stage) return;
+  const i = Number(stage.dataset.i), s = STATES[i];
+  if (ev.target.matches("[data-add-input]")) s.addText = ev.target.value;
+  if (ev.target.matches("[data-chat-input]")){ s.chatText = ev.target.value;
+    const btn = stage.querySelector('[data-act="chat-send"]'); if (btn) btn.disabled = !s.chatText.trim(); }
+});
+
+document.addEventListener("keydown", (ev) => {
+  const stage = ev.target.closest(".stage"); if (!stage) return;
+  const i = Number(stage.dataset.i), s = STATES[i];
+  if (ev.key === "Enter" && ev.target.matches("[data-add-input]")){ ev.preventDefault();
+    if (s.addText.trim()){
+      s.open.unshift({ id: "n" + (++s._n), title: s.addText.trim(), note: "", sessions: [] });
+      s.addText = ""; s.addOpen = false; s.bindTodoId = s.open[0].id; s.sheet = "bind-pick"; s.wizard = "pick"; render(i);
+    } }
+  if (ev.key === "Escape"){ if (s.addOpen){ s.addOpen = false; s.addText = ""; render(i); }
+    else if (s.sheet || s.menu){ s.sheet = null; s.menu = false; render(i); } }
+  if (ev.key === "Enter" && ev.target.matches("[data-chat-input]")){ ev.preventDefault();
+    if (s.chatText.trim()){
+      const t = s.chatText.trim();
+      s.chatMsgs.push({ who: "me", text: t }, { who: "ai", text: "已创建待办「" + t.slice(0, 12) + "」，列表已刷新。" });
+      s.chatText = ""; render(i); } }
+});
+
+window.addEventListener("load", () => {
+  // 壁纸与字体就绪后再定高，并把页面真实高度写在 <html data-h> 上供 PNG 导出定窗（避免留白 / 截断）
+  setTimeout(() => {
+    document.documentElement.setAttribute("data-h", Math.ceil(document.body.scrollHeight) + 1);
+  }, 250);
+});
+</script>
+</body>
+</html>
