@@ -189,7 +189,8 @@ export function TodoDetailPage({
               </h1>
             )}
             <div className="detail-meta">
-              <span className="detail-chip">{done ? '已归档' : '进行中'}</span>
+              {/* 进行中不再出文字（靠标题前呼吸灯表达）；已归档保留文字标记 */}
+              {done && <span className="detail-chip">已归档</span>}
               {todo.source && (
                 <span>来源 {todo.source === 'panel' ? '面板对话' : 'CLI'}</span>
               )}
