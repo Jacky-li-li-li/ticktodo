@@ -18,6 +18,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { Todo } from '@tick/shared'
 import type { ProjectEntry } from '@tick/ai-core'
 import type { AppSettings } from '@tick/shared'
+import { ToolIcon } from '../icons/ToolIcon'
 
 interface Resolved {
   projectPath: string
@@ -197,6 +198,7 @@ export function AiPicker({
                     setTool(t.toolId)
                   }}
                 >
+                  <ToolIcon toolId={t.toolId} />
                   {t.toolId}
                   {t.version ? ` ${t.version}` : ''}
                 </button>
