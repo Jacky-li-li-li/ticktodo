@@ -199,8 +199,7 @@ export function AiPicker({
                   }}
                 >
                   <ToolIcon toolId={t.toolId} />
-                  {t.toolId}
-                  {t.version ? ` ${t.version}` : ''}
+                  {t.name}
                 </button>
               ))}
             </div>
