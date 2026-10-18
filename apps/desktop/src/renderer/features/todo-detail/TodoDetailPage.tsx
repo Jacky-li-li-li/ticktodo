@@ -323,7 +323,6 @@ export function TodoDetailPage({
                     <div className="detail-session-top">
                       <span className="detail-session-toolname">{s.toolId}</span>
                       <span>{s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'}</span>
-                      {s.primary && <span className="session-tag">默认</span>}
                       {s.state === 'pending' && <span className="session-tag">待发送</span>}
                       {s.missing && <span className="session-tag">已不在本机</span>}
                       {usageEnabled && usages[s.sessionId] && (
