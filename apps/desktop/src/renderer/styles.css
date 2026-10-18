@@ -2791,11 +2791,24 @@ a:focus-visible {
   gap: 13px;
 }
 
-.detail-head {
+/* 详情页顶栏：返回 + 状态灯 + 标题（悬停看时间，双击改名） */
+.detail-topbar {
+  position: relative;
+  z-index: 8;
+  justify-content: flex-start;
+  gap: 3px;
+}
+
+.detail-topbar-main {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding-top: 2px;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding-left: 2px;
+  /* 顶栏本身是窗口拖拽区；标题要能悬停/双击，必须从拖拽区里排除 */
+  -webkit-app-region: no-drag;
 }
 
 /* 标题前状态灯：进行中 = 绿色呼吸灯；已归档 = 静态灰点（这里不再放归档勾选） */
@@ -2803,7 +2816,6 @@ a:focus-visible {
   flex-shrink: 0;
   width: 8px;
   height: 8px;
-  margin-top: 7px;
   border-radius: 50%;
   background: #34c759;
   box-shadow:
@@ -2842,59 +2854,48 @@ a:focus-visible {
   }
 }
 
-.detail-heading {
+.detail-topbar-title {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.detail-title {
   margin: 0;
-  font-size: 17px;
+  overflow: hidden;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1.32;
+  line-height: 1.3;
   color: var(--t-title);
-  word-break: break-word;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.detail-title.done {
+.detail-topbar-title.done {
   color: var(--t-done);
   text-decoration-line: line-through;
 }
 
 .detail-title-input {
-  height: 30px;
-  font-size: 15px;
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  font-size: 12px;
   font-weight: 600;
-}
-
-.detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 3px 8px;
-  font-size: 9.5px;
-  color: var(--t-weak);
+  -webkit-app-region: no-drag;
 }
 
 .detail-chip {
+  flex-shrink: 0;
+  margin-left: 6px;
   padding: 1px 7px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.06);
   color: var(--t-secondary);
+  font-size: 9px;
   font-weight: 600;
 }
 
-/* 标题悬停：创建 / 更新 / 最近拉起（绝对时间） */
-.detail-title-wrap {
-  position: relative;
-}
-
+/* 标题悬停浮层：来源 / 创建 / 更新 / 最近拉起（绝对时间） */
 .detail-times {
   position: absolute;
-  top: calc(100% + 5px);
+  top: calc(100% + 7px);
   left: 0;
   z-index: 6;
   display: flex;

@@ -166,77 +166,69 @@ export function TodoDetailPage({
 
   return (
     <div className="panel-inner detail-page">
-      <div className="topbar">
+      <div className="topbar detail-topbar">
         <button className="topbar-back" onClick={onBack} aria-label="返回线索">
           ‹
         </button>
-        <span className="topbar-title page">{done ? '已归档线索' : '线索'}</span>
-      </div>
-
-      <div className="content detail-content">
-        <div className="detail-head">
+        <div
+          className="detail-topbar-main"
+          onMouseEnter={() => setHoverTimes(true)}
+          onMouseLeave={() => setHoverTimes(false)}
+        >
           {/* 标题前不放入口勾选：进行中 = 绿色呼吸灯，已归档 = 静态灰点（归档/恢复在「其他」里） */}
           <span className={`detail-status ${done ? 'done' : ''}`} aria-hidden="true" />
-          <div className="detail-heading">
-            <div
-              className="detail-title-wrap"
-              onMouseEnter={() => setHoverTimes(true)}
-              onMouseLeave={() => setHoverTimes(false)}
+          {editing ? (
+            <input
+              className="sheet-input detail-title-input"
+              value={title}
+              placeholder="标题（必填）"
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) void save()
+                if (e.key === 'Escape') setEditing(false)
+              }}
+              autoFocus
+            />
+          ) : (
+            <h1
+              className={`detail-topbar-title ${done ? 'done' : ''}`}
+              title="双击修改标题与描述"
+              onDoubleClick={() => setEditing(true)}
             >
-              {editing ? (
-                <input
-                  className="sheet-input detail-title-input"
-                  value={title}
-                  placeholder="标题（必填）"
-                  onChange={(e) => setTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) void save()
-                    if (e.key === 'Escape') setEditing(false)
-                  }}
-                  autoFocus
-                />
-              ) : (
-                <h1
-                  className={`detail-title ${done ? 'done' : ''}`}
-                  title="双击修改标题与描述"
-                  onDoubleClick={() => setEditing(true)}
-                >
-                  {todo.title}
-                </h1>
-              )}
+              {todo.title}
+            </h1>
+          )}
 
-              {/* 悬停标题 → 创建 / 更新 / 最近拉起（绝对时间） */}
-              {hoverTimes && !editing && (
-                <div className="detail-times" role="tooltip">
-                  <div className="detail-times-row">
-                    <span>创建</span>
-                    <span>{absTime(todo.createdAt)}</span>
-                  </div>
-                  <div className="detail-times-row">
-                    <span>更新</span>
-                    <span>{absTime(todo.updatedAt)}</span>
-                  </div>
-                  {todo.lastLaunch?.launchedAt && (
-                    <div className="detail-times-row">
-                      <span>最近拉起</span>
-                      <span>{absTime(todo.lastLaunch.launchedAt)}</span>
-                    </div>
-                  )}
+          {/* 悬停标题 → 来源 / 创建 / 更新 / 最近拉起（绝对时间） */}
+          {hoverTimes && !editing && (
+            <div className="detail-times" role="tooltip">
+              {todo.source && (
+                <div className="detail-times-row">
+                  <span>来源</span>
+                  <span>{todo.source === 'panel' ? '面板对话' : 'CLI'}</span>
+                </div>
+              )}
+              <div className="detail-times-row">
+                <span>创建</span>
+                <span>{absTime(todo.createdAt)}</span>
+              </div>
+              <div className="detail-times-row">
+                <span>更新</span>
+                <span>{absTime(todo.updatedAt)}</span>
+              </div>
+              {todo.lastLaunch?.launchedAt && (
+                <div className="detail-times-row">
+                  <span>最近拉起</span>
+                  <span>{absTime(todo.lastLaunch.launchedAt)}</span>
                 </div>
               )}
             </div>
-
-            {(done || todo.source) && (
-              <div className="detail-meta">
-                {done && <span className="detail-chip">已归档</span>}
-                {todo.source && (
-                  <span>来源 {todo.source === 'panel' ? '面板对话' : 'CLI'}</span>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
+        {done && <span className="detail-chip">已归档</span>}
+      </div>
 
+      <div className="content detail-content">
         {editing ? (
           <>
             <textarea
