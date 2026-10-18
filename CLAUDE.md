@@ -113,10 +113,11 @@ packages/ai/core  工具无关合同 + 纯函数（不得依赖任何具体 adap
 - `docs/release-playbook.md`：macOS 签名/公证/发版全链路。
 - `docs/prd-session-timeline.md`：进行中的「最后一条 user 消息 + 跨工具时间线」PRD（P0 含 WorkBuddy 国内版与国际版适配器）。
 - `docs/workbuddy-adapter-notes.md`：WorkBuddy 存储格式与深链接的只读实测记录。
+- `docs/rules/README.md`：规则文档索引（先读这里）；接入/修改 AI 工具适配器前必读 `docs/rules/agent-tool-adapter.md`。
 - `.workbuddy/memory/`：项目长期记忆（含更细的踩坑记录，可作背景参考）。
 
 ## 当前状态（2026-10-19）
 
 - M0–M4 已完成：面板/Todo CRUD、项目索引与拉起、面板 Chat、多会话绑定、用量、导出、打包安装。UI 玻璃化分支已合入。
-- 代码中只有 `PiAdapter` 一个实装；`docs/prd-session-timeline.md` 规划的 `workbuddy` / `workbuddy-ai` 适配器与跨会话时间线**尚未落地**。新增适配器应实现 `AiToolAdapter` 并只在 `main.ts` 注册，不改 `ai/core`。
+- 代码中只有 `PiAdapter` 一个实装；`docs/prd-session-timeline.md` 规划的 `workbuddy` / `workbuddy-ai` 适配器与跨会话时间线**尚未落地**。新增适配器应实现 `AiToolAdapter`，不改 `ai/core`；注意 as-built 的 `SessionService` / `LaunchService` / `ProjectIndexService` 仍直接持有 `PiAdapter`（`ProjectIndexService` 还调用 pi 专属的 `sessionRoots()`），接入第二个工具前需先收敛类型（见 `docs/rules/agent-tool-adapter.md` §3）。
 - 提交信息沿用中文 `feat(scope): ...` / `fix(scope): ...` 风格；代码注释保持中文并解释「为什么」而非复述「做了什么」。
