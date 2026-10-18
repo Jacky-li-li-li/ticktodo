@@ -148,6 +148,8 @@
 
 ## 10. 国际版 WorkBuddy AI 本期实测（2026-10-18 17:36–17:50 UTC+8，5.8.4）——独立适配器 `workbuddy-ai`
 
+> ⚠️ §10.1–§10.7 为**首轮（本机无会话）**记录，其中“无会话/未验证/无 -wal/-shm”等表述已被 §10.8（有真实会话的第二轮实测）取代；以 §10.8 为准。
+
 > 不得与 §2–§8（国内版）混用。全程只读：db 复制到临时目录后以 `mode=ro` 打开；未读取会话标题/内容/ID，也未读 keyblob/settings。文档不含任何会话标题/ID/截图路径。
 
 ### 10.1 实测环境
@@ -189,5 +191,39 @@
 - Changelog（https://www.workbuddy.ai/docs/workbuddy/Changelog ）：5.8.4、5.7.6、5.6.2、5.5.0、5.2.7、5.2.3；**无** deeplink/scheme、本地存储格式、hooks 的说明；仅 5.8.4 提到“Scheduled task status, recovery, notifications, and result navigation”、“Large or malformed history records preventing conversations from opening”（说明历史记录格式会变/有损坏情形）。
 - Quickstart：登录用 Google/GitHub OAuth（见 §9.2）。官方无存储/深链/hooks 规范。
 
-### 10.7 仍未验证
+### 10.7 仍未验证（首轮；已被 §10.8 部分取代）
 会话 jsonl 格式与全部消息规则；status 取值与 deleted_at 语义；真实会话 `chat/<id>` 深链接定位；hooks；根目录环境变量实际行为。需在有国际版会话、屏幕解锁时补测，补测前适配器“回到会话”默认关闭（PRD §9B.6）。
+
+### 10.8 第二轮实测（2026-10-18 18:05–18:10 UTC+8，5.8.4，已有 1 个真实本地会话，屏幕已解锁 IOConsoleLocked=No）
+
+> 全程只读 + 深链接/退出重启应用；未发消息、未改配置、未读 keyblob/settings。**本节与文档均不含会话标题/id/截图路径**（未保存截图）。样本仅 1 个会话（1 轮问答）。
+
+**数据库**
+- `file:…?mode=ro&immutable=1` 打开：`sessions` **0 行**；原因：库为 WAL，新会话仅在 `-wal`（8 KB，db 本体 188 KB），immutable 模式忽略 -wal。把 db 与 -wal 复制到临时目录后以普通方式读取：**1 行**。→ 适配器不得用 immutable=1（PRD §9B.1）。
+- 该行：`status=completed`，`deleted_at=NULL`，`transport=local`，`is_background_automation=NULL`，`is_playground=1`，`source_mode=mode=craft`，`permission_mode=bypassPermissions`，`unread=0`；`created_at < last_activity_at ≤ updated_at`（毫秒）；`id` 与 jsonl 文件名一致。
+
+**会话记录**
+- 位置：`~/.workbuddy-ai/projects/<cwd 编码>/<id>.jsonl` + `<id>.file-rollback.ndjson`。cwd 编码把 `/` 换成 `-`、去首个 `-`，**空格保留**。
+- `~/.workbuddy-ai/sessions/<pid>.json` 仅为预热进程心跳（`kind=prewarm`，sessionId 以 `prewarm-` 开头），非真实会话。
+- 事件 `type`：`session-meta`（×2，`meta` 含 hostKind）、`message`、`file-history-snapshot`、`ai-title`；共 6 行。`message` 含 `role`、`content[{type:"input_text"|…,text}]`；assistant 带 `status`。
+
+**与国内版逐项对比**
+| 项 | 国内版 | 国际版（本轮） |
+|---|---|---|
+| jsonl 路径/文件名结构 | `projects/<编码cwd>/<id>.jsonl` | 一致 |
+| `type=message`、`role=user/assistant` | 是 | 一致 |
+| user 文本包装 | 外层 `<system-reminder>` 内含 `<user_query>` | **无 `<system-reminder>`**；平铺 `user_info/identity_context/product_identity/project_context/project_layout/current_time/memory_and_skills_reminder/user_query` |
+| `startsNewUserRequest` | 真实用户请求为 true | 一致（样本为 true） |
+| `isMeta` / `isCompacted` | 合成消息带标记 | 样本中**均未出现**，语义未验证 |
+| 末尾 assistant `status` | `completed`/`incomplete` | `completed`（一致） |
+| `sessions.status` | completed/active/error/Pending | 样本 `completed`；其余未验证 |
+| `deleted_at` | NULL/-1 未删除，正数软删除 | 样本 NULL；其余未验证 |
+| 最后 user 消息提取规则 | 筛 `startsNewUserRequest`，取 `<user_query>` | **规则一致可用**，仅包装不同（只验证了规则，内容未入文档） |
+
+**深链接（真实会话 id）**——判据：渲染进程日志 `cloudProjection` 路由差异、`resetRouterToHome`、主进程 `[DeepLink]`、`lsappinfo` 前台 bundle id；System Events 窗口标题恒为 `WorkBuddy AI`，不能区分会话。
+| 场景 | 次数 | 结果 |
+|---|---|---|
+| 热启动，先停在 home / 先切到 Finder | 5 | 4 次稳定定位 `/conversation/<id>`（前台 `com.workbuddy.workbuddy-ai`）；1 次（首次）约 100ms 后 `resetRouterToHome` 回落首页 |
+| 冷启动（先退出应用） | 2 | 2 次均：主进程 “stored until WindowManager ready”→分发→路由短暂到会话页→`resetRouterToHome` 回落首页 |
+- 结论：热启动大多可定位，冷启动稳定失败，`open` 恒 exit 0 → **国际版“回到会话”仍默认关闭**，置灰并显示会话信息；不降级到 `workbuddy://`。国内版冷/热/最小化均成功，此为差异。
+- 仍待查：冷启动回落首页的原因（疑似渲染端会话列表未就绪时被重置）、热启动偶发回落的触发条件、最小化、已删除 id。
