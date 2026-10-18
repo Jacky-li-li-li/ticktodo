@@ -2966,11 +2966,6 @@ a:focus-visible {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.detail-edit-actions {
-  display: flex;
-  gap: 6px;
-}
-
 .detail-actions-primary {
   display: flex;
   gap: 8px;
