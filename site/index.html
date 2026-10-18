@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ticktodo — AI 会话的索引层</title>
-<meta name="description" content="Ticktodo：一个 macOS 置顶 Todo 工作台。线索是索引，AI 会话是被索引的对象。本地优先。">
+<title>Ticktodo — 一件事的所有 AI 会话，一眼看全</title>
+<meta name="description" content="Ticktodo 以事情为中心，把同一件事在 Claude Code、pi、Cursor 等工具里的多个 AI 会话聚到一起：回来一眼看到做过什么、做到哪，并一键回到任意会话继续。macOS，本地优先。">
 <meta name="color-scheme" content="light dark">
 <link rel="canonical" href="https://ticktodo.cc/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://ticktodo.cc/">
-<meta property="og:title" content="Ticktodo — AI 会话的索引层">
-<meta property="og:description" content="Ticktodo：一个 macOS 置顶 Todo 工作台。线索是索引，AI 会话是被索引的对象。本地优先。">
+<meta property="og:title" content="Ticktodo — 一件事的所有 AI 会话，一眼看全">
+<meta property="og:description" content="Ticktodo 以事情为中心，把同一件事在 Claude Code、pi、Cursor 等工具里的多个 AI 会话聚到一起：回来一眼看到做过什么、做到哪，并一键回到任意会话继续。macOS，本地优先。">
 <meta property="og:image" content="https://ticktodo.cc/mascot.png">
 <meta name="twitter:card" content="summary">
 <link rel="icon" type="image/png" href="icon.png">
@@ -124,9 +124,9 @@
 
   <header class="hero" id="top">
     <img class="mascot" src="mascot.png" alt="Ticktodo 吉祥物：一颗别着图钉的云朵豆" width="240" height="240">
-    <div class="eyebrow"><span class="dot"></span><span data-i18n="eyebrow">macOS · 本地优先 · 为 AI 会话而生</span></div>
-    <h1 data-i18n="h1">AI 会话的索引层</h1>
-    <p class="sub" data-i18n="sub">一个置顶在桌面一角的 Todo 工作台。<span class="nb">每条线索都能绑定一个 agent 会话——</span><span class="nb">线索是索引，会话是被索引的对象。</span></p>
+    <div class="eyebrow"><span class="dot"></span><span data-i18n="eyebrow">macOS · 本地优先 · 以事情为中心</span></div>
+    <h1 data-i18n="h1">一件事的所有 AI 会话，一眼看全</h1>
+    <p class="sub" data-i18n="sub">同一件事跨 Claude Code、pi、Cursor 做了好几天？<span class="nb">Ticktodo 把这些会话聚在这件事下，</span><span class="nb">回来一眼看到做到哪，一键回到会话继续。</span></p>
     <div class="cta" id="download">
       <a class="btn" href="#download-placeholder" data-download download>
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.3 1.88-3.4 1.97-3.46-1.07-1.57-2.74-1.78-3.33-1.8-1.42-.15-2.77.83-3.49.83-.72 0-1.83-.81-3-.79-1.55.02-2.97.9-3.77 2.28-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.78.74 2.99.72 1.24-.02 2.02-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.42-3.66zM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.67 1.37-.58.67-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z"/></svg>
@@ -145,9 +145,9 @@
 <section class="block what" id="what">
   <div class="wrap">
     <p class="label" data-i18n="l_what">它是什么</p>
-    <h2 data-i18n="h_what">不是又一个待办清单，<br>是你和 agent 之间的目录。</h2>
+    <h2 data-i18n="h_what">不用再靠回忆，<br>挨个工具翻找会话。</h2>
     <div class="grid g3">
-      <div class="card"><span class="num">01</span><h3 data-i18n="w1t">线索即索引</h3><p data-i18n="w1d">每条 Todo 是一条线索，指向它背后那段 AI 会话。想接着干，从线索点进去就行。</p></div>
+      <div class="card"><span class="num">01</span><h3 data-i18n="w1t">以事情为中心</h3><p data-i18n="w1d">一件事就是一条 Todo，它在各个工具里的会话都聚在下面：做过什么、做到哪，一眼看清，想接着干就点进任意一个会话。</p></div>
       <div class="card"><span class="num">02</span><h3 data-i18n="w2t">始终在手边</h3><p data-i18n="w2d">常驻菜单栏的悬浮小面板，置顶在桌面一角，不抢窗口，也不会被埋掉。</p></div>
       <div class="card"><span class="num">03</span><h3 data-i18n="w3t">本地优先</h3><p data-i18n="w3d">数据存放在本机 <code>~/.ticktodo</code>，不需要账号，也不依赖云端。</p></div>
     </div>
@@ -231,12 +231,12 @@
   const EN = {
     alt_label:'Other architecture: ', all_rel:'All releases',
     nav_what:'What', nav_feat:'Features', nav_how:'How',
-    eyebrow:'macOS · Local-first · Built for AI sessions',
-    h1:'The index layer for your AI sessions',
-    sub:'A pinned Todo workbench in the corner of your desktop. Every thread can be bound to an agent session — Todos are the index, sessions are what they point to.',
+    eyebrow:'macOS · Local-first · Task-centric',
+    h1:'All your AI sessions for one task, at a glance',
+    sub:'Worked on one task for days across Claude Code, pi and Cursor? Ticktodo gathers those sessions under the task — come back, see where you left off, and jump into any session in one click.',
     dl:'Download for macOS', copy:'Copy', note:'or install with one line in Terminal',
-    l_what:'What it is', h_what:'Not another to-do list —<br>a directory between you and your agents.',
-    w1t:'Todos as an index', w1d:'Each Todo is a thread pointing to the AI session behind it. Pick it up again straight from the Todo.',
+    l_what:'What it is', h_what:'Stop recalling, then digging<br>through tool after tool.',
+    w1t:'Centered on the task', w1d:'One task is one Todo, with its sessions from every tool gathered beneath it: what was done and how far it got, at a glance. Jump back into any session to continue.',
     w2t:'Always within reach', w2d:'A small floating panel that lives in the menu bar, pinned to a corner — never in the way, never buried.',
     w3t:'Local-first', w3d:'Data lives on your Mac in <code>~/.ticktodo</code>. No account, no cloud.',
     l_feat:'Features', h_feat:'Just the things you need.',
@@ -254,7 +254,7 @@
   };
   const ZH = {};
   document.querySelectorAll('[data-i18n]').forEach(el => ZH[el.dataset.i18n] = el.innerHTML);
-  const TITLE = {zh: document.title, en: 'Ticktodo — The index layer for AI sessions'};
+  const TITLE = {zh: document.title, en: 'Ticktodo — All your AI sessions for one task, at a glance'};
   let lang = 'zh';
   function setLang(l){
     lang = l; const d = l === 'en' ? EN : ZH;
