@@ -5,7 +5,7 @@
  *  - 无边框置顶窗，默认 360×520；只保留最小宽度 320，最小高度由 main 按 open todo 数
  *    （最多默认展示 5 条）动态设置；无最大尺寸，用户拖拽后记住尺寸；
  *  - 贴屏幕右上角常驻，避菜单栏，距边 16px；位置记忆（首帧不等扫描，无状态则落在默认位）；
- *  - 浅色毛玻璃：vibrancy under-window + 全透明底（材质层由 Renderer CSS --glass-* 落 UI-SPEC §3.1）；
+ *  - 浅色毛玻璃：vibrancy fullscreen-ui + 全透明底（材质层由 Renderer CSS --glass-* 落 UI-SPEC §3.1）；
  *  - 位置/尺寸属机器本地的「偏好」，放 cache/window-state.json（可再生层，丢了只是回默认位），
  *    之所以不放 data/：data 是「可同步」层，跨机器不该漫游窗口几何。
  */
@@ -114,10 +114,10 @@ export function createPanelWindow(dirs: TickDirs): BrowserWindow {
     // 隐藏红绿灯，外观仍是无边框面板。CSS 外圆角同步为 --r-window: 10px（styles.css）。
     frame: true,
     titleBarStyle: 'hidden',
-    // macOS 浅色毛玻璃：全透明窗底 + under-window vibrancy，让 CSS --glass-* 透出桌面壁纸色
+    // macOS 浅色毛玻璃：全透明窗底 + fullscreen-ui vibrancy（比 under-window 更透），让 CSS --glass-* 透出壁纸色
     transparent: true,
     backgroundColor: '#00000000',
-    vibrancy: 'under-window',
+    vibrancy: 'fullscreen-ui',
     visualEffectState: 'active',
     roundedCorners: true,
     hasShadow: true,

@@ -58,7 +58,7 @@
 }
 
 .tick-glass-pill:hover {
-  background: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .tick-glass-pill:disabled {
