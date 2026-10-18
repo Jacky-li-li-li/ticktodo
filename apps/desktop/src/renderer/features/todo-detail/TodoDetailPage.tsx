@@ -316,12 +316,11 @@ export function TodoDetailPage({
             <div className="detail-sessions">
               {sessions.map((s) => (
                 <div className="detail-session" key={s.sessionId}>
-                  <div className="detail-session-tool" title={s.toolId}>
+                  <div className="detail-session-tool" data-tool={s.toolId} aria-label={s.toolId}>
                     <ToolIcon toolId={s.toolId} size={16} />
                   </div>
                   <div className="detail-session-main">
                     <div className="detail-session-top">
-                      <span className="detail-session-toolname">{s.toolId}</span>
                       <span>{s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'}</span>
                       {s.state === 'pending' && <span className="session-tag">待发送</span>}
                       {s.missing && <span className="session-tag">已不在本机</span>}
