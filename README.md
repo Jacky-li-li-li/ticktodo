@@ -11,6 +11,7 @@
     <a href="#install">Install</a> ·
     <a href="#what-it-does">Features</a> ·
     <a href="#supported-tools">Supported tools</a> ·
+    <a href="https://ticktodo.cc/">Website</a> ·
     <a href="./README.zh-CN.md">简体中文</a>
   </p>
 </div>
@@ -156,5 +157,5 @@ Ticktodo is local-first:
 ---
 
 <div align="center">
-  <sub>Made for macOS · Your data stays on your computer · <a href="https://ticktodo.cc">ticktodo.cc</a></sub>
+  <sub>Local-first · Your data stays organized on your computer · <a href="https://ticktodo.cc">ticktodo.cc</a></sub>
 </div>

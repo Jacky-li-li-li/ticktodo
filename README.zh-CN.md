@@ -11,6 +11,7 @@
     <a href="#安装">安装</a> ·
     <a href="#它能做什么">功能</a> ·
     <a href="#支持的工具">支持的工具</a> ·
+    <a href="https://ticktodo.cc/">官网</a> ·
     <a href="./README.md">English</a>
   </p>
 </div>
@@ -76,7 +77,7 @@ bash scripts/install.sh path/to/Tick.app
 ## 快速上手
 
 1. 点菜单栏图标打开面板（或按 `⌘⌥T`）。
-2. 在顶部输入一句要做的事，回车，得到一条线索。
+2. 在顶部输入一个 todo，回车，得到一条线索。
 3. 点进线索详情，选择「新建会话」，或从「倒入历史会话」绑定已有会话。
 4. 以后点会话右侧的滑块（或「接着做」），就能回到那个会话。
 
@@ -156,5 +157,5 @@ Ticktodo 是本地优先的：
 ---
 
 <div align="center">
-  <sub>Made for macOS · 你的数据留在你的电脑上 · <a href="https://ticktodo.cc">ticktodo.cc</a></sub>
+  <sub>本地优先 · 你的数据井井有条地留在你的电脑上 · <a href="https://ticktodo.cc">ticktodo.cc</a></sub>
 </div>
