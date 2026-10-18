@@ -1,6 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './app/App'
+import '@tick/ui/styles.css'
 import './styles.css'
 
 // UI-SPEC §2.2：唯一字族 Inter，字重只用 400/500/600/700 四档（本地打包，无网络依赖）
