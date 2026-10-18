@@ -6,7 +6,7 @@
  *  2) 补充上下文 body（双击进入编辑；失焦/Enter 保存、Shift+Enter 换行、Esc 放弃）
  *  3) 元信息：状态灯 / 来源 / 创建更新与最近拉起（悬停标题查看）
  *  4) 主操作：会话标题行右侧图标（新建会话 / 倒入历史会话；接着做只放在每个会话行里）
- *  5) 会话列表：每条会话的工具、时间、状态、最后一条 user 消息、项目名与路径，
+ *  5) 会话列表：每条会话第一行 = 第一条 user 消息（与最后一条不同时再显示「上次」）、工具图标、时间、状态、项目名与路径，
  *     以及「接着做 / 解绑」；设置开启时显示单会话用量
  */
 
@@ -314,12 +314,25 @@ export function TodoDetailPage({
             </div>
           ) : (
             <div className="detail-sessions">
-              {sessions.map((s) => (
+              {sessions.map((s) => {
+                const firstText = (s.firstMessage ?? s.name ?? '未命名会话').trim()
+                const lastText = s.lastMessage?.trim()
+                return (
                 <div className="detail-session" key={s.sessionId}>
                   <div className="detail-session-tool" data-tool={s.toolId} aria-label={s.toolId}>
                     <ToolIcon toolId={s.toolId} size={16} />
                   </div>
                   <div className="detail-session-main">
+                    {/* 第一行 = 该会话的第一条 user 消息（会话是什么事） */}
+                    <div className="detail-session-title" title={firstText}>
+                      {firstText}
+                    </div>
+                    {lastText && lastText !== firstText && (
+                      <div className="detail-session-last" title={lastText}>
+                        <span className="detail-session-last-label">上次</span>
+                        {lastText}
+                      </div>
+                    )}
                     <div className="detail-session-top">
                       <span>{s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'}</span>
                       {s.state === 'pending' && <span className="session-tag">待发送</span>}
@@ -328,7 +341,6 @@ export function TodoDetailPage({
                         <span className="session-usage">{usageText(usages[s.sessionId] as SessionUsage)}</span>
                       )}
                     </div>
-                    <div className="detail-session-msg">{s.lastMessage ?? s.name ?? s.firstMessage ?? '—'}</div>
                     {/* 项目跟会话走：不同会话可能不在同一个项目里 */}
                     <div className="detail-session-project" title={s.filePath}>
                       <span className="detail-session-project-name">
@@ -346,7 +358,8 @@ export function TodoDetailPage({
                     </button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>

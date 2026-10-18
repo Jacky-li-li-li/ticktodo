@@ -3100,6 +3100,35 @@ a:focus-visible {
   gap: 3px;
 }
 
+/* 第一行：该会话的第一条 user 消息（会话是什么事） */
+.detail-session-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--t-title);
+  word-break: break-word;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* 第二条 user 消息（与第一条不同时才显示） */
+.detail-session-last {
+  overflow: hidden;
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--t-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.detail-session-last-label {
+  margin-right: 4px;
+  color: var(--t-faint);
+  font-size: 9px;
+}
+
 .detail-session-top {
   display: flex;
   align-items: center;
@@ -3107,17 +3136,6 @@ a:focus-visible {
   flex-wrap: wrap;
   font-size: 9px;
   color: var(--t-weak);
-}
-
-.detail-session-msg {
-  display: -webkit-box;
-  overflow: hidden;
-  font-size: 10.5px;
-  line-height: 1.45;
-  color: var(--t-row);
-  word-break: break-word;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 /* 每个会话自己的项目（不同会话可能不在同一目录） */
