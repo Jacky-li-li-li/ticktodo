@@ -10,13 +10,13 @@
 **已决定（Jacky，2026-10-18）**
 
 1. 不做 AI 摘要：「摘要」＝该会话最后一条 user 发的消息原文，不改写、不生成。
-2. 第二个接入工具是**桌面形态的 WorkBuddy**（不再是 Claude Code），列入 P0 范围；Claude Code / Cursor 降为后续。
+2. 第二个接入工具是**桌面形态的国内版 WorkBuddy（workbuddy.cn）**（不再是 Claude Code），列入 P0 范围；Claude Code / Cursor 降为后续。**国际版 WorkBuddy AI（workbuddy.ai）是独立工具，本期不接入**，列为后续独立适配器（见 §9.8、§10 表 B）。
 3. 时间线**只读**，不影响 todo 完成状态。
 4. 用户消息：用各工具会话记录自带的角色字段（`role: user`）识别，并在**各 adapter 内**过滤合成 user 消息。
 5. 完成状态：读各工具会话记录自带字段，不由 Ticktodo 另行推断。
 6. 回到会话：用**深链接**拉起 desktop 应用并定位到会话。
 
-> ⚠️ 诚实说明：WorkBuddy 的存储格式与深链接**大部分不是公开契约**，见 §10「官方规范依据」。
+> ⚠️ 诚实说明：国内版 WorkBuddy 的存储格式与深链接**大部分不是公开契约**，见 §10「官方规范依据」。
 
 ## 1. 背景与痛点
 
@@ -60,6 +60,7 @@
 ### P1（后续）
 
 - P1-1 **第二个接入工具为 WorkBuddy（P0 范围内，见 P0-7）**；Claude Code / Cursor 降为后续（Claude Code 会话同为本地 JSONL，可在 WorkBuddy 验证归一后复用；Cursor 存储格式待查）。
+- P1-1b **国际版 WorkBuddy AI（workbuddy.ai）独立适配器**：与国内版是两个独立工具，不共用适配器与配置；其 scheme、目录、数据格式未验证，需单独验证后另立需求（现状见 §9.8、§10 表 B）。
 - P1-2 时间线里标注 fork 血缘（`parentSessionPath`）与会话间「接手」关系。
 - P1-3 导出（接入现有 F8 导出，加入时间线与最后 user 消息）。
 - P1-4 全部会话视图里按最后 user 消息搜索。
@@ -237,10 +238,11 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 - 不联网、不外发；user 文本只存本机 `~/.ticktodo` 缓存（脱敏策略见开放问题 1）。
 - 不接入 `sessions/<pid>.json` 进程心跳与 `traces/`（可选，非本期）。
 
-### 9.8 变体与根目录可配置
+### 9.8 根目录配置与国际版边界
 
-- 两个变体：WorkBuddy（`~/.workbuddy`，scheme `workbuddy`，bundle `com.tencent.workbuddy.mac`）与 WorkBuddy AI（`~/.workbuddy-ai`，scheme `workbuddy-ai`，bundle `com.workbuddy.workbuddy-ai`）。目录名与 scheme 均做成配置项，默认只启用主变体，AI 变体会话为空时不展示。
-- 根目录解析优先级：用户配置 > 环境变量 `WORKBUDDY_CONFIG_DIR` > `CODEBUDDY_CONFIG_DIR` > 默认 `~/.workbuddy`。
+- 本适配器**仅针对国内版 WorkBuddy**（workbuddy.cn）：数据目录 `~/.workbuddy`，scheme `workbuddy`，bundle `com.tencent.workbuddy.mac`。目录名与 scheme 可做成配置项，但仅作用于国内版。
+- 根目录解析优先级：用户配置 > 环境变量 `WORKBUDDY_CONFIG_DIR` > `CODEBUDDY_CONFIG_DIR` > 默认 `~/.workbuddy`。环境变量**仅第三方说法、仅按国内版对待、本机未验证**（§10 #15）。
+- **国际版 WorkBuddy AI（workbuddy.ai）是独立工具，本期不接入**：不作为"变体"、不通过切换根目录/scheme/环境变量复用本适配器；后续需另建独立适配器并单独验证。本机观察（未验证）见 §10 表 B 与 notes §9。
 
 ### 9.9 容错与版本探测
 
@@ -261,7 +263,10 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 [E] codeg https://github.com/xintaofei/codeg/blob/main/src-tauri/src/parsers/codebuddy.rs
 [F] deja-vu https://vshulcz.github.io/deja-vu/registry/codebuddy.html
 [G] workbuddy-mcp https://github.com/ZhaoXiangyu99/workbuddy-mcp
-[N] 本机笔记 `docs/workbuddy-adapter-notes.md`（只读调研 + 实测，WorkBuddy 5.8.3）
+[N] 本机笔记 `docs/workbuddy-adapter-notes.md`（只读调研 + 实测，国内版 WorkBuddy 5.8.3）
+[I] 国际版 WorkBuddy AI 官网文档 https://www.workbuddy.ai/docs/workbuddy/Changelog 、https://www.workbuddy.ai/docs/workbuddy/Quickstart（仅用于表 B）
+
+**表 A：国内版 WorkBuddy（workbuddy.cn）——本期接入对象**
 
 | # | 依赖的功能 / 假设 | 依据等级 | 来源与说明 |
 | --- | --- | --- | --- |
@@ -277,12 +282,24 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 | 10 | 冷启动 / 前置 / 最小化行为 | 官方仅提及功能无规范 | [A]：5.3.12「修复专家深链在冷启动期间无法打开」、4.22.15「外部协议链接偶发错误唤起」——说明有历史缺陷、无稳定性承诺。冷/热/最小化三种行为为本机实测 [N]；不存在 id 落首页亦为实测 |
 | 11 | 软删除语义：`deleted_at IS NULL OR <=0` | 仅本机逆向+实测（非公开契约） | [N]（样本里非删除值为 NULL/-1/0，且曾见 active 会话带正数 deleted_at，语义需继续验证）；官方无文档 |
 | 12 | hooks 获取会话 id / transcript 路径 | 官方仅提及功能无规范（对 WorkBuddy）；CodeBuddy Code 为官方文档明确 | [B]：CodeBuddy Code 官方文档明确 hook stdin 含 `session_id / transcript_path / cwd / hook_event_name`，事件含 SessionStart/SessionEnd/PreToolUse 等。**WorkBuddy 侧**：[A] 5.3.5 仅一行「WorkBuddy 扩展插件 Hook」、4.22.4「修复套件市场 hooks 内容无法显示」，无配置/事件文档。本机只读检查（2026-10-18）：`~/.workbuddy/settings.json` 仅 key 名检查，顶层无 `hooks` 键（键为 enabledPlugins、claw、sandbox 等）；app.asar 字符串含 `SessionStart`/`PreToolUse`，说明内核含 hook 机制但 WorkBuddy 用法未确认。**结论：WorkBuddy 是否支持 CodeBuddy 同款 hooks 未证实，本期不依赖** |
-| 13 | 两变体目录：`~/.workbuddy`、`~/.workbuddy-ai` | 第三方实现佐证 | [F] 记录两目录；本机 [N] 两目录均存在 |
-| 14 | 两变体 URL scheme：`workbuddy` / `workbuddy-ai`，bundle id | 仅本机逆向+实测（非公开契约） | [N]（Info.plist 与 app.asar）；官方无文档 |
-| 15 | 根目录环境变量 `WORKBUDDY_CONFIG_DIR / CODEBUDDY_CONFIG_DIR` | 第三方实现佐证 | [F]（`$WORKBUDDY_CONFIG_DIR`）、[E]（`CODEBUDDY_CONFIG_DIR`）；官方 [C] 未明确说明 WorkBuddy 是否遵循 |
+| 13 | 国内版数据目录：`~/.workbuddy` | 第三方实现佐证 | [F] 记录该目录；本机 [N] 存在（国际版目录不在此列，见表 B） |
+| 14 | 国内版 URL scheme `workbuddy`、bundle id `com.tencent.workbuddy.mac` | 仅本机逆向+实测（非公开契约） | [N]（Info.plist 与 app.asar）；官方无文档 |
+| 15 | 根目录环境变量 `WORKBUDDY_CONFIG_DIR / CODEBUDDY_CONFIG_DIR`（仅按国内版对待） | 第三方实现佐证（本机未验证） | [F]（`$WORKBUDDY_CONFIG_DIR`）、[E]（`CODEBUDDY_CONFIG_DIR`）；官方 [C] 未明确说明 WorkBuddy 是否遵循；对国际版无依据 |
 | 16 | 前台应用判断：主进程名 `Electron`、bundle id `com.github.Electron` | 仅本机逆向+实测（非公开契约） | [N] 8.5 实测；依赖打包细节，随版本可能变 |
 
-**等级统计（共 16 项）**：官方文档明确 **0**（针对 WorkBuddy；仅 #12 的 CodeBuddy Code hooks 与 #2 的 `projects/` 目录存在性是官方文档，但属 CodeBuddy Code，不能直接担保 WorkBuddy）；官方仅提及功能无规范 **3**（#9、#10、#12）；第三方实现佐证 **6**（#2、#3、#4、#7、#13、#15）；仅本机逆向+实测 **7**（#1、#5、#6、#8、#11、#14、#16）。
+**等级统计（表 A，国内版，共 16 项）**：官方文档明确 **0**（针对 WorkBuddy；仅 #12 的 CodeBuddy Code hooks 与 #2 的 `projects/` 目录存在性是官方文档，但属 CodeBuddy Code，不能直接担保 WorkBuddy）；官方仅提及功能无规范 **3**（#9、#10、#12）；第三方实现佐证 **6**（#2、#3、#4、#7、#13、#15）；仅本机逆向+实测 **7**（#1、#5、#6、#8、#11、#14、#16）。
+
+**表 B：国际版 WorkBuddy AI（workbuddy.ai）——独立工具，本期不接入，下列均不与表 A 共用依据等级**
+
+| # | 项 | 依据等级 | 来源与说明 |
+| --- | --- | --- | --- |
+| B1 | 应用与 bundle id：`WorkBuddy AI.app`、`com.workbuddy.workbuddy-ai`，版本 5.8.4 | 仅本机观察（未验证） | Info.plist 只读；版本号与 [I] Changelog 5.8.4 条目一致 |
+| B2 | URL scheme `workbuddy-ai` | 仅本机观察（未验证） | Info.plist 声明；路径/参数、定位行为均未测；官方 [I] 无 deeplink 说明 |
+| B3 | 数据目录 `~/.workbuddy-ai`（含 `workbuddy.db`；sessions 空、无 `projects/`） | 仅本机观察（未验证） | 仅看文件名；表结构、jsonl 格式、完成字段均未检查；官方 [I] 无存储格式说明 |
+| B4 | 根目录环境变量 | 未验证 | 无依据 |
+| B5 | 官方文档 | 官方仅有产品用法文档 | [I] Quickstart/Changelog 无 scheme、存储格式、hooks 的说明 |
+
+表 B 的等级不计入下方"等级统计"（统计仅针对表 A）。
 
 ### 诚实结论
 

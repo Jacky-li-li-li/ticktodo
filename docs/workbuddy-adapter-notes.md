@@ -3,16 +3,19 @@
 > 全程只读：DB 复制到 /tmp 后用 `sqlite3 -readonly` 读取；未读取任何密钥/token；未对 WorkBuddy 数据做任何写操作；未执行 open/深链接实验。文中不含真实对话内容。
 
 ## 1. 应用信息
-机器上有两个变体：
-| 项 | WorkBuddy.app（主） | WorkBuddy AI.app |
-|---|---|---|
-| 路径 | /Applications/WorkBuddy.app | /Applications/WorkBuddy AI.app |
-| Bundle ID | com.tencent.workbuddy.mac | com.workbuddy.workbuddy-ai |
-| 版本 | 5.8.3 | 5.8.4 |
-| URL scheme | `workbuddy` | `workbuddy-ai` |
-| 数据目录 | ~/.workbuddy | ~/.workbuddy-ai（几乎为空，sessions 空） |
+> **两个独立工具，不是同一工具的变体**：本文档的适配对象是**国内版 WorkBuddy**（workbuddy.cn）。国际版 **WorkBuddy AI**（workbuddy.ai）是另一个独立工具（不同官网、文档、bundle、scheme、数据目录），**本期不接入**，仅在 §9 单独记录本机观察，二者的结论、依据等级互不套用。
 
-- 均为 Electron（Contents/Frameworks/Electron Framework.framework），main 入口 `main/index.js`（打包于 app.asar，约 96MB）。
+国内版 WorkBuddy（workbuddy.cn）：
+
+| 项 | WorkBuddy.app |
+|---|---|
+| 路径 | /Applications/WorkBuddy.app |
+| Bundle ID | com.tencent.workbuddy.mac |
+| 版本 | 5.8.3 |
+| URL scheme | `workbuddy` |
+| 数据目录 | ~/.workbuddy |
+
+- 国内版为 Electron（Contents/Frameworks/Electron Framework.framework），main 入口 `main/index.js`（打包于 app.asar，约 96MB）。
 - 内核为 CodeBuddy（会话文件里有 `__codebuddyLocal`、`codebuddy.session_id` 等字段；还有 ~/Library/Application Support/CodeBuddyExtension）。
 - 其它：~/Library/Logs/WorkBuddy（main.log/renderer.log）、Preferences/com.tencent.workbuddy.mac.plist；Application Support 下 com.tencent.workbuddy.mac / WorkBuddy 仅含遥测/桩数据，不含会话。
 
@@ -58,7 +61,7 @@
 - 「当前最后一条 user 之后是否已有 assistant completed」可作为 Ticktodo「任务完成」的稳妥判据。
 
 ## 6. 拉起与定位
-- 自定义 URL scheme：`workbuddy://`（WorkBuddy.app）；`workbuddy-ai://`（AI 变体）。
+- 自定义 URL scheme：`workbuddy://`（国内版 WorkBuddy.app）。国际版 WorkBuddy AI 的 scheme 见 §9（独立工具，本期不接入，未验证）。
 - 从 app.asar 字符串分析（未执行）到的深链接：
   - `workbuddy://chat/<encodeURIComponent(sessionId)>[?query]` —— 打开指定会话（应用内通知点击、托盘 navigateToSession 都用它）；
   - `workbuddy://home` —— 回主页；
@@ -70,12 +73,12 @@
 
 ## 7. 风险与建议
 - 内部格式无公开契约：jsonl/DB schema 随版本（5.8.x）变化，需做字段容错并带版本探测（Info.plist 版本 + migrations 目录 `.workbuddy-sqlite-migrations`）。
-- 多变体：WorkBuddy / WorkBuddy AI 数据目录与 scheme 不同，需可配置（home 目录名 + scheme）。
+- 国际版 WorkBuddy AI 是独立工具，不与国内版共用适配器配置；若后续接入，须另建独立适配器并单独验证（见 §9）。
 - 敏感数据：同目录下有 keyblob/settings/认证文件，适配器只应读 workbuddy.db 与 projects/*.jsonl，且 user 文本进入 Ticktodo 前建议截断/脱敏（wrapper 中含系统提示、记忆、路径）。
 - 读取并发：应用运行时 DB 处于 WAL，务必只读（`-readonly` 或 immutable 复制）；jsonl 追加写，按行读取容忍末行半行。
 - 会话删除为软删除（deleted_at），jsonl 可能仍在，需用 DB 过滤。
 - 文件监听：可对 projects/<cwd>/<id>.jsonl 做 mtime/大小轮询替代全量解析；自动化/后台会话（is_background_automation）应排除。
-- 建议适配器接口：listSessions()（DB）→ lastUserMessage(id)（jsonl）→ isDone(id)（status + jsonl 末尾）→ open(id)（`open workbuddy://chat/<id>`）。深链接定位需在真机验证后再落地。
+- 建议适配器接口：listSessions()（DB）→ lastUserMessage(id)（jsonl）→ isDone(id)（status + jsonl 末尾）→ open(id)（`open workbuddy://chat/<id>`）。深链接定位需在真机验证后再落地。（以上均针对国内版。）
 
 ## 8. 深链接实测 + 官方文档核对（2026-10-18 16:35–16:40 UTC+8，WorkBuddy 5.8.x）
 
@@ -104,11 +107,11 @@
   - HTTP/ACP API（Beta）https://cloud.tencent.com/document/product/1831/137064 ：`GET /api/v1/sessions?cwd=*`、`DELETE /api/v1/sessions/:id`、`POST /api/v1/sessions/:id/rename`；公开 REST API 承诺“语义化版本，不做破坏性变更”，`/internal/*` 不保证兼容。属于 CodeBuddy Code 服务模式，非 WorkBuddy 桌面端。
   - 远程控制 /gateway https://cloud.tencent.com/document/product/1831/137049 （Beta）。
   - 企业版 CreateAgentSession API https://cloud.tencent.com/document/product/1831/138630 （云端企业智能体会话，非本地）。
-- jsonl 记录格式：**官方文档未给出**。第三方实现一致：https://github.com/xintaofei/codeg/blob/main/src-tauri/src/parsers/codebuddy.rs 、https://vshulcz.github.io/deja-vu/registry/codebuddy.html ：路径 `${CODEBUDDY_CONFIG_DIR:-~/.codebuddy}/projects/<cwd 编码>/<id>.jsonl`，每行 OpenAI Responses 风格 item：type∈message/reasoning/function_call/function_call_result/summary/ai-title/custom-title/topic/turn-metrics/file-history-snapshot/session-meta；message 有 role、content[](input_text/output_text)、assistant `status:"completed"`；时间戳为毫秒 epoch，记录带 cwd；cwd 编码规则为 `/ \ :` 替换为 `-` 并去掉开头的 `-`。deja-vu 还确认 WorkBuddy 为 `~/.workbuddy/projects/…`（workbuddy.cn）和 `~/.workbuddy-ai/projects/…`（WorkBuddy AI），支持 `$WORKBUDDY_CONFIG_DIR`，布局与记录与 CodeBuddy 相同。
+- jsonl 记录格式：**官方文档未给出**。第三方实现一致：https://github.com/xintaofei/codeg/blob/main/src-tauri/src/parsers/codebuddy.rs 、https://vshulcz.github.io/deja-vu/registry/codebuddy.html ：路径 `${CODEBUDDY_CONFIG_DIR:-~/.codebuddy}/projects/<cwd 编码>/<id>.jsonl`，每行 OpenAI Responses 风格 item：type∈message/reasoning/function_call/function_call_result/summary/ai-title/custom-title/topic/turn-metrics/file-history-snapshot/session-meta；message 有 role、content[](input_text/output_text)、assistant `status:"completed"`；时间戳为毫秒 epoch，记录带 cwd；cwd 编码规则为 `/ \ :` 替换为 `-` 并去掉开头的 `-`。deja-vu 还记载国内版 WorkBuddy 为 `~/.workbuddy/projects/…`，布局与记录与 CodeBuddy 相同；其另行提到的 `$WORKBUDDY_CONFIG_DIR` 仅为第三方说法，本机未验证，且不据此推断国际版（国际版见 §9）。该页同时提到 workbuddy.ai 的 `~/.workbuddy-ai`，属另一工具，本文不引用其格式结论。
 
 ### 8.4 与已知字段的差异/补充
-- 一致：目录布局、jsonl 为 Responses item、message/role/status=completed、毫秒时间戳、两个变体目录。
-- 官方/第三方提到而我们未覆盖的 type：`custom-title`、`topic`、`turn-metrics`、`file-history-snapshot`、`session-meta`、`ai-title`（解析应忽略未知 type）；`CODEBUDDY_CONFIG_DIR`/`WORKBUDDY_CONFIG_DIR` 环境变量可改根目录（我们硬编码 ~/.workbuddy 需可配置）。
+- 一致：目录布局、jsonl 为 Responses item、message/role/status=completed、毫秒时间戳、国内版目录 `~/.workbuddy`。
+- 官方/第三方提到而我们未覆盖的 type：`custom-title`、`topic`、`turn-metrics`、`file-history-snapshot`、`session-meta`、`ai-title`（解析应忽略未知 type）；`CODEBUDDY_CONFIG_DIR`/`WORKBUDDY_CONFIG_DIR` 环境变量可改根目录（仅第三方说法、仅针对国内版、本机未验证；适配器根目录建议可配置，仅作用于国内版）。
 - WorkBuddy 特有而 CodeBuddy 文档无：workbuddy.db(sessions 表、unread、is_background_automation、transport local/cloud)、`providerData.startsNewUserRequest/isMeta/isCompacted`——均**无官方文档，仅本机逆向**，视为内部格式。
 - CodeBuddy 官方 hook 的 `transcript_path` 与我们的 jsonl 路径规则相同，可互相印证。
 - 结论：深链接可用但属“有功能、无规范”；存储格式无官方承诺。建议：适配层加版本探测与容错；`open workbuddy://chat/<id>` 前先校验 id 存在于 DB（无效 id 会落首页且不报错）；用户解锁后目视复测窗口前置。
@@ -121,3 +124,25 @@
 - 测试3（AXMinimized=true 最小化后 open A）：最小化后前台仍是 Electron；open 后窗口 AXMinimized 变 false、窗口恢复并前置，标题回到“示例会话 A”。
 - 注意：System Events 窗口名恒为 “WorkBuddy”，会话标题是应用内标题栏，不在 AX 窗口名中，验证需截图。判断前台应用应用 bundle id com.github.Electron。
 - 测后已激活 Google Chrome 恢复前台。截图含个人内容，勿外传。
+
+## 9. 国际版 WorkBuddy AI（workbuddy.ai）——独立工具，本期不接入
+> 定位：与国内版 WorkBuddy 是**两个独立工具**。本期不接入，列为后续**独立适配器**。以下仅为本机只读观察与官网文档核对（2026-10-18），**其 scheme / 目录 / 数据格式均未经充分验证，不得套用 §2–§8 的国内版结论**。未修改任何应用配置，未读取会话/密钥内容，未执行 open / 深链接。
+
+### 9.1 本机只读观察（仅本机观察，未验证）
+| 项 | 观察值 | 等级 |
+|---|---|---|
+| 应用 | /Applications/WorkBuddy AI.app，CFBundleName/DisplayName = `WorkBuddy AI` | 仅本机观察 |
+| Bundle ID | `com.workbuddy.workbuddy-ai`（Info.plist） | 仅本机观察 |
+| 版本 | 5.8.4（Info.plist；与 workbuddy.ai 官方 Changelog 的 5.8.4 条目版本号一致） | 仅本机观察 + 官网佐证版本号 |
+| URL scheme | `workbuddy-ai`（Info.plist 的 CFBundleURLTypes，URLName=`WorkBuddy AI Deep Links`）；路径/参数未验证 | 仅本机观察；**未验证** |
+| 数据目录 | ~/.workbuddy-ai 存在；含 workbuddy.db、.workbuddy-sqlite-migrations 等（仅查看文件名），sessions/ 为空，**无 projects/**；表结构、jsonl 格式**未检查** | 仅本机观察；**未验证** |
+| 根目录环境变量 | 无任何依据 | **未验证** |
+
+### 9.2 官网文档核对（workbuddy.ai）
+- 官网 https://www.workbuddy.ai/ 为国际版页面（页面内含 `IS_INTERNATIONAL_EDITION = 'true'` 标记）；文档站 https://www.workbuddy.ai/docs/workbuddy/ （Quickstart、Changelog 等）。
+- Quickstart：产品名 Tencent WorkBuddy，桌面端 AI agent；登录使用 Google / GitHub OAuth（国内版文档为另一套账号体系，不可互套）。
+- Changelog：含 5.8.4、5.7.6、5.6.2 等条目；**未见 deeplink、会话存储格式、hooks 的任何说明**。
+- Tencent Cloud International 的 WorkBuddy 产品/文档页（intl.cloud.tencent.com）为企业版文档，与桌面端本地存储无关。
+- 结论：国际版**没有**公开的 scheme、数据目录、数据格式规范；其 deeplink、会话存储是否与国内版一致**未验证**。
+- 后续独立适配器前置项：独立验证 scheme 与路径、`workbuddy.db`/jsonl 格式、完成状态字段、前台进程名；单独建立依据表。
+
