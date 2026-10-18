@@ -133,8 +133,6 @@ const api = {
       ipcRenderer.invoke(SessionsIpc.claim, sessionId),
     bind: (todoId: string, sessionId: CliSessionId): Promise<{ ok: boolean; todo?: Todo; reason?: string }> =>
       ipcRenderer.invoke(SessionsIpc.bind, { todoId, sessionId }),
-    setPrimary: (todoId: string, sessionId: CliSessionId): Promise<Todo | undefined> =>
-      ipcRenderer.invoke(SessionsIpc.setPrimary, { todoId, sessionId }),
     unbind: (todoId: string, sessionId: CliSessionId): Promise<boolean> =>
       ipcRenderer.invoke(SessionsIpc.unbind, { todoId, sessionId }),
   },

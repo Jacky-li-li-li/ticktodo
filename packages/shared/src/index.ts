@@ -124,7 +124,6 @@ export const SessionsIpc = {
   claim: 'sessions:claim',
   /** 把历史会话绑到已有 todo */
   bind: 'sessions:bind',
-  setPrimary: 'sessions:set-primary',
   unbind: 'sessions:unbind',
 } as const
 

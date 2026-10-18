@@ -164,9 +164,6 @@ export function registerIpc(
   ipcMain.handle(SessionsIpc.bind, async (_e, args: { todoId: string; sessionId: CliSessionId }) => {
     return services.sessions.bind(args.todoId, args.sessionId)
   })
-  ipcMain.handle(SessionsIpc.setPrimary, async (_e, args: { todoId: string; sessionId: CliSessionId }) => {
-    return services.sessions.setPrimary(args.todoId, args.sessionId)
-  })
   ipcMain.handle(SessionsIpc.unbind, async (_e, args: { todoId: string; sessionId: CliSessionId }) => {
     return services.sessions.unbind(args.todoId, args.sessionId)
   })

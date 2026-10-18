@@ -134,14 +134,6 @@ export function TodoDetailPage({
     onToast(out.ok ? '已在终端里打开那个会话' : (out.reason ?? '打开失败'))
   }
 
-  const setPrimary = async (session: TodoSessionView): Promise<void> => {
-    const updated = await window.tick.sessions.setPrimary(todo.id, session.sessionId)
-    if (updated) {
-      loadSessions()
-      onSessionsChanged()
-    }
-  }
-
   const unbind = async (session: TodoSessionView): Promise<void> => {
     const ok = await window.tick.sessions.unbind(todo.id, session.sessionId)
     if (ok) {
@@ -327,11 +319,6 @@ export function TodoDetailPage({
                     <button className="mini primary" disabled={s.missing} onClick={() => void resumeSession(s)}>
                       接着做
                     </button>
-                    {!s.primary && !s.missing && (
-                      <button className="mini" onClick={() => void setPrimary(s)}>
-                        设为默认
-                      </button>
-                    )}
                     <button className="mini" onClick={() => void unbind(s)}>
                       解绑
                     </button>

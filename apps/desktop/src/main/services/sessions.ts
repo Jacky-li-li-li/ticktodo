@@ -188,13 +188,6 @@ export class SessionService {
     return { ok: true, todo: this.store.list().find((t) => t.id === todoId) }
   }
 
-  /** 切换默认 resume 的会话（不改其他绑定） */
-  setPrimary(todoId: string, sessionId: CliSessionId): Todo | undefined {
-    const todo = this.store.list().find((t) => t.id === todoId)
-    if (!todo || !todo.bindings.some((b) => b.sessionId === sessionId)) return undefined
-    return this.store.update(todoId, { primarySessionId: sessionId })
-  }
-
   /** 解绑（不动会话文件；若删的是 primary，自动退到剩余第一条） */
   unbind(todoId: string, sessionId: CliSessionId): boolean {
     this.cache = undefined
