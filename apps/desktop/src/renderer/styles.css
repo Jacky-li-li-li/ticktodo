@@ -2859,9 +2859,10 @@ a:focus-visible {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.32;
+  letter-spacing: 0.1px;
   color: var(--t-title);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -2875,8 +2876,8 @@ a:focus-visible {
 .detail-title-input {
   flex: 1;
   min-width: 0;
-  height: 26px;
-  font-size: 12px;
+  height: 30px;
+  font-size: 16px;
   font-weight: 600;
   -webkit-app-region: no-drag;
 }
