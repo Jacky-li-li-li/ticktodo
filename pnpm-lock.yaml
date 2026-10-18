@@ -25,6 +25,12 @@ importers:
       '@tick/ai-pi':
         specifier: workspace:*
         version: link:../../packages/ai/pi
+      '@tick/ai-workbuddy':
+        specifier: workspace:*
+        version: link:../../packages/ai/workbuddy
+      '@tick/ai-workbuddy-ai':
+        specifier: workspace:*
+        version: link:../../packages/ai/workbuddy-ai
       '@tick/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -93,6 +99,35 @@ importers:
       '@tick/ai-core':
         specifier: workspace:*
         version: link:../core
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/workbuddy:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/workbuddy-ai:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-workbuddy':
+        specifier: workspace:*
+        version: link:../workbuddy
       '@tick/shared':
         specifier: workspace:*
         version: link:../../shared

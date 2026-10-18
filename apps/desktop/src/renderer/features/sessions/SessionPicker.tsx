@@ -1,13 +1,16 @@
 /**
  * SessionPicker — S5 反向建索引（PRD §3 S5 / M3）。
  *
- * 数据源：pi 会话列表里**没有被任何 todo 绑定**的那些（adapter.listSessionInfos）。
+ * 数据源：各工具会话列表里**没有被任何 todo 绑定**的那些（adapter.listSessionInfos）。
  * 交互：按项目分组 → 选中可「建线索并绑定」或「直接打开」；不批量自动生成。
+ * 多工具后每行必须标出会话属于哪个工具（图标 + 展示名），否则分不清来源。
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
 import type { SessionView, Todo } from '@tick/shared'
+import { toolDisplayName } from '@tick/shared'
 import { relTime } from '../list/relTime'
+import { ToolIcon } from '../icons/ToolIcon'
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
 
@@ -78,8 +81,8 @@ export function SessionPicker({
     setBusyId(s.sessionId)
     try {
       const result = todo
-        ? await window.tick.sessions.bind(todo.id, s.sessionId)
-        : await window.tick.sessions.claim(s.sessionId)
+        ? await window.tick.sessions.bind(todo.id, s.sessionId, s.toolId)
+        : await window.tick.sessions.claim(s.sessionId, s.toolId)
       if (result.ok) {
         onToast(todo ? `已绑定到「${todo.title}」` : `已建线索「${result.todo?.title ?? ''}」`)
         onChanged()
@@ -96,10 +99,20 @@ export function SessionPicker({
 
   const handleResume = async (s: SessionView): Promise<void> => {
     if (busyId) return
+    // 工具侧声明 resumable=false（如 WorkBuddy 的 playground 会话）时不要发起 resume：
+    // 只会在错误的上下文里开会话，给一句中性说明即可。
+    if (s.resumable === false) {
+      onToast(`${toolDisplayName(s.toolId)} 的这个会话暂不支持从 Tick 定位（保守限制）`)
+      return
+    }
     setBusyId(s.sessionId)
     try {
-      const out = await window.tick.launch.resume({ sessionId: s.sessionId, projectPath: s.cwd })
-      onToast(out.ok ? '已在终端里打开那个会话' : (out.reason ?? '打开失败'))
+      const out = await window.tick.launch.resume({
+        sessionId: s.sessionId,
+        toolId: s.toolId,
+        projectPath: s.cwd,
+      })
+      onToast(out.ok ? `已在 ${toolDisplayName(s.toolId)} 里打开这个会话` : (out.reason ?? '打开失败'))
       if (out.ok) onClose()
     } finally {
       setBusyId(null)
@@ -140,8 +153,8 @@ export function SessionPicker({
         <div className="session-groups">
           {groups.map(([cwd, list]) => (
             <div className="session-group" key={cwd}>
-              <div className="session-group-head" title={cwd}>
-                {cwd.replace(/^\/Users\/[^/]+/, '~')}
+              <div className="session-group-head" title={cwd || '未知项目'}>
+                {cwd ? cwd.replace(/^\/Users\/[^/]+/, '~') : '(未知项目)'}
               </div>
               {list.map((s) => (
                 <div className="session-item" key={s.sessionId}>
@@ -150,16 +163,27 @@ export function SessionPicker({
                       {titleOf(s)}
                     </div>
                     <div className="session-meta">
-                      {s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString()) : ''}
-                      {s.boundTodoTitle ? ` · 已绑定 ${s.boundTodoTitle}` : ''}
+                      <span className="session-tool">
+                        <ToolIcon toolId={s.toolId} size={12} />
+                        <span className="session-tool-name">{toolDisplayName(s.toolId)}</span>
+                      </span>
+                      <span className="session-meta-rest">
+                        {s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString()) : ''}
+                        {s.boundTodoTitle ? ` · 已绑定 ${s.boundTodoTitle}` : ''}
+                      </span>
                     </div>
                   </div>
                   <div className="session-actions">
                     <button
                       className="mini"
                       disabled={busyId !== null}
+                      aria-disabled={s.resumable === false}
                       onClick={() => void handleResume(s)}
-                      title="不改任何绑定，直接在终端打开这个会话"
+                      title={
+                        s.resumable === false
+                          ? `${toolDisplayName(s.toolId)} 的这个会话暂不支持从 Tick 定位（保守限制）`
+                          : `不改任何绑定，直接在 ${toolDisplayName(s.toolId)} 里打开这个会话`
+                      }
                     >
                       打开
                     </button>

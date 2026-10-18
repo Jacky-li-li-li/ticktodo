@@ -65,6 +65,8 @@
     "@fontsource/inter": "^5.3.0",
     "@tick/ai-core": "workspace:*",
     "@tick/ai-pi": "workspace:*",
+    "@tick/ai-workbuddy": "workspace:*",
+    "@tick/ai-workbuddy-ai": "workspace:*",
     "@tick/shared": "workspace:*",
     "@tick/tick-extension": "workspace:*",
     "@tick/ui": "workspace:*",

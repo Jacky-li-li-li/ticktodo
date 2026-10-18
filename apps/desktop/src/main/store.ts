@@ -140,6 +140,7 @@ export class TodoStore {
     sessionId: string,
     state: NonNullable<TodoPatch['addBinding']>['state'],
     filePath?: string,
+    toolId?: string,
   ): boolean {
     return this.withLock(() => {
       const data = this.load()
@@ -147,6 +148,8 @@ export class TodoStore {
       for (const todo of data.todos) {
         for (const binding of todo.bindings) {
           if (binding.sessionId !== sessionId) continue
+          // 不同工具的 id 空间互不相干：有 toolId 时必须一起匹配，避免同 id 串绑
+          if (toolId && binding.toolId !== toolId) continue
           if (binding.state !== state) {
             binding.state = state
             changed = true
@@ -162,19 +165,25 @@ export class TodoStore {
     })
   }
 
-  /** 一个 session 最多绑一个 todo（业务规则 4）→ 反查归属 */
-  findTodoBySession(sessionId: string): Todo | undefined {
-    return this.load().todos.find((t) => t.bindings.some((b) => b.sessionId === sessionId))
+  /** 一个 (toolId, session) 最多绑一个 todo（业务规则 4）→ 反查归属 */
+  findTodoBySession(sessionId: string, toolId?: string): Todo | undefined {
+    return this.load().todos.find((t) =>
+      t.bindings.some(
+        (b) => b.sessionId === sessionId && (!toolId || b.toolId === toolId),
+      ),
+    )
   }
 
   /** 解绑一个 session；若它正好是 primary，退到剩余的第一条（业务规则 5：删除/解绑不动会话文件） */
-  removeBinding(todoId: string, sessionId: string): boolean {
+  removeBinding(todoId: string, sessionId: string, toolId?: string): boolean {
     return this.withLock(() => {
       const data = this.load()
       const todo = data.todos.find((t) => t.id === todoId)
       if (!todo) return false
       const before = todo.bindings.length
-      todo.bindings = todo.bindings.filter((b) => b.sessionId !== sessionId)
+      todo.bindings = todo.bindings.filter(
+        (b) => b.sessionId !== sessionId || (toolId ? b.toolId !== toolId : false),
+      )
       if (todo.bindings.length === before) return false
       if (todo.primarySessionId === sessionId) {
         todo.primarySessionId = todo.bindings[0]?.sessionId

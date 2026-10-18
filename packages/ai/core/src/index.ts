@@ -9,7 +9,7 @@
  * M0 状态：落合同类型。实装顺序 M1（canonicalPath / mergeProjects / registry）。
  */
 
-import type { CliSessionId } from '@tick/shared'
+import type { CliSessionId, NewSessionMode } from '@tick/shared'
 import { newCliSessionId as mkId } from '@tick/shared'
 
 /** 便捷出口：从任意字符串安全产出 CliSessionId（品牌类型由 shared 保证） */
@@ -63,6 +63,11 @@ export interface SessionSummary {
   parentSessionPath?: string
   /** 文件大小（字节，用于 UI 详情/诊断） */
   size?: number
+  /**
+   * false = 这条会话在本工具里不能「回到会话」（如 WorkBuddy AI 的 playground 会话，
+   * 深链接定位行为未证伪，保守置灰）。缺省 = 可回到。
+   */
+  resumable?: boolean
 }
 
 // ---------- 用量（F6-b：只统计工具侧会话，面板不参与） ----------
@@ -126,10 +131,10 @@ export interface ProjectEntry {
 // ---------- 投递方式 ----------
 
 /**
- * pi 的 argv = 立即发送（源码确认无「仅预填」模式）；
- * 想要「等我确认后再发」只能走 clipboard。
+ * pi 的 prefill = 启动时把文案预填进 TUI 输入框（扩展 ctx.ui.setEditorText，不发送）；
+ * argv = 启动即发送（interactive-mode session.prompt()）；clipboard 仅作旧配置/降级兜底。
  */
-export type DeliverMode = 'argv' | 'clipboard' | 'flag' | 'stdin' | 'none'
+export type DeliverMode = 'prefill' | 'argv' | 'clipboard' | 'flag' | 'stdin' | 'none'
 
 // ---------- Adapter 合同 ----------
 
@@ -146,9 +151,30 @@ export interface LaunchResult {
   sessionId: CliSessionId
   cwd: string
   pid?: number
-  delivered: 'argv' | 'clipboard' | 'none'
+  delivered: 'prefill' | 'argv' | 'clipboard' | 'none'
   /** spawn 成功但 verify 判定 session 未真正产生（size===0 或不存在） */
   verified: boolean
+  /** 非致命降级原因（如 prefill 回执超时后已改投剪贴板），由 UI 原样展示 */
+  notice?: string
+}
+
+/**
+ * 桌面工具「打开 GUI 新建页并预填」的入参。
+ *
+ * 与 launch 的区别：这里**不预生成 sessionId**、不投递、不绑定；只是把用户送到工具自己的
+ * 新建会话/任务页，把文案与工作目录填好，发送动作仍由用户在工具里完成。
+ */
+export interface NewSessionPageContext {
+  promptText: string
+  /** 必须存在的绝对路径（桌面工具用它选工作空间/项目） */
+  cwd: string
+}
+
+export interface NewSessionPageResult {
+  ok: boolean
+  reason?: string
+  /** true = 文案超过深链接安全长度，已截断后才预填 */
+  truncated?: boolean
 }
 
 /**
@@ -169,6 +195,11 @@ export interface AiToolAdapter {
     /** 例：pi 1.2.0 < 1.3.0 → 提示升级 */
     version?: string
     reason?: string
+    /**
+     * 缺省 = installed。false = 已安装但当前不可用（如低于最低版本）：
+     * launch/prefill/UI 都必须按 usable 过滤，不能只看 installed。
+     */
+    usable?: boolean
   }>
   capabilities: {
     needsCwd: boolean
@@ -179,6 +210,13 @@ export interface AiToolAdapter {
     describeSessions: boolean
     /** 会话是否自带 usage（pi ✅；面板 Chat 永不参与统计） */
     usage: boolean
+    /**
+     * 「新建会话」能力，三选一（各工具按自己的设计规范选，不统一 id 生成方式）：
+     * - launch：Tick 预生成 sessionId 并拉起工具（CLI，可写 pending 绑定并 verify）；
+     * - prefill：只打开工具 GUI 的新建页并预填文案/工作目录（桌面，不自动发送/不绑定）；
+     * - none：不支持从 Tick 新建。
+     */
+    newSessionMode: NewSessionMode
   }
   discoverProjects?(): Promise<ProjectSource['projects']>
   listSessions?(cwd?: string): Promise<SessionRef[]>
@@ -189,7 +227,17 @@ export interface AiToolAdapter {
   /** withName=false 时只读 header（cwd 推导等场景不需要全量扫 name，避免读整份会话正文） */
   describeSession?(id: CliSessionId, opts?: { withName?: boolean }): Promise<SessionInfo | undefined>
   /** launch 后校验 session 真的产生：必须绕缓存直读，且 size===0 视为未产生 */
-  verify?(sessionId: CliSessionId): Promise<boolean>
+  verify?(sessionId: CliSessionId, opts?: { retries?: number; intervalMs?: number }): Promise<boolean>
+  /**
+   * 桌面工具可选：打开自身 GUI 的新建会话页并预填文案/工作目录。
+   * 不保证会话 id，也不在 Tick 侧建绑定；发送与否由用户在工具里决定。
+   */
+  openNewSessionPage?(ctx: NewSessionPageContext): Promise<NewSessionPageResult>
+  /**
+   * 可选：报告「当前版本/环境」下新建会话是否真的可用（例如 WorkBuddy task 深链接只对实测版本开放）。
+   * UI 用它把不可用工具从列表里隐藏；缺省由 installed/usable/newSessionMode 推导。
+   */
+  newSessionAvailability?(): Promise<{ available: boolean; reason?: string }>
   launch(ctx: LaunchContext): Promise<LaunchResult>
   resume(sessionId: CliSessionId, ctx: LaunchContext): Promise<LaunchResult>
   carry?: CarryCapability

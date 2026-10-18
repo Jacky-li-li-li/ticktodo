@@ -14,7 +14,8 @@ interface SettingsFile {
   settings: AppSettings
 }
 
-const DELIVERS: LaunchDeliverSetting[] = ['clipboard', 'argv']
+/** 设置里只暴露 prefill / argv；clipboard 仅作为旧配置/运行期降级，不再写入 settings */
+const DELIVERS: LaunchDeliverSetting[] = ['prefill', 'argv']
 const DEFAULT_PROJECTS: DefaultProjectSetting[] = ['home', 'recent', 'ask']
 
 /** 自配 provider 的白名单归一化：只接受合法形状，旧版本/未知字段不进文件 */

@@ -8,6 +8,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { Type } from 'typebox'
 import { createTodo, describeTodo, listTodos } from './todos-file.ts'
 
@@ -33,6 +34,77 @@ function sessionIdOf(ctx: ExtensionContext): string | undefined {
 }
 
 export default function tickExtension(pi: ExtensionAPI): void {
+  /**
+   * Tick「预填文案」一次性文件：launch 时由 PiAdapter 写到 cache/launch，
+   * 路径经 TICK_LAUNCH_FILE 传入终端。这里只做「填进输入框」，绝不自动发送。
+   *
+   * 失败一律静默降级（不阻塞 pi 启动）：文件不存在/格式坏/会话 id 对不上都直接忽略；
+   * 读完立刻删除，避免正文留在磁盘，也避免被 pi 的 bash 子进程继承环境变量后再次读到。
+   */
+  pi.on('session_start', (_event, ctx) => {
+    const file = process.env.TICK_LAUNCH_FILE
+    if (!file) return
+    const ackFile = process.env.TICK_LAUNCH_ACK
+    // 从环境里摘掉：后续 bash/tool 子进程不应看到这些一次性路径
+    delete process.env.TICK_LAUNCH_FILE
+    delete process.env.TICK_LAUNCH_ACK
+    let ack: { ok: boolean; reason?: string } = { ok: false, reason: 'unknown' }
+    try {
+      const stat = statSync(file)
+      if (!stat.isFile() || stat.size > 200_000) {
+        ack = { ok: false, reason: 'too-large' }
+        return
+      }
+      const raw = JSON.parse(readFileSync(file, 'utf8')) as {
+        version?: number
+        mode?: string
+        sessionId?: string
+        promptText?: string
+      }
+      if (raw.mode !== 'prefill' || typeof raw.promptText !== 'string') {
+        ack = { ok: false, reason: 'invalid-payload' }
+        return
+      }
+      if (!raw.promptText.trim()) {
+        ack = { ok: false, reason: 'empty-prompt' }
+        return
+      }
+      // 防止把 A 会话的文案填到 B 会话（id 由 Tick 预生成，理应一致）
+      const currentSessionId = sessionIdOf(ctx)
+      if (raw.sessionId && currentSessionId && raw.sessionId !== currentSessionId) {
+        ack = { ok: false, reason: 'session-mismatch' }
+        return
+      }
+      if (typeof ctx.ui.setEditorText !== 'function') {
+        ack = { ok: false, reason: 'editor-unavailable' }
+        return
+      }
+      try {
+        ctx.ui.setEditorText(raw.promptText)
+        ack = { ok: true }
+      } catch {
+        ack = { ok: false, reason: 'set-editor-failed' }
+      }
+    } catch {
+      // 读不到/解析失败：静默忽略；TUI 正常启动，用户可手动输入
+      ack = { ok: false, reason: 'read-failed' }
+    } finally {
+      // 先写回执，再删正文；主进程只有看到 ok:true 才会对 UI 说「已预填」
+      if (ackFile) {
+        try {
+          writeFileSync(ackFile, JSON.stringify(ack), { encoding: 'utf8', mode: 0o600 })
+        } catch {
+          /* 回执写不了就让它超时降级，不阻塞 pi */
+        }
+      }
+      try {
+        rmSync(file, { force: true })
+      } catch {
+        /* 忽略：文件可能已被清理 */
+      }
+    }
+  })
+
   pi.registerTool({
     name: 'create_todo',
     label: '创建 Tick 线索',

@@ -7,13 +7,14 @@
  *  3) 元信息：状态灯 / 来源 / 创建更新与最近拉起（悬停标题查看）
  *  4) 主操作：会话标题行右侧图标（新建会话 / 倒入历史会话）
  *  5) 会话列表：按项目（cwd）分组，组头显示项目名与路径；每条会话第一行 = 第一条 user 消息
- *     （与最后一条不同时再显示「上次」）、工具图标、时间与状态；
+ *     （与最后一条不同时再显示「上次」）、工具图标（悬停显示展示名）、时间与状态；
  *     右侧 1/8 为滑块（单击接着做 / 按住左拖到底解绑），设置开启时显示单会话用量
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Todo, TodoPatch, TodoSessionView } from '@tick/shared'
 import type { SessionUsage } from '@tick/ai-core'
+import { toolDisplayName } from '@tick/shared'
 import { relTime } from '../list/relTime'
 import { ToolIcon } from '../icons/ToolIcon'
 import { PlusIcon } from '../icons/PlusIcon'
@@ -148,18 +149,35 @@ export function TodoDetailPage({
     }
   }, [usageEnabled, sessions])
 
+  /**
+   * adapter 明确声明 resumable=false（如 WorkBuddy 的 playground 会话）时不要试：
+   * 试了只会在别的上下文里开出错误会话，保守置灰并说明原因；missing 语义保持不变。
+   */
+  const notResumableHint = (session: TodoSessionView): void => {
+    onToast(`${toolDisplayName(session.toolId)} 的这个会话暂不支持从 Tick 定位（保守限制）`)
+  }
+
   const resumeSession = async (session: TodoSessionView): Promise<void> => {
     if (session.missing) return
+    if (session.resumable === false) {
+      notResumableHint(session)
+      return
+    }
     const out = await window.tick.launch.resume({
       todoId: todo.id,
       sessionId: session.sessionId,
+      toolId: session.toolId,
       projectPath: session.cwd,
     })
-    onToast(out.ok ? '已在终端里打开那个会话' : (out.reason ?? '打开失败'))
+    onToast(
+      out.ok
+        ? `已在 ${toolDisplayName(session.toolId)} 里打开这个会话`
+        : (out.reason ?? '打开失败'),
+    )
   }
 
   const unbind = async (session: TodoSessionView): Promise<void> => {
-    const ok = await window.tick.sessions.unbind(todo.id, session.sessionId)
+    const ok = await window.tick.sessions.unbind(todo.id, session.sessionId, session.toolId)
     if (ok) {
       loadSessions()
       onSessionsChanged()
@@ -358,6 +376,7 @@ export function TodoDetailPage({
                         usage={usages[s.sessionId]}
                         usageEnabled={usageEnabled}
                         onResume={(session) => void resumeSession(session)}
+                        onBlockedResume={notResumableHint}
                         onUnbindRequest={setPendingUnbind}
                       />
                     ))}
@@ -424,19 +443,23 @@ function usageText(usage: SessionUsage): string {
  *
  * 交互：单击方块 = 接着做（方块右滑回弹 + 卡片轻推）；按住方块向左拖到卡片最左侧 1/8
  * 区（拖动时显示终点与引导线），松手 → 二次确认弹窗 → 解绑。
- * 会话文件不在本机时禁止「接着做」，但仍可拖拽解绑。
+ * 会话文件不在本机（missing）或工具侧声明 resumable=false 时禁止「接着做」，
+ * 但仍可拖拽解绑；两种原因的说明走 title / aria / toast。
  */
 function SessionCard({
   session: s,
   usage,
   usageEnabled,
   onResume,
+  onBlockedResume,
   onUnbindRequest,
 }: {
   session: TodoSessionView
   usage?: SessionUsage
   usageEnabled: boolean
   onResume: (session: TodoSessionView) => void
+  /** resumable=false 仍允许拖拽解绑，但点击「接着做」要说明为什么不行 */
+  onBlockedResume: (session: TodoSessionView) => void
   onUnbindRequest: (session: TodoSessionView) => void
 }): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement>(null)
@@ -452,6 +475,19 @@ function SessionCard({
   const firstText = (s.firstMessage ?? s.name ?? '未命名会话').trim()
   const lastText = s.lastMessage?.trim()
   const timeText = s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'
+  const toolName = toolDisplayName(s.toolId)
+  /**
+   * 两种原因禁止「接着做」：missing（会话文件不在本机，既有语义）与
+   * resumable === false（工具侧保守声明不支持从 Tick 定位）。同时成立时以禁用为准，
+   * 但拖到左端解绑仍然可用。
+   */
+  const canResume = !s.missing && s.resumable !== false
+  const blockedReason =
+    s.resumable === false
+      ? `${toolName} 的这个会话暂不支持从 Tick 定位（保守限制）`
+      : s.missing
+        ? '会话文件已不在本机'
+        : ''
 
   const reset = (): void => {
     startRef.current = null
@@ -522,7 +558,11 @@ function SessionCard({
       movedRef.current = false
       return
     }
-    if (s.missing) return
+    if (!canResume) {
+      // 不试 resume；resumable=false 给一句中性说明，missing 保持原来的静默（title 已说明）
+      if (s.resumable === false) onBlockedResume(s)
+      return
+    }
     setPulse(true)
     window.setTimeout(() => setPulse(false), 240)
     onResume(s)
@@ -534,7 +574,7 @@ function SessionCard({
       className={`detail-session ${dragging ? 'is-dragging' : ''} ${pulse ? 'is-resuming' : ''}`}
     >
       <div className="detail-session-body">
-        <div className="detail-session-tool" data-tool={s.toolId} aria-label={s.toolId}>
+        <div className="detail-session-tool" data-tool={toolName} aria-label={toolName}>
           <ToolIcon toolId={s.toolId} size={16} />
         </div>
         <div className="detail-session-main">
@@ -553,10 +593,14 @@ function SessionCard({
               {lastText}
             </div>
           )}
-          {(s.state === 'pending' || s.missing || (usageEnabled && usage)) && (
+          {(s.state === 'pending' ||
+            s.missing ||
+            s.resumable === false ||
+            (usageEnabled && usage)) && (
             <div className="detail-session-top">
               {s.state === 'pending' && <span className="session-tag">待发送</span>}
               {s.missing && <span className="session-tag">已不在本机</span>}
+              {s.resumable === false && <span className="session-tag">不可从 Tick 定位</span>}
               {usageEnabled && usage && <span className="session-usage">{usageText(usage)}</span>}
             </div>
           )}
@@ -580,15 +624,23 @@ function SessionCard({
         type="button"
         className={`detail-session-block ${dragging ? 'is-dragging' : ''} ${
           armed ? 'is-armed' : ''
-        } ${s.missing ? 'is-disabled' : ''}`}
+        } ${canResume ? '' : 'is-disabled'}`}
         style={dragging ? { transform: `translateX(${dx}px)` } : undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={(e) => endDrag(e, false)}
         onPointerCancel={(e) => endDrag(e, true)}
         onClick={onClick}
-        aria-label={`接着做；按住向左拖到底可解绑「${firstText}」`}
-        title={s.missing ? '会话文件已不在本机；拖到左端解绑' : '点击接着做 · 按住向左拖到底解绑'}
+        aria-label={
+          canResume
+            ? `接着做（${toolName}）；按住向左拖到底可解绑「${firstText}」`
+            : `${blockedReason}；按住向左拖到底可解绑「${firstText}」`
+        }
+        title={
+          canResume
+            ? '点击接着做 · 按住向左拖到底解绑'
+            : `${blockedReason}；拖到左端解绑`
+        }
       >
         {dragging ? (
           <>

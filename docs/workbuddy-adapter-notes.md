@@ -25,6 +25,8 @@
 | 深链接 | `open "workbuddy://chat/<id>"`；已运行/冷启动/最小化均定位成功（每场景 n=1） | `open "workbuddy-ai://chat/<id>"`；普通会话冷/热/最小化/双会话互跳均成功；playground 冷启动 0/2（归因未证伪，保守置灰） |
 | 失败判据 | `open` 恒 exit 0，失败=回首页；不存在 id 不调用 | 同左；`resetRouterToHome` 标记不可用（国际版日志从不写入） |
 
+> 两个适配器已按本表事实落地（2026-10-19）：包路径、只读读取方式与合同映射见 §11。§11 只记录「代码怎么读」，不改变本节事实与依据等级。
+
 ### 0.2 只有本机逆向、没有第三方佐证的部分
 
 - 完成状态、软删除、`transport`、`playground`、`unread` 都来自 `workbuddy.db`，**没有第三方实现佐证**（magpie 不读该库）；适配器必须做版本/schema 探测与降级。
@@ -311,3 +313,98 @@
 - **深链接**：`workbuddy-ai://chat/<id>` 对普通会话（`is_playground!=1`、未删除）单次 `open` 即稳定（单会话冷 6/6、热 3/3、最小化 1/1；双会话互跳冷 4/4、热 3/3）；失败停在首页、`open` 恒 exit 0。开关默认开启；playground 会话保守置灰（回落归因未证伪）。
 - **判据**：渲染日志 `cloudProjection` 最终 pathname + ≥10s 稳定 + `[DeepLink]` 日志 + 前台 bundle id；**不要用 `resetRouterToHome`**（国际版日志从不写该标记）。
 - **最终未验证**：`isMeta/isCompacted=true` 的实际形态、`status=active/error`、软删除正数时间戳、云端 `-1` 语义、三会话及以上互跳、已删除会话 id 的深链行为、playground 冷启动回落归因。
+
+## 11. 适配器落地（as-built，2026-10-19）
+
+> 本节记录**代码现在怎么读**，不新增事实：数据格式、深链行为与依据等级仍以 §0–§10 为准，未验证项照旧未验证。验证口径：`pnpm typecheck` 全仓通过、`pnpm --filter @tick/desktop build` 通过；真实数据只读冒烟（国内版 6 条有效会话；国际版 4 条，其中 2 条 playground `resumable=false`）与集成断言 26/26 PASS（含 4 项「未安装时静默禁用」：detect=false → list/discover 空、describe undefined）。
+
+### 11.1 包与导出面
+
+| 包 | 路径 | 内容 |
+|---|---|---|
+| `@tick/ai-workbuddy` | `packages/ai/workbuddy/src/` | 国内版适配器 + **两版共用的只读读取内核** |
+| `@tick/ai-workbuddy-ai` | `packages/ai/workbuddy-ai/src/` | 国际版适配器（只声明身份，内核复用上一包） |
+
+- `paths.ts`：App bundle 候选（`/Applications` + `~/Applications`，可注入覆盖）→ `Contents/Info.plist` 读 `CFBundleIdentifier` / `CFBundleShortVersionString`（XML 直接正则；二进制 plist 才兜底 `/usr/bin/plutil -convert json`，只读不落盘）；数据根解析（用户配置 > 该发行版的环境变量 > `~/<dir>`，不创建目录）；cwd 编码（去掉首个 `/`，其余 `/ \ :` → `-`，**空格保留**）；jsonl 定位（DB 的 cwd 直拼 → 扫 `projects/<一层>/<id>.jsonl` → `<id>.meta.json` 的 cwd 兜底 → 仍不命中返回推算路径 + `exists=false`）。
+- `sqlite.ts`：`readSessionRows(rootDir, { log, id? })`。
+- `transcript.ts`：`readTranscriptMeta(file)`、`extractUserText(raw)`、`collapseText`、`clipText`。
+- `base-adapter.ts`：`WorkbuddyAdapterBase`（detect / listSessionInfos / discoverProjects / describeSession / launch / resume）、detect 30s 缓存、jsonl `(mtimeMs,size)` 缓存。
+- `adapter.ts` / `index.ts`：`WorkbuddyAdapter` + `WORKBUDDY_IDENTITY`；`WorkbuddyAiAdapter` + `WORKBUDDY_AI_IDENTITY`。
+- 装配点在 `apps/desktop/src/main/main.ts`：`new WorkbuddyAdapter({ openUrl, log })`、`new WorkbuddyAiAdapter({ openUrl, log })` → `registry.register(...)`；`openUrl` 是 main 注入的 `shell.openExternal`（`ai/*` 不依赖 Electron），日志出口只记 key + 文案，不含会话 id/标题/正文。
+
+### 11.2 身份常量（as-built）
+
+| 项 | 国内版 `workbuddy` | 国际版 `workbuddy-ai` |
+|---|---|---|
+| displayName | WorkBuddy | WorkBuddy AI |
+| bundleId | `com.tencent.workbuddy.mac` | `com.workbuddy.workbuddy-ai` |
+| appBundleName | `WorkBuddy.app` | `WorkBuddy AI.app` |
+| scheme | `workbuddy` | `workbuddy-ai` |
+| 默认数据根 | `~/.workbuddy` | `~/.workbuddy-ai` |
+| 根目录环境变量 | `WORKBUDDY_CONFIG_DIR` | 无（不吃国内版的变量） |
+| verifiedVersions | `['5.8.3']` | `['5.8.4']` |
+| playgroundUnresumable | `false`（无实测结论，不置灰） | `true`（保守产品决定，见 §9B.6） |
+
+两版是两个独立适配器：两个 `toolId`、两份 detect 缓存与 jsonl 缓存，互不共用配置（§1）。
+
+### 11.3 DB 读取（只读 + WAL 兜底 + schema 探测）
+
+- `node:sqlite` 用动态 `import` + 缓存；运行时不可用（更老的 Electron/Node）→ 返回空 + 一次日志，main 不崩。
+- 主路径：`new DatabaseSync(file, { readOnly: true, enableForeignKeyConstraints: false })` 直接读 live 库；**构造成功后立刻 `SELECT count(*) FROM sqlite_master` 试读一次**——WAL 库缺 `-shm` / 目录不可写时会构造成功、首次访问才报 `unable to open database file`，所以不能把「构造成功」当可用。
+- 兜底：试读失败才 `mkdtemp('tick-wb-')` → 复制 `workbuddy.db` + 存在的 `-wal` / `-shm` → 以**普通方式**打开副本（会回放 `-wal`）→ `finally` 关闭并删临时目录。**禁用 `immutable=1`**（忽略 `-wal`，§10.8 实测读到 0 行）。
+- schema 探测：`PRAGMA table_info(sessions)` 检查必需列 `id / cwd / status / created_at / updated_at / deleted_at / transport`，缺列即判「schema 不识别」→ 整体返回空（不读出半套错误数据）；`title / custom_title / last_activity_at / is_playground / is_background_automation` 等可选列缺失时用 `NULL` / `0` 常量兜底。
+- 过滤与排序：`COALESCE(deleted_at, -1) <= 0`、`COALESCE(transport, 'local') = 'local'`、`COALESCE(is_background_automation, 0) != 1`，按 `COALESCE(last_activity_at, updated_at) DESC`；单条查询（`id = ?`）用于 `resume` / `describeSession`。
+- 任何异常 → `[]` + 一次日志，绝不向 UI 抛（§7 失败降级）。
+
+### 11.4 合同映射
+
+- `detect()`：只看 App bundle + `Info.plist` 的 `CFBundleIdentifier`（**数据目录存在不算已安装**）；`CFBundleShortVersionString` 超出 `verifiedVersions` → `installed: true` + 「版本未验证」；detect 结果缓存 30s（IPC 会反复问）。
+- 未安装 = 静默禁用（PRD §9.9 / §9B.7）：`detect()` 不通过时 `listSessionInfos()` / `discoverProjects()` 直接返回 `[]`、`describeSession()` 返回 `undefined`——卸载残留的数据目录（`~/.workbuddy*`）不会被当成「这个工具还在用」，也不会出现在「倒入历史会话」/项目索引里。
+- `listSessionInfos()`：**只读 DB 一条查询，不扫 jsonl**；`cwd` 用 `resolveTranscript` 的兜底值，`createdAt` 取 `created_at`（缺失回退 `updated_at`），`lastUsedAt` 取 `last_activity_at`（缺失回退 `updated_at`），`filePath` / `exists` / `size` 来自 `stat` 事实，按 `lastUsedAt` 降序。
+- `discoverProjects()`：只吐原始证据（`path` / `sessionCount` / `lastUsedAt` / `exists`）；非绝对路径的 cwd 先经 `<id>.meta.json` 兜底，仍不绝对就跳过。**不做** canonical 归一、git 根上卷、跨工具合并（归并是 `ai/core` 的 `mergeProjects`）。
+- `describeSession(id, { withName })`：先按 id 查 DB（不存在/已软删除 → `undefined`）；`withName: false` 只回 DB 元数据；否则才读 jsonl 取 `firstMessage` / `lastMessage` / 标题兜底，并按文件 `(mtimeMs, size)` 缓存（上限 500 条，超限直接清空）。
+- `launch()`：直接抛 `launchErrorText`（桌面应用不能从 Tick 新建会话）。
+- `resume(id, ctx)`：`detect()` → DB 校验 id 存在且未删除（国际版再加 playground 拒绝）→ `openUrl('<scheme>://chat/<encodeURIComponent(id)>')` → 返回 `delivered: 'none'`、`verified: true`。单次调用，不重试。
+- `capabilities`：`newSessionMode='prefill'`（`openNewSessionPage()` 打开 GUI 新建页并预填；不自动发送/不绑定）、`resumeSession=true`、`deliverPrompt=[]`、`needsCwd=false`、`setSessionName=false`、`discoverProjects=true`、`describeSessions=true`、`usage=false`。
+
+### 11.5 消息流解析与合成消息过滤
+
+- 流式按行扫描，只解析含 `"message"` / `"ai-title"` / `"custom-title"` 的行；末行半行与坏行忽略，未知 `type` 一律忽略；不缓存正文，只留首/末 user 文本与标题兜底。
+- 真实 user 请求：`role=user` 且 `providerData.isMeta !== true` 且 `providerData.isCompacted !== true`；优先 `startsNewUserRequest === true`；该字段缺失（国内版样本 6/73 条 user 消息没有它）时回退为「文本含 `<user_query` 开标签」。
+- 原文抽取：优先 `<user_query …>…</user_query>`（非贪婪 + DOTALL，**标签可以带属性**）；没有该标签时剥离 `<system-reminder …>…</system-reminder>` 取剩余；随后空白折叠。
+- 长度：`name` / `firstMessage` 折叠后截 160 字符（超出加 `…`），`lastMessage` 上限 2000 字符（只防 IPC 载荷失控，不是展示阈值）；DB 与 jsonl 时间戳均按**毫秒**处理，缺失时用 `updated_at` 兜底、仍缺失取 epoch（信号是「未知」而不是「现在」）。
+- 标题：DB `custom_title` > `title`；都没有时用 jsonl 的 `custom-title` > `ai-title`。
+- `resumable`：缺省 = 可回到；国际版 `is_playground=1` → `false`，`resume()` 直接拒绝；国内版无该结论，不置灰（§9B.6 只对国际版成立）。
+
+### 11.6 深链接与调用前校验
+
+- URL：`workbuddy://chat/<id>`、`workbuddy-ai://chat/<id>`（id 经 `encodeURIComponent`）。
+- **调用前一定先查 DB**：按 id 查询有效行，查不到（不存在 / 已软删除 / 非 local / 后台自动化）直接抛错，不调用深链——不存在 id 的深链会落首页或空会话页且 `open` 恒 exit 0（§8.2、§10.5）。
+- 国际版对 `is_playground=1` 额外拒绝（保守决定，不是已证事实）。
+- `open` 恒 exit 0，失败=停在首页：单次、不重试、不阻塞、**不降级到另一个 scheme**（调 `workbuddy://` 会拉起另一个工具）；`openUrl` 未注入时直接抛错。
+
+### 11.7 仍未验证（不因落地而升级）
+
+沿用 §0.3 / §10.11：`isMeta/isCompacted=true` 的实际形态、`status=active/error`、软删除正数时间戳、云端 `-1` 语义、三会话及以上深链互跳、已删除会话 id 的深链行为、playground 冷启动回落归因。本节只说明实现方式，**依据等级与本表未验证项均不因适配器落地而上调**。
+
+### 11.8 打开新建任务页（newSessionMode='prefill'，2026-10-19）
+
+- **入口**：`openNewSessionPage(ctx)` → `openUrl('<scheme>://task?action=start&prompt=<encoded>&cwd=<encoded>')`。scheme 用各自身份的 `workbuddy` / `workbuddy-ai`；`cwd` 是 Tick 侧的本地项目路径（绝对路径）。
+- **App 行为**（从 5.8.3/5.8.4 renderer 代码 + 本机实测）：主进程把 `task` URL 分发给 renderer → `TaskDeeplinkCoordinator` 消费 → `goHome` + `input-draft-intent prepare-input`，把 prompt 预填进新建任务页输入框、把 `cwd` 设为工作空间；**不自动发送、不创建会话**（实测调用前后 DB 会话数不变），发送仍由用户点击完成，之后走「倒入历史会话」绑定。
+- **参数范围**：`action` 必填且只接受 `start`；`prompt` App 侧上限 8000 字符；`cwd` 可选（本实现必传）；`promptContentBlocks` / `payloadId` / `welcomeMode` / `mode` / `permissionMode` / `model` / `expertId` / `skills` / `connectorIds` / `source` / `corpId` 为可选内部参数，Tick 只使用 `action/prompt/cwd`。
+- **安全长度**：整条 URL 超过 ~6000 时部分平台（Windows 命令行）可能唤不起来；本实现在编码后的 URL 长度 > 6000 时截断 prompt（末尾加 `…`）并返回 `truncated=true`，不假装原文已完整预填。
+- **身份与权限**：不读 WorkBuddy 的任何配置/凭据；`openUrl` 由 main 注入 `shell.openExternal`；App 未安装 / 非绝对 cwd / 空文案均返回可读 reason，不调用深链。
+- **未公开规范**：该协议不是官方文档契约，版本升级可能变化；已在 5.8.4 实测（国际版），5.8.3（国内版）代码路径相同但客户端当前启动异常，待其恢复后复测。不要把它当稳定 API 对外承诺。
+- **门控（2026-10-19 补）**：`WorkbuddyIdentity.taskVerifiedVersions` 是唯一开关；国内版 `['5.8.3']`、国际版 `['5.8.4']` 均为 `prefill`；未命中的版本 `newSessionAvailable=false`（UI 仍列出该已安装工具，但禁用并显示 reason），直接调 `openNewSessionPage` 也返回「未验证，暂不支持」。升级版本后必须重新真机验证再放行。
+- **回执/失败**：该深链接没有 App 侧回执；`openUrl` resolve 只代表交给 LaunchServices，不代表 App 真的打开新建页。Tick 的成功文案只写「已打开/已发出」，不承诺一定预填成功。
+- **数据边界**：prompt 与 cwd 会作为 query 进入自定义 scheme URL，可能被 LaunchServices/目标 App 日志记录；Tick 自己不把 URL 写日志。若正文敏感，用户应只预填标题或先在 App 内输入。
+
+### 11.9 只读证据（2026-10-19）
+
+把 `workbuddy.db` + `-wal` + `-shm` 复制到临时目录后，用两个适配器各跑 `listSessionInfos` / `discoverProjects` / `describeSession`，再做 sha256 + mtime 对比（排除真实 App 并发写入的干扰）：
+
+- `workbuddy.db`：hash/size/mtime 前后完全一致；
+- `workbuddy.db-wal`：hash/size/mtime 前后完全一致；
+- `workbuddy.db-shm`：hash 改变、mtime 前进（SQLite 只读打开 WAL 时维护读标记）。
+
+结论：Tick 不写 db/-wal/会话数据；`-shm` 的改动来自 SQLite WAL 读语义，不是 Tick 写正文。若要求字节级零写入，必须始终走复制路径（代价是每次读取多拷一份 DB）。

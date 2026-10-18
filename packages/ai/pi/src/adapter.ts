@@ -10,15 +10,17 @@
  *  4. 探测路径绝不用 pi 的 getDefaultSessionDir()（mkdirSync 副作用）。
  *
  * launch 语义（PRD F4）：
- *  - deliver='argv'：prompt 作为位置参数立即发送（pi 无「仅预填」模式，源码确认）；
+ *  - deliver='prefill'：prompt 写一次性文件（不进 argv），pi 扩展在 session_start 读到后
+ *    调 ctx.ui.setEditorText() 预填输入框；用户确认后自己回车，不自动发送；
+ *  - deliver='argv'：prompt 作为位置参数立即发送；
  *  - deliver='clipboard'：prompt 进剪贴板（依赖注入 clipboardWrite，避免 ai/pi 反向依赖 Electron），
- *    argv 不带 prompt；'none' 同理不带 prompt。
+ *    argv 不带 prompt，仅作旧配置/降级兜底；'none' 同理不带 prompt。
  *  - sessionId 由调用方预生成（LaunchContext.sessionId），此处只做 uuid 字符集校验。
- *  - launch 只做一次**即时** verify；剪贴板模式下会话文件要等用户发送第一条消息才出现，
+ *  - launch 只做一次**即时** verify；预填/剪贴板模式下会话文件要等用户发送第一条消息才出现，
  *    因此返回 verified=false 是正常语义，由 LaunchService 写成 pending 绑定并在后台对账。
  */
 
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import type {
@@ -49,6 +51,21 @@ import { computeUsageFromFile, inheritedEntriesOf } from './usage'
 export const MIN_PI_VERSION = '1.3.0'
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+/** 与 tick-extension 的读取上限保持一致；超限直接降级 clipboard，避免「写了但被删」 */
+const PREFILL_MAX_BYTES = 200_000
+/** 等扩展回执：session_start 正常 <2s；超时降级 clipboard 并如实提示 */
+const PREFILL_ACK_TIMEOUT_MS = 3_000
+/** 扩展 ack 的 reason 是稳定英文码；UI 文案统一映射成中文 */
+const PREFILL_REASON_TEXT: Record<string, string> = {
+  'too-large': '文案过长',
+  'invalid-payload': '预填数据无效',
+  'empty-prompt': '文案为空',
+  'session-mismatch': '会话不匹配',
+  'editor-unavailable': 'pi 输入框不可用',
+  'set-editor-failed': 'pi 输入框写入失败',
+  'read-failed': '读取预填文件失败',
+  unknown: '未知原因',
+}
 
 export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map(Number)
@@ -65,6 +82,12 @@ export interface TerminalOpenSpec {
   cwd: string
   executable: string
   args: string[]
+  /**
+   * 追加到终端脚本的环境变量（键必须是合法 shell 变量名）。
+   * 预填投递用 `TICK_LAUNCH_FILE` 把「一次性 prompt 文件」交给 pi 扩展：
+   * prompt 不进 argv（ps 不可见、无 ARG_MAX 限制），扩展在 session_start 读取并预填输入框。
+   */
+  env?: Record<string, string>
 }
 
 export interface PiAdapterDeps {
@@ -79,25 +102,36 @@ export interface PiAdapterDeps {
   openTerminal?: (spec: TerminalOpenSpec) => Promise<void> | void
   /** 会话根注入（测试隔离） */
   sessionRoots?: () => SessionRoot[]
+  /**
+   * 预填投递的一次性 prompt 文件目录（main 注入 cache/launch）。
+   * 文件只含「待预填的文案」；pi 扩展在 session_start 读取后立即删除。
+   */
+  prefillDir?: string
+  /** 等 pi 扩展回执的上限（测试注入小值；缺省 3s） */
+  prefillAckTimeoutMs?: number
 }
 
 interface DetectResult {
   installed: boolean
   version?: string
   reason?: string
+  usable?: boolean
 }
 
 export class PiAdapter implements AiToolAdapter {
   readonly id = 'pi'
 
-  readonly capabilities = {
+  readonly capabilities: AiToolAdapter['capabilities'] = {
     needsCwd: true,
     resumeSession: true,
-    deliverPrompt: ['argv', 'clipboard'] as DeliverMode[],
+    deliverPrompt: ['prefill', 'argv', 'clipboard'] as DeliverMode[],
     setSessionName: true,
     discoverProjects: true,
     describeSessions: true,
     usage: true,
+    // pi 是 CLI：Tick 预生成 UUID 并传 --session-id；pi 也支持自生成 UUIDv7，
+    // 但这里保留预生成 id 才能确定性地写 pending 绑定 / verify（不统一 id 生成方式）。
+    newSessionMode: 'launch',
   }
 
   readonly carry: CarryCapability = {
@@ -125,7 +159,14 @@ export class PiAdapter implements AiToolAdapter {
     try {
       const version = await this.readVersion(exe)
       if (compareVersions(version, MIN_PI_VERSION) < 0) {
-        return { installed: true, version, reason: `pi ${version} 低于要求的 ${MIN_PI_VERSION}，请升级` }
+        // 旧 pi 没有本版本依赖的 session_start/setEditorText：installed 仍为 true 便于展示，
+        // 但 usable=false 必须让 launch/prefill/UI 一起挡住，否则默认 prefill 会静默丢文案。
+        return {
+          installed: true,
+          usable: false,
+          version,
+          reason: `pi ${version} 低于要求的 ${MIN_PI_VERSION}，请升级`,
+        }
       }
       return { installed: true, version }
     } catch (e) {
@@ -394,19 +435,39 @@ export class PiAdapter implements AiToolAdapter {
     if (!existsSync(cwd)) throw new Error(`cwd 不存在：${cwd}`)
 
     const deliver: LaunchResult['delivered'] =
-      ctx.deliver === 'argv' ? 'argv' : ctx.deliver === 'clipboard' ? 'clipboard' : 'none'
+      ctx.deliver === 'prefill'
+        ? 'prefill'
+        : ctx.deliver === 'argv'
+          ? 'argv'
+          : ctx.deliver === 'clipboard'
+            ? 'clipboard'
+            : 'none'
     if (deliver === 'clipboard' && !this.deps.clipboardWrite) {
       throw new Error('clipboard 投递需要注入 clipboardWrite（main 进程装配）')
     }
 
-    // pi 位置参数 = 启动消息，放最前（RESEARCH-pi §「CLI trips」）；
-    // 起头为 '-' / '@' 的消息会被当 flag / @file —— 直接拒绝并提示改剪贴板
     const prompt = ctx.promptText
     const argv: string[] = []
+    // 预填：文案不进 argv，写一次性文件交给 pi 扩展，在 session_start 填进输入框（不发送）
+    let prefillFile: string | undefined
+    let delivered: LaunchResult['delivered'] = deliver
+    let notice: string | undefined
+    if (deliver === 'prefill') {
+      if (!prompt.trim()) throw new Error('prefill 投递需要非空 promptText')
+      // 与扩展的 200KB 上限对齐：超限不写文件（写了也会被扩展删掉），直接落剪贴板
+      if (Buffer.byteLength(prompt, 'utf8') > PREFILL_MAX_BYTES) {
+        delivered = 'clipboard'
+        notice = '文案过长（超过 200KB），已改为复制到剪贴板；请在 pi 里手动粘贴'
+        this.deps.clipboardWrite?.(prompt)
+      } else {
+        prefillFile = this.writePrefillFile(sessionId, cwd, prompt)
+      }
+    }
+    // argv 位置参数 = 启动即发送；起头 '-' / '@' 会被 pi 当 flag / @file（预填不受此限制）
     if (deliver === 'argv') {
       if (!prompt.trim()) throw new Error('argv 投递需要非空 promptText')
       if (prompt.startsWith('-') || prompt.startsWith('@')) {
-        throw new Error('消息不能以 "-" 或 "@" 开头（会被 pi 当作 flag / 文件参数）；请改用剪贴板投递')
+        throw new Error('消息不能以 "-" 或 "@" 开头（会被 pi 当作 flag / 文件参数）；请改用预填投递')
       }
       argv.push(prompt)
     }
@@ -415,20 +476,101 @@ export class PiAdapter implements AiToolAdapter {
 
     if (deliver === 'clipboard') this.deps.clipboardWrite?.(prompt)
 
-    await this.openTerminal(cwd, exe, argv)
-    // 只做一次即时检查：剪贴板模式下这里必然 false（正常），由 LaunchService 的 pending 对账接手
+    const ackFile = prefillFile ? `${prefillFile}.ack` : undefined
+    const env = prefillFile
+      ? { TICK_LAUNCH_FILE: prefillFile, ...(ackFile ? { TICK_LAUNCH_ACK: ackFile } : {}) }
+      : undefined
+    try {
+      await this.openTerminal(cwd, exe, argv, env)
+    } catch (err) {
+      // 终端没接走：删掉 prompt 文件，避免把正文留在 cache 里
+      if (prefillFile) rmSync(prefillFile, { force: true })
+      if (ackFile) rmSync(ackFile, { force: true })
+      throw err
+    }
+
+    if (prefillFile && ackFile) {
+      // 等扩展回执：只有它确认 setEditorText 成功，才敢对 UI 说「已预填」。
+      const ack = await this.waitForPrefillAck(ackFile, this.deps.prefillAckTimeoutMs ?? PREFILL_ACK_TIMEOUT_MS)
+      if (!ack || ack.ok !== true) {
+        // 扩展没装/旧版/文案被拒/输入框不可用：不能假成功，降级到剪贴板并如实说明
+        rmSync(prefillFile, { force: true })
+        rmSync(ackFile, { force: true })
+        delivered = 'clipboard'
+        notice = ack?.reason
+          ? `预填未生效（${PREFILL_REASON_TEXT[ack.reason] ?? ack.reason}），已改为复制到剪贴板`
+          : '预填未确认（pi 扩展未响应），已改为复制到剪贴板；请检查 tick-extension 是否已安装'
+        this.deps.clipboardWrite?.(prompt)
+      } else {
+        // 扩展正常情况下已删正文；这里再兜一次，避免 ack 成功但正文残留
+        rmSync(ackFile, { force: true })
+        rmSync(prefillFile, { force: true })
+      }
+    }
+
+    // 只做一次即时检查：预填/剪贴板都要等用户发送第一条消息，这里必然 false（正常）
     const verified = await this.verify(sessionId, { retries: 0, intervalMs: 0 })
     return {
       toolId: this.id,
       sessionId: newCliSessionId(sessionId),
       cwd,
-      delivered: deliver,
+      delivered,
       verified,
+      ...(notice ? { notice } : {}),
     }
   }
 
-  async resume(sessionId: string, ctx: LaunchContext): Promise<LaunchResult> {
-    // resume 前确认文件还在（业务规则：删除 todo 保留绑定，但会话文件可能已被手删）
+  /** 轮询扩展回执；ack 文件由扩展在 setEditorText 后写，atomic-ish 小文件 */
+  private async waitForPrefillAck(
+    ackFile: string,
+    timeoutMs: number,
+  ): Promise<{ ok?: boolean; reason?: string } | undefined> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      try {
+        const raw = JSON.parse(readFileSync(ackFile, 'utf8')) as { ok?: boolean; reason?: string }
+        return raw
+      } catch {
+        await delay(50)
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * 写「待预填文案」一次性文件。刻意用 0600 + 独立文件名：
+   *  - 文案不进 argv（ps 不可见），也不走剪贴板（不污染用户剪贴板）；
+   *  - 扩展在 session_start 读取后立刻删除；文件名带 sessionId，便于扩展核对不是别的会话。
+   */
+  private writePrefillFile(sessionId: string, cwd: string, promptText: string): string {
+    const dir = this.deps.prefillDir
+    if (!dir) throw new Error('prefill 投递需要注入 prefillDir（main 进程装配 cache/launch）')
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    // 上次 pi 没启动/扩展没跑成功时，正文会留在 cache；超过 1 小时的旧文件视为无主，清掉
+    const staleBefore = Date.now() - 60 * 60 * 1000
+    try {
+      for (const name of readdirSync(dir)) {
+        if (!name.endsWith('.prefill.json')) continue
+        const old = path.join(dir, name)
+        try {
+          if (statSync(old).mtimeMs < staleBefore) rmSync(old, { force: true })
+        } catch {
+          /* 忽略：清理失败不阻塞这次拉起 */
+        }
+      }
+    } catch {
+      /* 目录不可读时交给后面的 writeFileSync 报错 */
+    }
+    const file = path.join(dir, `${sessionId}.prefill.json`)
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 1, mode: 'prefill', sessionId, cwd, promptText }),
+      { encoding: 'utf8', mode: 0o600 },
+    )
+    return file
+  }
+
+  async resume(sessionId: string, ctx: LaunchContext): Promise<LaunchResult> {    // resume 前确认文件还在（业务规则：删除 todo 保留绑定，但会话文件可能已被手删）
     const file = this.findFile(sessionId)
     if (!file) {
       throw new Error(`无法 resume：session 文件不存在（${sessionId}）`)
@@ -458,10 +600,15 @@ export class PiAdapter implements AiToolAdapter {
     return exe
   }
 
-  private async openTerminal(cwd: string, executable: string, args: string[]): Promise<void> {
+  private async openTerminal(
+    cwd: string,
+    executable: string,
+    args: string[],
+    env?: Record<string, string>,
+  ): Promise<void> {
     const open = this.deps.openTerminal
     if (!open) throw new Error('未注入终端拉起实现（main 进程装配 openTerminal）')
-    await open({ cwd, executable, args })
+    await open({ cwd, executable, args, ...(env ? { env } : {}) })
   }
 }
 

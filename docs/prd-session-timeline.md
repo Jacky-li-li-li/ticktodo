@@ -3,6 +3,7 @@
 | 字段 | 内容 |
 | --- | --- |
 | 状态 | 草案（v2，已同步 Jacky 的决定），待 Jacky 审阅 |
+| 实现状态 | P0-7 / P0-8 的 `workbuddy` / `workbuddy-ai` 适配器**已落地**（2026-10-19，as-built 见 §9B.9 与 `docs/workbuddy-adapter-notes.md` §11）；P0-1..P0-6 的「最后一条 user 消息 + 跨工具时间线」**尚未实现**，`SessionDigest` / `state` 归一也尚未进 `ai/core` |
 | 日期 | 2026-10-18 |
 | 关联 | `docs/已对齐/PRD-tick.md`（v0.3）、`TECH-ARCH-tick.md` §6、`RESEARCH-magpie.md` |
 | 一句话 | 在 todo 的绑定会话页面，每个会话直接显示该会话**最后一条 user 消息原文**，并把这件事在各 AI 工具里的会话按最后事件时间串成时间线，让人一眼看到「每段停在你说的哪一句」，并能点回任意会话继续。 |
@@ -27,9 +28,9 @@
 **现状（代码核实）**
 
 - 数据模型：`Todo.bindings: SessionBinding[]`（`toolId / sessionId / boundAt / state / filePath`）+ `primarySessionId`（`packages/shared`）。Tick 只存绑定关系，会话元数据权威源在工具侧 adapter。
-- 合同：`AiToolAdapter`（`packages/ai/core`）已有 `listSessionInfos / describeSession`，`SessionInfo` 含 `name / firstMessage / lastMessage / createdAt / lastUsedAt / filePath / parentSessionPath`；`SessionService`（`apps/desktop/src/main/services/sessions.ts`）负责拼视图，5s 内存缓存，不落镜像。
+- 合同：`AiToolAdapter`（`packages/ai/core`）已有 `listSessionInfos / describeSession`，`SessionInfo` 含 `name / firstMessage / lastMessage / createdAt / lastUsedAt / filePath / parentSessionPath`，列表用的 `SessionSummary` 另带 `resumable?`（缺省=可回到）与 `size?`；`SessionService`（`apps/desktop/src/main/services/sessions.ts`）负责拼视图，5s 内存缓存，不落镜像。
 - UI：`TodoDetail` 以列表展示绑定会话，「停在哪」仅用 `lastMessage ?? name ?? firstMessage` 的一行文本；可选单会话用量。
-- 只有 `PiAdapter` 一个实装；第二个接入工具定为 WorkBuddy（桌面形态），Claude Code / Cursor 后续（`SessionService.fallbackSummaries` 已为第二工具预留）。
+- 已有三个适配器实装：`pi`（CLI）、`workbuddy`（WorkBuddy 国内版，桌面形态）、`workbuddy-ai`（WorkBuddy AI 国际版，桌面形态）；Claude Code / Cursor 仍未接入。桌面适配器只读本地 DB/会话文件、只能经深链接回到会话；新建会话语义由 `capabilities.newSessionMode` 表达（`launch` / `prefill` / `none`），两个 WorkBuddy 均为 `prefill`（可打开 GUI 新建页并预填，但不自动发送/不绑定），`SessionService` 已按 `binding.toolId` 路由到对应 adapter。
 - 缺口：① 现有 `lastMessage` 不保证是 user 消息，也无时间、无折叠；② 没有跨会话的时间线视图；③ 会话状态只有 pending/verified，缺「进行中/已停下」等语义；④ 跨工具的字段尚未归一（时间、状态、角色）。
 
 ## 2. 目标用户与场景
@@ -51,10 +52,10 @@
 - P0-1 **最后一条 user 消息原文**：todo 的绑定会话页面中，每个会话显示其最后一条 user 消息原文，并带该消息时间。过长默认折叠（如前 N 行/字），点开看全文。
 - P0-2 **进展时间线**：todo 详情按会话最后事件时间倒序，跨工具混排，每项显示：工具图标、最后事件时间、状态、最后一条 user 消息（折叠）、操作（回到会话）。
 - P0-3 **会话状态归一**：`active / idle / done / missing`（定义见 §4；完成状态读各工具会话记录自带字段）。
-- P0-7 **第二个接入工具：WorkBuddy 适配器**（桌面形态，需求见 §9；依据与风险见 §10）。
-- P0-8 **第三个接入工具：WorkBuddy AI（国际版）适配器**（独立于国内版，需求见 §9B；依据见 §10 表 B）。已在有真实会话的机器上补测（2026-10-18，5.8.4）：数据格式与国内版同内核、包装细节有差异；第二轮（notes §10.8，唯一会话为 playground）深链冷启动 0/2、回首页（归因未证伪）；第三轮对**单普通会话**冷/热/最小化全成功；第四轮（19:33–19:42 UTC+8）在 **2 个**普通会话间冷启动互跳 4/4、热启动 3/3，与单会话结论一致，故“回到会话”**保持默认开启**（§9B.6、notes §10.9/§10.10）。
+- P0-7 **第二个接入工具：WorkBuddy 适配器**（桌面形态，需求见 §9；依据与风险见 §10）。**实现状态（2026-10-19）：适配器已落地**（`@tick/ai-workbuddy`：只读 `workbuddy.db` + jsonl、深链接回到会话；task 深链接未复测，当前 `newSessionMode='none'`（仍可倒入/继续）；as-built 见 notes §11）；本节需求中依赖完成状态归一 / `SessionDigest` 的部分仍未做。
+- P0-8 **第三个接入工具：WorkBuddy AI（国际版）适配器**（独立于国内版，需求见 §9B；依据见 §10 表 B）。**实现状态（2026-10-19）：适配器已落地**（`@tick/ai-workbuddy-ai`，复用同一套只读读取内核、独立身份；playground 会话 `resumable=false`；`newSessionMode='prefill'` 仅 5.8.4 实测启用）。已在有真实会话的机器上补测（2026-10-18，5.8.4）：数据格式与国内版同内核、包装细节有差异；第二轮（notes §10.8，唯一会话为 playground）深链冷启动 0/2、回首页（归因未证伪）；第三轮对**单普通会话**冷/热/最小化全成功；第四轮（19:33–19:42 UTC+8）在 **2 个**普通会话间冷启动互跳 4/4、热启动 3/3，与单会话结论一致，故“回到会话”**保持默认开启**（§9B.6、notes §10.9/§10.10）。
 - P0-4 **一键回到会话**：pi 沿用现有 resume；desktop 工具（WorkBuddy：`workbuddy://`；WorkBuddy AI：`workbuddy-ai://`，两者独立）用**深链接**拉起应用并定位到会话（§9.6）；`missing`（文件不在）时置灰并显示原路径。
-- P0-5 **缓存与增量**：按 `(filePath, size, mtime)` 作快路径判断，并用**内容前缀哈希**确认「只在尾部追加」；否则整份重解析（[M] 同款做法）。DB 侧元数据（`status` / `title`）另按 DB 指纹或短 TTL 失效。仅变化时重读，不阻塞详情打开。
+- P0-5 **缓存与增量**：按 `(filePath, size, mtime)` 作快路径判断（as-built）；内容前缀哈希确认「只在尾部追加」仍为后续项，未实现。DB 侧元数据（`status` / `title`）另按 DB 指纹或短 TTL 失效。仅变化时重读，不阻塞详情打开。
 - P0-6 **todo 列表行**：显示最近一个会话的最后一条 user 消息（单行截断，替代当前纯 `lastMessage`）。
 - 约束：**纯本地、零外发**。
 
@@ -163,7 +164,7 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 6. 抓包/日志验证**无任何外发请求**。
 7. 会话文件被删：条目显示 `missing` 并置灰，不报错，不影响其他条目。
 8. 「回到会话」：pi 行为与现有一致；WorkBuddy 经深链接拉起并定位（冷/热启动均验证），id 不存在时不调用并提示；`primary` 逻辑不回归。
-9B. WorkBuddy AI（国际版）适配器：与国内版独立（`toolId=workbuddy-ai`，会话 ID 前缀 `workbuddy-ai:`），同样满足「读不到/格式不识别时降级」「不写其数据、不读 keyblob/settings」；深链接开关按 §9B.6——普通会话默认开启（本机 5.8.4 已实测冷/热/最小化与双会话互跳），playground 会话与换版本未实测前置灰。
+9B. WorkBuddy AI（国际版）适配器：与国内版独立（`toolId=workbuddy-ai`，会话 id 用工具侧原始 UUID），同样满足「读不到/格式不识别时降级」「不写其数据、不读 keyblob/settings」；深链接开关按 §9B.6——普通会话默认开启（本机 5.8.4 已实测冷/热/最小化与双会话互跳），playground 会话与换版本未实测前置灰。
 9. WorkBuddy 适配器：读不到/格式不识别时降级为空（保底文案）且仍可定位；任何情况下不写 WorkBuddy 数据、不读 keyblob/settings。
 10. todo 列表行显示最近一个会话的最后一条 user 消息。
 11. core 归一逻辑（最后 user 消息识别、状态判定、保底、排序）有可复跑的临时 `.mjs` 夹具脚本（仓库无 test runner，见 `CLAUDE.md`）；`pnpm typecheck` 通过。
@@ -247,7 +248,7 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 - 本适配器**仅针对国内版 WorkBuddy**（workbuddy.cn）：数据目录 `~/.workbuddy`，scheme `workbuddy`，bundle `com.tencent.workbuddy.mac`，toolId `workbuddy`。
 - 根目录解析优先级：用户配置 > 环境变量 `WORKBUDDY_CONFIG_DIR` > 默认 `~/.workbuddy`。`WORKBUDDY_CONFIG_DIR` 有第三方实现佐证（[M]，本机未验证生效）；`CODEBUDDY_CONFIG_DIR` 属 CodeBuddy Code 自己的目录，[M] 未把它用于 WorkBuddy，故不作本适配器依据（§10 #15）。**两个 build 的识别以各自的 App bundle / 数据根目录为准，不用环境变量判断版本**（§10 表 B B9）。
-- **国际版 WorkBuddy AI 是并列的独立适配器（§9B）**：不作为"变体"、不通过切换根目录/scheme/环境变量复用本适配器；两者可同时启用，会话 ID 前缀（`workbuddy:` / `workbuddy-ai:`）与工具图标分开，依据表 A/B 各自独立。
+- **国际版 WorkBuddy AI 是并列的独立适配器（§9B）**：不作为"变体"、不通过切换根目录/scheme/环境变量复用本适配器；两者可同时启用，工具图标与 `toolId` 分开，依据表 A/B 各自独立。会话 id 直接用工具侧原始 UUID（经 `newCliSessionId`，**不加 `toolId:` 前缀**——as-built 的命名空间由 `(toolId, sessionId)` 二元组保证）。
 
 ### 9.9 容错与版本探测
 
@@ -311,13 +312,21 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 ### 9B.8 与国内版的并存
 
-两个适配器独立注册：`toolId` = `workbuddy` / `workbuddy-ai`，会话 ID 前缀不同，同一 cwd 下两边都有会话时各自成项；不共用配置、缓存键、依据等级；任一版本未安装不影响另一个。
+两个适配器独立注册：`toolId` = `workbuddy` / `workbuddy-ai`，会话 id 各自用工具侧原始 UUID（命名空间靠 `(toolId, sessionId)`），同一 cwd 下两边都有会话时各自成项；不共用配置、缓存键、依据等级；任一版本未安装不影响另一个。
 
-### 9B.9 待补测清单（验收前必须完成）
+### 9B.9 实现状态与待补测清单
 
-已完成（2026-10-18）：jsonl 位置/文件名、`type`/`role`、`user_query`、`startsNewUserRequest`、末尾 assistant `completed`、`status=completed`、`deleted_at=NULL`、前台 bundle id；普通会话深链接单会话矩阵（§10.9）与双会话互跳（§10.10，2 个普通会话）；`function_call`/`function_call_result` 形态已在样本中见到；“回到会话”已默认开启（普通会话）。
+**适配器实现已完成（2026-10-19）**——这一条不等于「实测项已全部验证」，只说明合同能力已落地、有可复跑的只读冒烟：
 
-仍待补测：
+- 包：`@tick/ai-workbuddy`（国内版 + 共用读取内核）、`@tick/ai-workbuddy-ai`（国际版身份）；两版各自 `detect / listSessionInfos / discoverProjects / describeSession / resume`，`launch()` 直接抛错、两版 `capabilities.newSessionMode='prefill'`（`openNewSessionPage()` 负责打开 GUI 新建页并预填，发送后仍由用户倒入绑定）。
+- 读取：`workbuddy.db` 只读打开 + WAL 复制兜底 + `PRAGMA table_info` 必需列探测（禁用 `immutable=1`）；列表/项目发现只读 DB，只有 `describeSession` 才流式读 jsonl 并按 `(mtime,size)` 缓存。
+- 消息：`<user_query>` 抽取 + `isMeta` / `isCompacted` 过滤 + `startsNewUserRequest` 缺失回退；首条/末条 user 消息用同一套规则。
+- 回到会话：`resume` 前查 DB 校验 id 存在且未删除；国际版 `is_playground=1` 置 `resumable=false` 并拒绝；失败不重试、不降级到另一 scheme。
+- 实测记录（2026-10-18）：jsonl 位置/文件名、`type`/`role`、`user_query`、`startsNewUserRequest`、末尾 assistant `completed`、`status=completed`、`deleted_at=NULL`、前台 bundle id；普通会话深链接单会话矩阵（§10.9）与双会话互跳（§10.10，2 个普通会话）；`function_call`/`function_call_result` 形态已在样本中见到；“回到会话”已默认开启（普通会话）。
+- as-built 细节见 `docs/workbuddy-adapter-notes.md` §11。仍是未验证、也不在本次实现范围内的是：`SessionDigest` / `state: active|idle|done|missing` 的 core 合同与时间线本身（P0-1..P0-6）。
+
+**实测未验证项（仍待补测，不因实现完成而关闭）**：
+
 1. `isMeta=true` / `isCompacted=true` 的实际形态（字段目前在样本中均不出现）；三会话及以上互跳（本机仅 2 个普通会话）；
 2. `status` 的 `active/error` 取值与软删除（正数 `deleted_at`）、云端 `-1` 语义；
 3. 深链接：已删除会话 id、playground 回落原因的独立证伪；热启动偶发回落的触发条件（普通会话复测中未再现）。

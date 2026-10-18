@@ -113,7 +113,7 @@ function renderMarkdown(exportedAt: string, todos: ExportedTodo[]): string {
   const lines: string[] = [
     `# Tick 导出 · ${exportedAt}`,
     '',
-    '> 这里只有索引记录，不含对话正文；filePath 指向 pi 自己的会话文件。',
+    '> 这里只有索引记录，不含对话正文；filePath 指向各工具自己的会话文件。',
     '',
   ]
   for (const todo of todos) {

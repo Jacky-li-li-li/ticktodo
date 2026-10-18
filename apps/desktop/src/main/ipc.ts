@@ -12,6 +12,8 @@ import type {
   ExportResult,
   LaunchOutcome,
   LaunchRequest,
+  PrefillNewSessionOutcome,
+  PrefillNewSessionRequest,
   ResumeRequest,
   SessionsListOptions,
   SessionView,
@@ -19,6 +21,7 @@ import type {
   TodoCreateInput,
   TodoPatch,
   TodoSessionView,
+  ToolStatus,
 } from '@tick/shared'
 import {
   ChatIpc,
@@ -30,6 +33,7 @@ import {
   SettingsIpc,
   TodosIpc,
   ToolsIpc,
+  toolDisplayName,
   UsageIpc,
   WindowIpc,
 } from '@tick/shared'
@@ -158,15 +162,25 @@ export function registerIpc(
   ipcMain.handle(SessionsIpc.forTodo, async (_e, todoId: string): Promise<TodoSessionView[]> => {
     return services.sessions.forTodo(todoId)
   })
-  ipcMain.handle(SessionsIpc.claim, async (_e, sessionId: CliSessionId) => {
-    return services.sessions.claim(sessionId)
-  })
-  ipcMain.handle(SessionsIpc.bind, async (_e, args: { todoId: string; sessionId: CliSessionId }) => {
-    return services.sessions.bind(args.todoId, args.sessionId)
-  })
-  ipcMain.handle(SessionsIpc.unbind, async (_e, args: { todoId: string; sessionId: CliSessionId }) => {
-    return services.sessions.unbind(args.todoId, args.sessionId)
-  })
+  ipcMain.handle(
+    SessionsIpc.claim,
+    async (_e, args: CliSessionId | { sessionId: CliSessionId; toolId?: string }) => {
+      const sessionId = typeof args === 'string' ? args : args.sessionId
+      return services.sessions.claim(sessionId, typeof args === 'string' ? undefined : args.toolId)
+    },
+  )
+  ipcMain.handle(
+    SessionsIpc.bind,
+    async (_e, args: { todoId: string; sessionId: CliSessionId; toolId?: string }) => {
+      return services.sessions.bind(args.todoId, args.sessionId, args.toolId)
+    },
+  )
+  ipcMain.handle(
+    SessionsIpc.unbind,
+    async (_e, args: { todoId: string; sessionId: CliSessionId; toolId?: string }) => {
+      return services.sessions.unbind(args.todoId, args.sessionId, args.toolId)
+    },
+  )
 
   // ---------- 导出（F8） ----------
   ipcMain.handle(ExportIpc.run, async (_e, req: ExportRequest): Promise<ExportResult> => {
@@ -187,15 +201,45 @@ export function registerIpc(
   )
 
   // ---------- 工具就绪（Q14 双出口空态判据） ----------
-  ipcMain.handle(ToolsIpc.status, async () => {
-    const results = await Promise.all(
-      adapters.map(async (a) => ({
-        toolId: a.id,
-        name: a.id,
-        ...(await a.detect()),
-      })),
+  ipcMain.handle(ToolsIpc.status, async (): Promise<ToolStatus[]> => {
+    return Promise.all(
+      adapters.map(async (a): Promise<ToolStatus> => {
+        // detect 失败不能把整块 status 打成 IPC 异常：就绪探测不到 = 「不可用 + 原因」，
+        // 一个工具挂掉时其他工具的状态仍要能显示（失败降级）
+        let detected: { installed: boolean; version?: string; usable?: boolean; reason?: string }
+        try {
+          detected = await a.detect()
+        } catch (e) {
+          detected = { installed: false, usable: false, reason: `就绪探测失败：${(e as Error).message}` }
+        }
+        const usable = detected.usable ?? detected.installed
+        const mode = a.capabilities.newSessionMode
+        let newSessionAvailable = detected.installed && usable && mode !== 'none'
+        let newSessionReason: string | undefined
+        if (newSessionAvailable && a.newSessionAvailability) {
+          const availability = await a
+            .newSessionAvailability()
+            .catch((e): { available: boolean; reason: string } => ({
+              available: false,
+              reason: `新建会话能力探测失败：${(e as Error).message}`,
+            }))
+          newSessionAvailable = availability.available
+          newSessionReason = availability.reason
+        }
+        return {
+          toolId: a.id,
+          // 展示名统一映射（shared 单一来源），不把 id 当名字用
+          name: toolDisplayName(a.id),
+          ...detected,
+          // 缺省 usable = installed：adapter 没显式声明时按「装了就能用」处理
+          usable,
+          newSessionMode: mode,
+          newSessionAvailable,
+          ...(newSessionReason ? { newSessionReason } : {}),
+          resumeSession: a.capabilities.resumeSession,
+        }
+      }),
     )
-    return results
   })
 
   // ---------- 自配 provider（M3 尾巴 / PRD F5 来源 2） ----------
@@ -251,6 +295,14 @@ export function registerIpc(
   ipcMain.handle(LaunchIpc.launch, async (_e, req: LaunchRequest): Promise<LaunchOutcome> => {
     return services.launch.launch(req)
   })
+
+  // 桌面工具：只打开 GUI 新建页并预填；不写 binding，发送后由用户倒入
+  ipcMain.handle(
+    LaunchIpc.prefillNewSession,
+    async (_e, req: PrefillNewSessionRequest): Promise<PrefillNewSessionOutcome> => {
+      return services.launch.prefillNewSession(req)
+    },
+  )
 
   ipcMain.handle(LaunchIpc.resume, async (_e, req: ResumeRequest): Promise<LaunchOutcome> => {
     return services.launch.resume(req)

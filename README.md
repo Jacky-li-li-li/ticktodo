@@ -20,7 +20,7 @@
 > **Built around the todo.** Ticktodo gathers the AI sessions for the same todo across tools.<br />
 > Come back without recalling or digging — see where you left off and continue in one click.
 
-Currently supports **pi**; more tools such as WorkBuddy are on the way.
+Currently supports **pi**, **WorkBuddy (China)** and **WorkBuddy AI (International)**. The WorkBuddy adapters are read-only: they index sessions from each desktop app's local storage and reopen them via deep link. Both WorkBuddy builds can open a new-task page with the prompt and project prefilled, but Ticktodo never sends or binds automatically — sending and importing remain explicit steps in the app.
 
 ## Why Ticktodo
 
@@ -70,7 +70,7 @@ The script downloads the latest release, verifies `SHA256SUMS.txt`, installs to 
 bash scripts/install.sh path/to/Tick.app
 ```
 
-**Requirements**: macOS. Session aggregation and **Continue** require `pi >= 1.3.0` (use `TICK_PI_PATH` to point to the executable).
+**Requirements**: macOS. Aggregating and continuing `pi` sessions requires `pi >= 1.3.0` (use `TICK_PI_PATH` to point to the executable); on first launch Ticktodo installs its `tick-extension` into `~/.pi/agent/extensions/tick/` so pi can prefill new sessions and expose `create_todo`/`list_todos`. Aggregating WorkBuddy sessions requires the corresponding desktop app (**WorkBuddy** or **WorkBuddy AI**) — they are apps, not CLIs; their new-session prefill is only enabled for versions verified locally.
 
 After installation, Ticktodo lives in the menu bar and does not appear in the Dock.
 
@@ -100,8 +100,8 @@ Sessions are discovered from each tool's storage: tool, project, first user mess
 
 ### Continue in one click
 
-- **Resume an existing session**: open pi's TUI in the terminal with the session's own cwd; context continues exactly where it left off.
-- **Start a new session**: pick a project and write the first message; by default it is copied to the clipboard for review, or you can send it directly in settings.
+- **Resume an existing session**: open pi's TUI in the terminal with the session's own cwd; context continues exactly where it left off. For sessions from the WorkBuddy desktop apps, **Continue** deep-links into that session in the app instead.
+- **Start a new session**: pick a project and write the first message; by default it is **prefilled into the tool's input box** for you to review and press Enter. Tick **Send directly** next to the primary button to send it immediately for this launch, or change the default in settings.
 - If a directory no longer exists, you get a clear warning and fall back to your home directory — never a silent run in the wrong place.
 
 ### Import past sessions
@@ -130,8 +130,8 @@ Lives in the menu bar. The panel is pinned by default, or can auto-hide when it 
 | Tool | Status | Discovery | Continue | Notes |
 |---|---|---|---|---|
 | **pi** | ✅ Supported | ✅ | Terminal TUI | Requires `pi >= 1.3.0` |
-| WorkBuddy (China) | Planned | — | Deep link | PRD and read-only testing done; adapter not released |
-| WorkBuddy AI (International) | Planned | — | Deep link | Separate adapter with the same storage core |
+| WorkBuddy (China) | ✅ Supported | ✅ | Deep link | Read-only index of the app's local database / session files; requires the WorkBuddy desktop app. Can open a prefilled new-task page; sending/binding still happen in the app |
+| WorkBuddy AI (International) | ✅ Supported | ✅ | Deep link | Separate adapter (own identity, same read-only storage core); requires the WorkBuddy AI desktop app. Can open a prefilled new-task page; sending/binding still happen in the app |
 | Claude Code / Cursor | Later | — | — | Claude Code uses local JSONL; Cursor format TBD |
 
 Adding a tool = implement `AiToolAdapter` in `packages/ai/<tool>` and register it in `main.ts`. No changes to core or UI.

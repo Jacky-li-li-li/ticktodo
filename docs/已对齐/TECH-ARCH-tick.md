@@ -70,7 +70,7 @@ flowchart TB
   Chat --> Agent
   Launch --> Reg --> PiAd
   Reg -.-> Future
-  PiAd -->|"argv 优先 / 剪贴板降级"| PiCLI
+  PiAd -->|"prefill 预填 / argv 立即发送 / clipboard 降级"| PiCLI
   PiAd -.-> Clip
   Agent --> LLM
   Agent --> Todo
@@ -121,15 +121,17 @@ tick/
 │   │   │   ├── canonical-path.ts    # 路径同一性
 │   │   │   ├── project-merge.ts     # mergeProjects() 纯函数
 │   │   │   └── session-ns.ts        # CliSessionId / PanelSessionKey
-│   │   ├── pi/                  # PiAdapter：吐 ProjectSource，不做归并
-│   │   └── <tool>/              # 第二个工具接入点（同合同，不碰 core 逻辑）
+│   │   ├── pi/                  # PiAdapter：CLI 工具的参考实现（吐 ProjectSource，不做归并）
+│   │   ├── workbuddy/           # WorkbuddyAdapter（国内版）+ 两个 WorkBuddy 共用的只读读取内核
+│   │   ├── workbuddy-ai/        # WorkbuddyAiAdapter（国际版）：只声明身份，内核复用 workbuddy
+│   │   └── <tool>/              # 后续工具接入点（同合同，不碰 core 逻辑）
 │   ├── tick-extension/          # pi extension：defineTool(create_todo / list_todos)
 │   └── storage/                 # 可选（未落地）
 ├── scripts/install.sh           # 发布安装通道
 └── docs/
 ```
 
-依赖：`apps/desktop` → `shared` / `ai/core` / `ai/pi` / `tick-extension`；各 `ai/<tool>` → `shared`；禁止反向依赖 app。组合根在 app（`ai-host.ts`）；**`ai/core` 不得依赖具体 `ai/<tool>`**。
+依赖：`apps/desktop` → `shared` / `ai/core` / `ai/pi` / `ai/workbuddy` / `ai/workbuddy-ai` / `tick-extension`；各 `ai/<tool>` → `shared`；`ai/workbuddy-ai` 另依赖 `ai/workbuddy`（复用读取内核）；禁止反向依赖 app。组合根在 app（`main.ts` 装配 `AiToolRegistry`）；**`ai/core` 不得依赖具体 `ai/<tool>`**。
 
 ### 4.1 语言与运行时（选型依据）
 
@@ -149,18 +151,18 @@ tick/
 | WindowManager | main | 置顶、显隐（位置记忆待补） |
 | ShortcutService | main | 全局快捷键（首版未实现） |
 | TodoStore | main | CRUD、软完成；原子写 + 文件锁（`todo-store.ts`） |
-| SessionStore | main | **只存绑定关系**（`Todo.bindings[]` 1:N + `primarySessionId`）；元数据不镜像，走 adapter |
+| SessionStore | main | **只存绑定关系**（`Todo.bindings[]` 1:N + `primarySessionId`）；元数据不镜像，走 adapter。会话视图 `SessionService` 按 `binding.toolId` 路由到对应 adapter（id 空间互不相干），列表合并全部 adapter、以 `(toolId, sessionId)` 为唯一键 |
 | ProjectIndexService | main | **调度**各 adapter 采集 → 交给 core 归并 → 分段缓存（`cache/projects.json`）→ 失效重建 → IPC；含 **Warm/Ask 两级调度**（后台低优先级扫，用户请求时提速） |
 | mergeProjects | ai/core | **工具无关**的纯函数：归一化 → git 根上卷 → 按路径合并证据 → 排序（可单测，不依赖任何 adapter） |
 | canonicalPath | ai/core | 路径同一性：realpath / `/private/var` / 大小写 / trailing slash / worktree |
 | CwdResolver | main | 默认 cwd 推导：绑定 session cwd（**按 `binding.toolId` 取对应 adapter**）→ `Todo.lastLaunch` → **home**；返回 `{cwd, source}`，UI 据此渲染按钮 |
-| ChatAgentHost | main | **pi-durable** `Harness` + `openNodeSqliteStorage` 落 `sessions/panel-chat/`；加载 `tick-extension`；**不参与用量统计** |
+| ChatAgentHost | main | **pi-durable** `Harness` + `openNodeJsonlStorage` 落 `sessions/panel-chat/`；加载 `tick-extension`；**不参与用量统计** |
 | SessionUsage | ai/core | 类型 + 汇总（仅工具侧，同工具内求和）；取数由各 adapter 的 `computeUsage()` 负责 |
 | AiToolRegistry | ai/core | detect、列出 adapters |
-| AiLaunchService | main | 组装 LaunchContext → adapter |
-| PiAdapter | ai/pi | 会话目录发现、argv/clipboard 投递、spawn、resume、`--name` |
+| AiLaunchService | main | 组装 LaunchContext → adapter；按 `toolId` 路由（显式 `LaunchRequest.toolId` → `Todo.bindings[].toolId` → 默认可拉起工具）。`newSessionMode` 决定新建语义：`launch` 走预生成 id + 绑定；`prefill` 只打开 GUI 新建页并预填（不发送/不绑定），`launch()` 对后者直接失败 |
+| 适配器（PiAdapter / WorkbuddyAdapter / WorkbuddyAiAdapter） | ai/pi、ai/workbuddy、ai/workbuddy-ai | 各自的 detect / 项目证据（`discoverProjects`）/ 会话列表 / 回到会话：CLI 工具走终端 resume，桌面工具只读本地数据 + 深链接（不支持从 Tick 直接新建并绑定；两个 WorkBuddy 均可 prefill 打开 GUI 新建页） |
 | tick-extension | packages | `defineTool(create_todo / list_todos)`；CLI 与面板共用同一实现 |
-| SessionIndex | ai/core | 已删除。会话索引由 Main 的 `SessionStore`（`cli-sessions.json`）单一持有 |
+| SessionIndex | ai/core | 已删除。会话关系由 Main 的 `SessionStore` 直接读写 `data/todos.json` 的 bindings（不另建镜像） |
 
 ---
 
@@ -173,13 +175,15 @@ interface AiToolAdapter {
   capabilities: {
     needsCwd: boolean
     resumeSession: boolean
-    deliverPrompt: 'argv' | 'clipboard' | 'flag' | 'stdin' | 'none'
-    // pi 的 argv = 立即发送（interactive-mode.js:894 session.prompt()），
-    // pi 无"仅预填"模式 → 想要"等我回车"只能走 clipboard
+    deliverPrompt: ('prefill' | 'argv' | 'clipboard' | 'flag' | 'stdin' | 'none')[]   // 桌面工具为 []（不发消息）
+    // pi 的 prefill = 启动时把文案填进 TUI 输入框（tick-extension ctx.ui.setEditorText，不发送），
+    // argv = 启动即发送（interactive-mode.js:894 session.prompt()）；clipboard 仅作旧配置/降级
     setSessionName: boolean        // pi: --name
     discoverProjects: boolean      // 能否从工具自身存储推导项目（cwd）
     describeSessions: boolean      // 能否回读 session 元数据
     usage: boolean                 // 会话是否自带 usage（pi ✅，见 §6.3）
+    newSessionMode: 'launch' | 'prefill' | 'none'
+                                   // launch = Tick 预生成 id 并拉起（CLI）；prefill = 只打开 GUI 新建页预填；none = 不支持
   }
   discoverProjects?(): Promise<DiscoveredProject[]>   // pi: 扫会话目录（**先解析覆盖路径**，见 §6.2）
   listSessions?(cwd?: string): Promise<SessionRef[]>  // 工具侧权威列表（含未绑定的）
@@ -199,6 +203,8 @@ interface AiToolAdapter {
   // 降级：任何方向都可用"把摘要作为首条消息投递"保底（摘要优先取 compaction.summary）
   launch(ctx: LaunchContext): Promise<LaunchResult>
   resume(sessionId: CliSessionId, ctx: LaunchContext): Promise<LaunchResult>
+  openNewSessionPage?(ctx: { promptText: string, cwd: string }): Promise<{ ok: boolean, reason?: string, truncated?: boolean }>
+                              // 桌面工具：打开 GUI 新建页并预填；不预生成/绑定 sessionId
   verify?(sessionId: CliSessionId): Promise<boolean>  // launch 后校验 session 真的产生
 }
 
@@ -212,6 +218,16 @@ SessionInfo {
                               // **只在 /fork、/clone、newSession({parentSession}) 时出现，值是源会话文件路径**
                               // 读首行即可拿到（零成本）。用途：标注血缘 + 用量求和时跳过继承段
   usage?: SessionUsage       // 可选，见 §6.3（默认不计算）
+}
+
+// 列表用的轻量元数据（SessionService / 多会话绑定 UI）
+SessionSummary {
+  toolId, sessionId, cwd, name?, firstMessage?, createdAt, lastUsedAt,
+  filePath: string
+  exists: boolean
+  size?: number
+  resumable?: boolean       // false = 这条会话不能「回到会话」；缺省=可回到
+                            // （桌面工具的 playground 会话显式 false，UI 置灰且不发起 resume）
 }
 ```
 
@@ -228,14 +244,14 @@ SessionInfo {
 Tick 侧只持久化 `Todo.bindings[]` + `primarySessionId`，其余字段运行时向 adapter 要、缓存可随时丢弃重建——
 否则 session 在工具侧被改名/删除后，镜像立刻腐烂。
 
-LaunchResult = { toolId, sessionId: CliSessionId, cwd, pid?, delivered: 'argv' | 'clipboard' | 'none' }
+LaunchResult = { toolId, sessionId: CliSessionId, cwd, pid?, delivered: 'prefill' | 'argv' | 'clipboard' | 'none' }
 ```
 
 `pid` 缺席表示 spawn 失败，调用方据此报 `ok: false`。`CliSessionId` 是品牌类型，只能由 `parseCliSessionId` 或 `newCliSessionId` 产出。
 
-pi：`deliverPrompt = argv`（`pi "<消息>"` 作为启动即发送的初始消息；不支持时降级 clipboard），`resume` → `pi --session <id>`，命名 → `pi --name <标题>`。
+pi：`deliverPrompt = prefill | argv | clipboard`。默认 `prefill`：Tick 把文案写一次性文件（`cache/launch/<sessionId>.prefill.json`，0600），终端脚本通过 `TICK_LAUNCH_FILE`/`TICK_LAUNCH_ACK` 传给 tick-extension；扩展在 `session_start` 调 `ctx.ui.setEditorText()` 预填输入框、删正文并写 ack，**不自动发送**。主进程最多等 ack 3s，失败/超时降级剪贴板并在 `LaunchOutcome.notice` 如实提示。`argv` 是勾选「直接发送」时的启动即发；`clipboard` 仅作旧配置/降级兜底。`resume` → `pi --session <会话文件绝对路径>`，命名 → `pi --name <标题>`。
 
-**session id 来源**：`launch` 预生成 UUIDv7（`newCliSessionId`）并传 `--session-id <id>`，由 pi 在启动时按该 id 创建 session（已验证 pi 1.2.0）。binding 不依赖事后读盘，但需要 `verify()` 兜底——spawn 成功不代表 pi 侧真的落了盘，失败标 `verified: false` 并在 UI 提示。
+**session id 来源**：`launch` 预生成 UUID（v4，Node `randomUUID`）并传 `--session-id <id>`，由 pi 在启动时按该 id 创建 session。pi 源码也支持不传 id 时自生成 UUIDv7，但 Tick 保留预生成以保证 pending 绑定/verify 的确定性；**不统一各工具的 id 生成方式**。binding 不依赖事后读盘，但需要 `verify()` 兜底——spawn 成功不代表 pi 侧真的落了盘，失败标 `verified: false` 并在 UI 提示。
 
 **项目发现（pi 实测结构）**：
 
@@ -489,7 +505,7 @@ flowchart TB
 - **两条集成路径各司其职，别混**：
   - **CLI 拉起（主路径）**：spawn 交互式 TUI 到终端，只用官方 flags
     （`--session` / `--session-id` / `--name` / `--fork` / `-e`），cwd 由调用方传入
-  - **面板 Chat（D13 定案）**：`Harness.open(await openNodeSqliteStorage("~/.ticktodo/sessions/panel-chat/…"))`
+  - **面板 Chat（D13 定案）**：`Harness.open(await openNodeJsonlStorage("~/.ticktodo/sessions/panel-chat/…"))`
     走 **pi-durable**；用它的 `resume()`（崩溃续跑）与 `requestId` 幂等。
     它自带的 `pi.usage` document **不读**——面板不参与用量统计（§6.3）。
     **必须 pin 1.3.0**（README 首行即 "Experimental. The API changes without notice"），
@@ -568,7 +584,7 @@ sequenceDiagram
 ├── README.md               # 自动生成：各层用途与同步建议
 ├── data/                   # ✅ 可同步 · 关键（几十 KB，丢了致命）
 │   ├── todos.json               # 版本化 + 原子写 + 文件锁（CLI 与面板并发写）
-│   ├── cli-sessions.json        # 仅绑定关系（bindings / primary）
+│   ├── data/todos.json 里的 bindings（不另建镜像）        # 仅绑定关系（bindings / primary）
 │   └── settings.json
 ├── sessions/               # ⚠️ 不建议同步 · 含对话正文（MB 级，丢了可承受）
 │   └── panel-chat/              # pi-durable store，与 CliSessionId 命名空间隔离
@@ -583,7 +599,7 @@ sequenceDiagram
 **`cache/` 被删不应导致任何功能异常**（重扫即重建）。
 
 - 面板会话落盘：**pi-durable@1.3.0**（D13 定案）的
-  `openNodeSqliteStorage(path)`（或 `openNodeJsonlStorage(dir)`）指向 `sessions/panel-chat/`。
+  `openNodeJsonlStorage(path)`（或 `openNodeJsonlStorage(dir)`）指向 `sessions/panel-chat/`。
   本机尚未安装，M2 需装 `@earendil-works/pi-durable` + `@earendil-works/pi-ai` + `@earendil-works/chord`。
   备选：pi SDK 的 `createAgentSession({ sessionManager })`（自管 `SessionManager`）。
 

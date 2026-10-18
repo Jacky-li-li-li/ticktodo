@@ -106,6 +106,14 @@ html.using-pointer a:focus-visible {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
+/* ---------- 品牌图标（内联 SVG） ---------- */
+/* PiIcon / WorkbuddyIcon / WorkbuddyAiIcon 都是带 className="tool-icon" 的内联 SVG：
+   放进 flex 行时不要被拉伸、也不要出现 inline 基线空隙。 */
+.tool-icon {
+  display: block;
+  flex: none;
+}
+
 /* ---------- 顶栏（§4.4） ---------- */
 
 .topbar {
@@ -895,7 +903,7 @@ button.sheet-row:hover {
   color: var(--t-weak);
 }
 
-/* 投递方式：两段式，默认在左（剪贴板） */
+/* 投递方式：两段式，默认在左（预填） */
 .segmented {
   margin-left: auto;
   display: flex;
@@ -1274,12 +1282,39 @@ button.sheet-row:hover {
   gap: 5px;
 }
 
+/* S5 / 多工具：先标会话属于哪个工具（图标 + 展示名），再跟时间与绑定信息 */
 .session-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
   font-size: 9px;
   color: var(--t-weak);
   white-space: nowrap;
+}
+
+.session-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  min-width: 0;
+  max-width: 42%;
+  color: var(--t-secondary);
+}
+
+.session-tool-name {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 时间 / 已绑定：放不下就截断，工具名优先保住 */
+.session-meta-rest {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-actions {
@@ -1308,7 +1343,8 @@ button.sheet-row:hover {
   color: var(--t-title);
 }
 
-.mini:disabled {
+.mini:disabled,
+.mini[aria-disabled='true'] {
   opacity: 0.38;
 }
 
@@ -1907,6 +1943,13 @@ button.sheet-row:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.ns-tool:disabled,
+.ns-tool:disabled:hover {
+  opacity: 0.5;
+  cursor: default;
+  background: transparent;
+}
+
 .ns-tool.on {
   /* §3.4 选中态：Accent 24%→10% + 亮边 #9EC5FF 50% */
   background: linear-gradient(180deg, rgba(10, 132, 255, 0.24), rgba(10, 132, 255, 0.1));
@@ -1924,6 +1967,18 @@ button.sheet-row:hover {
   font-size: 12px;
   font-weight: 600;
   color: #fff;
+}
+
+/* 「新建页」小标签：标出该工具只能打开 GUI 新建页并预填，不能从 Tick 直接发送 */
+.ns-tool-tag {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--t-weak);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.3;
 }
 
 /* 右侧单选圆点（单选语义；选中时填 Accent） */
@@ -2018,6 +2073,79 @@ button.sheet-row:hover {
   font-size: 12px;
   font-weight: 600;
   flex: none;
+}
+
+/* 底部按钮行：主按钮 + 同行「直接发送」勾选（只覆盖本次拉起，不回写设置） */
+.ns-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ns-footer-row .ns-go {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.ns-direct {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  color: var(--t-secondary);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 原生 checkbox 太取决于系统 accent（橙/蓝），这里画成与主按钮一致的墨黑勾选块 */
+.ns-direct input {
+  appearance: none;
+  -webkit-appearance: none;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+}
+
+.ns-direct input::after {
+  content: '';
+  width: 6px;
+  height: 3px;
+  border-left: 1.5px solid var(--metal-text);
+  border-bottom: 1.5px solid var(--metal-text);
+  transform: translateY(-1px) rotate(-45deg);
+  opacity: 0;
+}
+
+.ns-direct input:checked {
+  border-color: var(--metal-line);
+  background: linear-gradient(180deg, var(--metal-hi) 0%, var(--metal-mid) 54%, var(--metal-lo) 100%);
+  box-shadow: inset 0 1px 1px var(--metal-sheen);
+}
+
+.ns-direct input:checked::after {
+  opacity: 1;
+}
+
+.ns-direct input:focus-visible {
+  outline: 2px solid rgba(0, 0, 0, 0.35);
+  outline-offset: 1px;
+}
+
+.ns-direct input:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .ns-note.center {
@@ -2508,7 +2636,7 @@ button.sheet-row:hover {
    回退方案：删除本段并还原 --metal-* 即可回到蓝色主按钮。
    ========================================================================== */
 
-/* ---------- 主按钮：继续 / 接着做 / 复制文案并打开 pi / 设置保存 / 导出 ---------- */
+/* ---------- 主按钮：继续 / 接着做 / 预填文案并打开 pi / 设置保存 / 导出 ---------- */
 .pill.primary,
 .sheet-actions .primary,
 .thread-row .action:not(.secondary),

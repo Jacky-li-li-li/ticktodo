@@ -20,7 +20,7 @@
 > **以 todo 为中心**，把属于同一个 todo 的多个 AI 会话聚到一起。<br />
 > 回来时不用回忆、不用逐个工具翻找——看到停在哪，点一下就能接着做。
 
-当前版本支持 **pi**；WorkBuddy 等更多工具正在接入中。
+当前版本支持 **pi**、**WorkBuddy（国内版）** 与 **WorkBuddy AI（国际版）**。两个 WorkBuddy 适配器都是只读的：从对应桌面应用的本地存储里索引会话，再用深链接把会话打开。两个 WorkBuddy 都能打开新建任务页并预填文案和项目，但 Ticktodo 不会自动发送或绑定——发送与倒入仍是你在应用里的显式动作。
 
 ## 它解决什么问题
 
@@ -70,7 +70,7 @@ curl -fsSL https://ticktodo.cc/install.sh | sh
 bash scripts/install.sh path/to/Tick.app
 ```
 
-**系统要求**：macOS。使用会话聚合与「接着做」需要 `pi >= 1.3.0`（也可用 `TICK_PI_PATH` 指定可执行文件）。
+**系统要求**：macOS。聚合与「接着做」`pi` 会话需要 `pi >= 1.3.0`（也可用 `TICK_PI_PATH` 指定可执行文件）；首次启动会把 `tick-extension` 装到 `~/.pi/agent/extensions/tick/`，用于新会话预填与 `create_todo`/`list_todos`。聚合 WorkBuddy 会话需要装对应的桌面应用（**WorkBuddy** 或 **WorkBuddy AI**）——它们是桌面应用，不是 CLI；新建页预填只对本地实测验证过的版本开放。
 
 安装后 Ticktodo 常驻菜单栏，不占 Dock。
 
@@ -100,8 +100,8 @@ bash scripts/install.sh path/to/Tick.app
 
 ### 一键接着做
 
-- **继续已有会话**：用会话自己的 cwd 打开终端里的 pi TUI，上下文原样接上。
-- **新建会话**：选项目、写好第一段话；默认复制到剪贴板（可审阅），也可以在设置里改为直接发送。
+- **继续已有会话**：用会话自己的 cwd 打开终端里的 pi TUI，上下文原样接上。来自 WorkBuddy 桌面应用的会话则用深链接直接在应用里定位到该会话。
+- **新建会话**：选项目、写好第一段话；默认**预填到工具输入框**（可审阅，回车才发送）。主按钮右侧有「直接发送」勾选，勾上即本次启动就发送；也可以在设置里改默认值。
 - 目录失效时明确提示，并退回主目录，不会静默跑到错误的地方。
 
 ### 从历史会话倒入
@@ -130,8 +130,8 @@ bash scripts/install.sh path/to/Tick.app
 | 工具 | 状态 | 会话发现 | 接着做 | 说明 |
 |---|---|---|---|---|
 | **pi** | ✅ 已支持 | ✅ | 终端 TUI | 需要 `pi >= 1.3.0` |
-| WorkBuddy（国内版） | 规划中 | — | 深链接 | PRD 与只读实测已完成，适配器未发布 |
-| WorkBuddy AI（国际版） | 规划中 | — | 深链接 | 独立适配器，格式与国内版同内核 |
+| WorkBuddy（国内版） | ✅ 已支持 | ✅ | 深链接 | 只读其本地数据库 / 会话文件；需要 WorkBuddy 桌面应用。可打开预填好的新建任务页；发送/绑定仍在应用里完成 |
+| WorkBuddy AI（国际版） | ✅ 已支持 | ✅ | 深链接 | 独立适配器（独立身份、同一只读读取内核）；需要 WorkBuddy AI 桌面应用。可打开预填好的新建任务页；发送/绑定仍在应用里完成 |
 | Claude Code / Cursor | 后续 | — | — | Claude Code 同为本地 JSONL；Cursor 格式待查 |
 
 接入新工具 = 在 `packages/ai/<tool>` 实现 `AiToolAdapter`，再在 `main.ts` 注册。不需要改 core 或 UI。

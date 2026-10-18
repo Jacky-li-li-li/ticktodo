@@ -34,10 +34,10 @@ export function SettingsSheet({
         <div className="sheet-row deliver">
           <div className="segmented">
             <button
-              className={settings.deliver === 'clipboard' ? 'on' : ''}
-              onClick={() => onChange({ deliver: 'clipboard' })}
+              className={settings.deliver === 'prefill' ? 'on' : ''}
+              onClick={() => onChange({ deliver: 'prefill' })}
             >
-              复制文案
+              预填文案
             </button>
             <button
               className={settings.deliver === 'argv' ? 'on' : ''}
@@ -47,7 +47,10 @@ export function SettingsSheet({
             </button>
           </div>
         </div>
-        <div className="sheet-note">默认复制到剪贴板，由你审阅后再发；「直接发送」= 启动即发。</div>
+        <div className="sheet-note">
+          这里设的是默认值；新建会话页底部可以临时勾选「直接发送」，只影响那一次。
+          默认把文案预填进 pi 的输入框，你确认后回车发送；「直接发送」= 启动即发。
+        </div>
 
         <div className="sheet-section-title">默认项目</div>
         <div className="sheet-row deliver">
@@ -94,7 +97,7 @@ export function SettingsSheet({
           </div>
         </div>
         <div className="sheet-note">
-          只统计 pi CLI 会话（默认关）。面板 Chat 不计入；成本以 provider 上报为准，未上报时标注「≥」。
+          只统计声明了用量的 CLI 会话（目前仅 pi；默认关）。面板 Chat 不计入；成本以 provider 上报为准，未上报时标注「≥」。
         </div>
 
         <div className="sheet-section-title">面板对话 Provider</div>

@@ -14,6 +14,8 @@ import crypto from 'node:crypto'
 import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc } from '@tick/shared'
 import { AiToolRegistry, canonicalPath, gitRootOf } from '@tick/ai-core'
 import { PiAdapter } from '@tick/ai-pi'
+import { WorkbuddyAdapter } from '@tick/ai-workbuddy'
+import { WorkbuddyAiAdapter } from '@tick/ai-workbuddy-ai'
 import { ensureDirs, resolveDirs } from './services/storage'
 import { ProjectIndexService } from './services/project-index'
 import { ChatAgentHost } from './services/chat-host'
@@ -23,7 +25,7 @@ import { CredentialVault } from './services/credential-vault'
 import { ProviderConfigService } from './services/provider-config'
 import { SessionService } from './services/sessions'
 import { ExportService } from './services/export'
-import { createTerminalLauncher } from './services/terminal-launch'
+import { cleanupLaunchCache, createTerminalLauncher } from './services/terminal-launch'
 import { TodoStore } from './store'
 import {
   createPanelWindow,
@@ -104,6 +106,8 @@ app.whenReady().then(() => {
 
   const dirs = resolveDirs()
   ensureDirs(dirs)
+  // 兜底清理：上一次 pi 没启动/扩展没消费时，prefill 正文可能留在 cache/launch
+  cleanupLaunchCache(path.join(dirs.cache, 'launch'))
 
   const store = new TodoStore(path.join(dirs.data, 'todos.json'))
   store.ensureFile()
@@ -111,14 +115,30 @@ app.whenReady().then(() => {
   const credentialVault = new CredentialVault(app.getPath('userData'))
   const providerConfig = new ProviderConfigService(settingsStore, credentialVault)
 
-  // ---------- adapter 注册表（M1） ----------
+  // ---------- adapter 注册表（M1；M5 起多工具） ----------
   const registry = new AiToolRegistry()
   const pi = new PiAdapter({
     clipboardWrite: (text) => clipboard.writeText(text), // 剪贴板投递出口（ai 包不依赖 Electron）
     // 交互式 pi 必须开在终端里（非 TTY 会降级成 headless print 模式）
     openTerminal: createTerminalLauncher(path.join(dirs.cache, 'launch')),
+    // 预填投递：一次性 prompt 文件交给 pi 扩展（session_start 读取后删除）
+    prefillDir: path.join(dirs.cache, 'launch'),
   })
   registry.register(pi)
+
+  // 桌面工具的深链接出口：用 shell.openExternal，并把异常原样向上抛给 adapter → LaunchService 转成
+  // 可读的 reason（`open` 恒 exit 0，不能靠返回值判断成败，所以只能靠 Promise 拒绝表达失败）。
+  const openUrl = (url: string): Promise<void> => shell.openExternal(url)
+  // 桌面适配器的日志出口按 (key, message) 约定收口，文案不含会话正文/标题
+  const logDesktopTool = (key: string, message: string): void => console.warn(`[tick] ${key}:`, message)
+  // 国内版 / 国际版是**两个独立工具**（各自数据根、App bundle、scheme、toolId），不通过切换根目录复用
+  const workbuddy = new WorkbuddyAdapter({ openUrl, log: logDesktopTool })
+  const workbuddyAi = new WorkbuddyAiAdapter({ openUrl, log: logDesktopTool })
+  registry.register(workbuddy)
+  registry.register(workbuddyAi)
+
+  // 服务的适配器视图：一次性快照。装配期后不再注册新工具，所以不必每次问 registry。
+  const adapters = registry.list()
 
   // 跨工具时钟：todos.lastLaunch{projectPath, launchedAt} → canonical/git 根 → 最近拉起时间
   // 不能用 Todo.updatedAt（任何编辑都会刷新它，排序会乱），也不能用原始子目录路径（overlay 匹配的是 git 根）。
@@ -137,12 +157,12 @@ app.whenReady().then(() => {
     }
     return map
   }
-  const projectIndex = new ProjectIndexService(pi, path.join(dirs.cache, 'projects.json'), {
+  const projectIndex = new ProjectIndexService(adapters, path.join(dirs.cache, 'projects.json'), {
     launchClock,
   })
-  const sessionService = new SessionService(pi, store)
-  const exportService = new ExportService(registry.list(), store, () => settingsStore.get(), dirs.exports)
-  const launchService = new LaunchService(pi, store, {
+  const sessionService = new SessionService(adapters, store)
+  const exportService = new ExportService(adapters, store, () => settingsStore.get(), dirs.exports)
+  const launchService = new LaunchService(adapters, store, {
     settings: () => settingsStore.get(),
     resolveAlias: (p) => projectIndex.aliasOf(p),
     recentProject: () => {
@@ -194,7 +214,7 @@ app.whenReady().then(() => {
       providerConfig,
       reloadChat,
     },
-    registry.list(),
+    adapters,
   )
 
   // ---------- 全局快捷键（M3 / PRD F1） ----------

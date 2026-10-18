@@ -13,6 +13,8 @@ import type {
   ExportResult,
   LaunchOutcome,
   LaunchRequest,
+  PrefillNewSessionOutcome,
+  PrefillNewSessionRequest,
   ProviderSaveInput,
   ProviderTestResult,
   ResumeRequest,
@@ -22,6 +24,7 @@ import type {
   TodoCreateInput,
   TodoPatch,
   TodoSessionView,
+  ToolStatus,
 } from '@tick/shared'
 import {
   ChatIpc,
@@ -38,13 +41,8 @@ import {
 } from '@tick/shared'
 import type { ProjectEntry, SessionUsage } from '@tick/ai-core'
 
-export interface ToolStatus {
-  toolId: string
-  name: string
-  installed: boolean
-  version?: string
-  reason?: string
-}
+/** tools:status 的返回项类型在 shared（main 生产 / preload 转发 / renderer 消费，单一来源） */
+export type { ToolStatus }
 
 export interface ResolvedCwdView {
   projectPath: string
@@ -128,13 +126,20 @@ const api = {
       ipcRenderer.invoke(SessionsIpc.list, opts),
     forTodo: (todoId: string): Promise<TodoSessionView[]> =>
       ipcRenderer.invoke(SessionsIpc.forTodo, todoId),
-    /** S5：建 todo 并绑定 */
-    claim: (sessionId: CliSessionId): Promise<{ ok: boolean; todo?: Todo; reason?: string }> =>
-      ipcRenderer.invoke(SessionsIpc.claim, sessionId),
-    bind: (todoId: string, sessionId: CliSessionId): Promise<{ ok: boolean; todo?: Todo; reason?: string }> =>
-      ipcRenderer.invoke(SessionsIpc.bind, { todoId, sessionId }),
-    unbind: (todoId: string, sessionId: CliSessionId): Promise<boolean> =>
-      ipcRenderer.invoke(SessionsIpc.unbind, { todoId, sessionId }),
+    /** S5：建 todo 并绑定；toolId 用于跨工具同 id 时精确路由 */
+    claim: (
+      sessionId: CliSessionId,
+      toolId?: string,
+    ): Promise<{ ok: boolean; todo?: Todo; reason?: string }> =>
+      ipcRenderer.invoke(SessionsIpc.claim, { sessionId, toolId }),
+    bind: (
+      todoId: string,
+      sessionId: CliSessionId,
+      toolId?: string,
+    ): Promise<{ ok: boolean; todo?: Todo; reason?: string }> =>
+      ipcRenderer.invoke(SessionsIpc.bind, { todoId, sessionId, toolId }),
+    unbind: (todoId: string, sessionId: CliSessionId, toolId?: string): Promise<boolean> =>
+      ipcRenderer.invoke(SessionsIpc.unbind, { todoId, sessionId, toolId }),
   },
   chat: {
     state: (): Promise<ChatState> => ipcRenderer.invoke(ChatIpc.state),
@@ -153,6 +158,9 @@ const api = {
       ipcRenderer.invoke(LaunchIpc.resolveCwd, todoId),
     launch: (req: LaunchRequest): Promise<LaunchOutcome> => ipcRenderer.invoke(LaunchIpc.launch, req),
     resume: (req: ResumeRequest): Promise<LaunchOutcome> => ipcRenderer.invoke(LaunchIpc.resume, req),
+    /** 桌面工具：打开 GUI 新建页并预填；不自动发送、不绑定 */
+    openNewSessionPage: (req: PrefillNewSessionRequest): Promise<PrefillNewSessionOutcome> =>
+      ipcRenderer.invoke(LaunchIpc.prefillNewSession, req),
   },
   window: {
     hide: (): void => ipcRenderer.send(WindowIpc.hide),

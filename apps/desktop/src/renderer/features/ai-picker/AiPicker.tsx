@@ -7,17 +7,20 @@
  *   发送给 AI 的内容（可直接改）
  *   用哪个工具 · 单选列表（后续接更多工具时纵向扩展）
  *   项目 · <已推导>  改
- *   [复制文案并打开 pi]  ← 底部主按钮，Spacer 压到底
- *   文案先进剪贴板，你确认后再发 —— 不自动发送
+ *   [预填文案并打开 <工具>] / [直接发送并打开 <工具>]  ← 底部主按钮
+ *   文案先预填到工具输入框，你确认后再发 —— 不自动发送
  *
- * 口径：文案可编辑；工具不猜（每次由用户选）；投递方式跟随设置（默认剪贴板）；
- * 检测不到工具时只在页内出现中性提示卡（§4.6），不阻止记线索。
+ * 口径：文案可编辑；工具不猜（每次由用户选）；投递方式默认跟随设置，但底部提供
+ * 「直接发送」勾选（仅作用于这一次拉起：勾选=argv 直接发送，不勾=预填输入框待确认）；
+ * 列表包含两类工具（统一由 newSessionMode 表达）：`launch`（CLI，终端新建并绑定）与
+ * `prefill`（桌面应用，只打开它自己的新建任务页并预填文案/项目，不自动发送、不绑定）；
+ * 两类都没有时只在页内出现中性提示卡（§4.6），不阻止记线索。
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import type { Todo } from '@tick/shared'
+import type { AppSettings, Todo, ToolStatus } from '@tick/shared'
 import type { ProjectEntry } from '@tick/ai-core'
-import type { AppSettings } from '@tick/shared'
+import { toolDisplayName } from '@tick/shared'
 import { ToolIcon } from '../icons/ToolIcon'
 
 interface Resolved {
@@ -26,13 +29,22 @@ interface Resolved {
   source: string
 }
 
-interface ToolStatus {
-  toolId: string
-  name: string
-  installed: boolean
-  version?: string
-  reason?: string
-}
+/**
+ * 本页可选的工具（统一由 newSessionMode 表达，不再用两个布尔组合）：
+ *  - `launch`：写文案 → 在终端里新建会话（Tick 预生成 id 并绑定）；
+ *  - `prefill`：打开它的 GUI 新建页并预填，不自动发送/不绑定。
+ * 两者都没有时只显示中性提示卡。
+ */
+const isSelectable = (t: ToolStatus): boolean =>
+  t.installed &&
+  t.usable !== false &&
+  t.newSessionAvailable !== false &&
+  (t.newSessionMode === 'launch' || t.newSessionMode === 'prefill')
+/** 只能打开 GUI 新建页的桌面工具（WorkBuddy 系） */
+const isPrefillOnly = (t: ToolStatus): boolean => t.newSessionMode === 'prefill'
+/** 默认优先 pi（现有主路径），否则第一个可新建工具 */
+const preferredTool = (list: ToolStatus[]): string | null =>
+  (list.find((t) => t.toolId === 'pi') ?? list[0])?.toolId ?? null
 
 export function AiPicker({
   todo,
@@ -65,7 +77,34 @@ export function AiPicker({
   const [tool, setTool] = useState<string | null>(null)
   const [rechecking, setRechecking] = useState(false)
   const [bound, setBound] = useState(todo.bindings.length)
+  /**
+   * 本次拉起的投递方式：默认跟随设置，但这是**每页一次的覆盖**，不回写设置。
+   * 用户想「这次直接发」时不必再去设置页；取消勾选即回到预填输入框（可审阅）。
+   */
+  const [directSend, setDirectSend] = useState(settings.deliver === 'argv')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  /**
+   * 列表严格等于「本机已安装的工具」：已安装但版本/能力不满足的也保留，只是禁用并给原因，
+   * 不能因为暂时不可新建就把它从本机工具列表里删掉。
+   */
+  const installedTools = (tools ?? []).filter((t) => t.installed)
+  /** 其中当前真的能执行「新建」的子集（默认选中/主按钮只从这里面挑） */
+  const selectableTools = installedTools.filter(isSelectable)
+  const selectablePrefillTools = selectableTools.filter(isPrefillOnly)
+  const unavailableTools = installedTools.filter((t) => !isSelectable(t))
+  const selectedTool = selectableTools.find((t) => t.toolId === tool)
+  /** 当前选中工具是桌面工具：只打开新建页 + 预填，不自动发送/不绑定 */
+  const prefillMode = selectedTool?.newSessionMode === 'prefill'
+  /** 空态里说明「本机扫到了什么」：只数真正安装的，未安装的 adapter 不算 detected */
+  const detectedNames = installedTools.map((t) => t.name)
+  const reasonOf = (t: ToolStatus): string =>
+    t.newSessionReason ??
+    t.reason ??
+    (t.newSessionMode === 'none' ? '仅支持倒入历史会话' : '当前不可用')
+  /** 当前选中工具的展示名：优先用 main 给的 status.name，其次走 shared 的兜底映射；没有则留空 */
+  const toolName =
+    selectedTool?.name ?? (tool ? toolDisplayName(tool) : '')
 
   const cwdLabel = (p: string): string =>
     home && p === home.projectPath ? '~' : p.replace(/^\/Users\/[^/]+/, '~')
@@ -93,8 +132,10 @@ export function AiPicker({
       .then((list) => {
         if (!alive) return
         setTools(list)
-        const installed = list.filter((t) => t.installed)
-        setTool((prev) => prev ?? installed[0]?.toolId ?? null)
+        const selectable = list.filter(isSelectable)
+        setTool((prev) =>
+          selectable.some((t) => t.toolId === prev) ? prev : preferredTool(selectable),
+        )
       })
       .catch(() => {
         if (alive) setTools([])
@@ -126,37 +167,73 @@ export function AiPicker({
 
   const run = async (): Promise<void> => {
     if (busy || !tool) return
-    const deliver = settings.deliver
+
+    // 桌面工具：只打开它的 GUI 新建页并预填；发送仍由用户在应用里完成，不写绑定
+    if (prefillMode) {
+      setBusy(true)
+      try {
+        const outcome = await window.tick.launch.openNewSessionPage({
+          todoId: todo.id,
+          toolId: tool,
+          projectPath: resolved?.projectPath,
+          promptText: prompt.trim() || todo.title,
+        })
+        if (outcome.ok) {
+          onResult(
+            `已在 ${toolName} 中打开新建任务页${
+              outcome.truncated ? '（文案过长，已截断预填）' : ''
+            } —— 发送后可用「倒入历史会话」绑定`,
+          )
+          onClose()
+        } else {
+          onResult(outcome.reason ?? `没能打开 ${toolName} 新建页`)
+          setBusy(false)
+        }
+      } catch {
+        onResult(`打开 ${toolName} 新建页失败，请重试`)
+        setBusy(false)
+      }
+      return
+    }
+
+    // 勾选优先于设置：这是「这次直接发」的显式意图；不勾则预填输入框（不进剪贴板）
+    const deliver = directSend ? 'argv' : 'prefill'
     setBusy(true)
     try {
       const outcome = await window.tick.launch.launch({
         todoId: todo.id,
+        toolId: tool,
         projectPath: resolved?.projectPath,
         deliver,
         promptText: prompt.trim() || todo.title,
       })
       if (outcome.ok) {
         if (outcome.pending) setBound((n) => n + 1)
-        onResult(
-          outcome.pending
-            ? outcome.delivered === 'clipboard'
-              ? 'pi 已在终端打开 —— 文案已复制，⌘V 发送后自动绑定'
-              : 'pi 已在终端打开，正在发送…'
-            : outcome.delivered === 'clipboard'
-              ? '文案已复制 —— 到 pi 里 ⌘V'
-              : '已发出去，pi 正在处理',
-        )
+        // notice = 非致命降级（如 prefill 回执超时后已改投剪贴板）；优先如实展示，不能藏
+        const message =
+          outcome.notice ??
+          (outcome.pending
+            ? outcome.delivered === 'prefill'
+              ? `${toolName} 已在终端打开 —— 文案已预填，确认后回车发送，发送后自动绑定`
+              : outcome.delivered === 'clipboard'
+                ? `${toolName} 已在终端打开 —— 文案已复制，⌘V 发送后自动绑定`
+                : `${toolName} 已在终端打开，正在发送…`
+            : outcome.delivered === 'prefill'
+              ? `文案已预填到 ${toolName} —— 确认后回车发送`
+              : outcome.delivered === 'clipboard'
+                ? `文案已复制 —— 到 ${toolName} 里 ⌘V`
+                : `已发出去，${toolName} 正在处理`)
+        onResult(message)
         onClose()
       } else {
-        onResult(outcome.reason ?? '没能打开 pi')
+        onResult(outcome.reason ?? `没能打开 ${toolName}`)
         setBusy(false)
       }
     } catch {
+      onResult(`打开 ${toolName} 失败，请重试`)
       setBusy(false)
     }
   }
-
-  const installedTools = (tools ?? []).filter((t) => t.installed)
 
   return (
     <div className="panel-inner">
@@ -187,36 +264,59 @@ export function AiPicker({
 
         <div className="ns-field">
           <span className="ns-label">用哪个工具</span>
-          {installedTools.length > 0 ? (
-            <div className="ns-tools" role="radiogroup" aria-label="用哪个工具">
-              {installedTools.map((t) => {
-                const on = tool === t.toolId
-                return (
-                  <button
-                    key={t.toolId}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    className={`ns-tool ${on ? 'on' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setTool(t.toolId)
-                    }}
-                  >
-                    <ToolIcon toolId={t.toolId} size={16} />
-                    <span className="ns-tool-name">{t.name}</span>
-                    <span className="ns-tool-radio" aria-hidden="true" />
-                  </button>
-                )
-              })}
+          {tools === null ? (
+            <div className="tool-card" onClick={(e) => e.stopPropagation()}>
+              <div className="tool-card-title">正在检测本机工具…</div>
+              <div className="tool-card-hint">检测完成后会列出本机已安装的工具。</div>
             </div>
+          ) : installedTools.length > 0 ? (
+            <>
+              <div className="ns-tools" role="radiogroup" aria-label="用哪个工具">
+                {installedTools.map((t) => {
+                  const on = tool === t.toolId
+                  const available = isSelectable(t)
+                  return (
+                    <button
+                      key={t.toolId}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      aria-disabled={!available}
+                      disabled={!available}
+                      className={`ns-tool ${on ? 'on' : ''} ${available ? '' : 'unavailable'}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (available) setTool(t.toolId)
+                      }}
+                    >
+                      <ToolIcon toolId={t.toolId} size={16} />
+                      <span className="ns-tool-name">{t.name}</span>
+                      {isPrefillOnly(t) && <span className="ns-tool-tag">新建页</span>}
+                      {!available && <span className="ns-tool-tag">不可用</span>}
+                      <span className="ns-tool-radio" aria-hidden="true" />
+                    </button>
+                  )
+                })}
+              </div>
+              {selectablePrefillTools.length > 0 && (
+                <div className="ns-note">
+                  {selectablePrefillTools.map((t) => t.name).join(' / ')} 是桌面应用：这里会打开它的新建任务页并预填文案/项目，不会自动发送；发送后可用「倒入历史会话」绑定。
+                </div>
+              )}
+              {unavailableTools.length > 0 && (
+                <div className="ns-note">
+                  已安装但当前不可新建：
+                  {unavailableTools
+                    .map((t) => `${t.name}（${reasonOf(t)}）`)
+                    .join('；')}
+                </div>
+              )}
+            </>
           ) : (
             <div className="tool-card" onClick={(e) => e.stopPropagation()}>
-              <div className="tool-card-title">没有可用的 agent 工具</div>
-              <div className="tool-card-hint">Tick 只做索引、不内置模型…记线索不受影响</div>
-              <div className="tool-card-scan">
-                已扫描本机：pi · claude code · codex —— 均未检测到会话目录
-              </div>
+              <div className="tool-card-title">未检测到本机的 AI 工具</div>
+              <div className="tool-card-hint">安装 pi 或对应桌面应用后，这里会自动出现；记线索不受影响。</div>
+              <div className="tool-card-scan">未检测到已安装的 AI 工具</div>
               <button
                 className="tool-card-retry"
                 disabled={rechecking}
@@ -226,7 +326,12 @@ export function AiPicker({
                     .status()
                     .then((list) => {
                       setTools(list)
-                      setTool((prev) => prev ?? list.filter((t) => t.installed)[0]?.toolId ?? null)
+                      const selectable = list.filter(isSelectable)
+                      setTool((prev) =>
+                        selectable.some((t) => t.toolId === prev)
+                          ? prev
+                          : preferredTool(selectable),
+                      )
                     })
                     .finally(() => setRechecking(false))
                 }}
@@ -248,7 +353,9 @@ export function AiPicker({
             <span className="chevron">改</span>
           </button>
           {resolved?.source === 'home' && !mustAsk && (
-            <div className="ns-note">推导自上次项目；打开后可在 pi 里切换目录</div>
+            <div className="ns-note">
+              推导自上次项目{toolName ? `；打开后可在 ${toolName} 里切换目录` : ''}
+            </div>
           )}
           {mustAsk && resolved?.source === 'home' && (
             <div className="ns-note warn">设置里选了「每次必问」：先选一个项目再打开</div>
@@ -374,26 +481,46 @@ export function AiPicker({
         </div>
       </div>
 
-      {/* 底部主按钮：Spacer 压到底（§6.4）；文案带工具与投递语境 */}
+      {/* 底部主按钮：Spacer 压到底（§6.4）；桌面工具没有「直接发送」勾选（只预填） */}
       <div className="ns-footer">
-        <button
-          className="pill primary ns-go"
-          disabled={busy || !tool || (mustAsk && resolved?.source === 'home')}
-          title={mustAsk && resolved?.source === 'home' ? '先选一个项目' : ''}
-          onClick={() => void run()}
-        >
-          {busy
-            ? '打开中…'
-            : settings.deliver === 'argv'
-              ? `直接发送并打开 ${tool ?? 'pi'}`
-              : `复制文案并打开 ${tool ?? 'pi'}`}
-        </button>
+        <div className="ns-footer-row">
+          <button
+            className="pill primary ns-go"
+            disabled={busy || !tool || (mustAsk && resolved?.source === 'home')}
+            title={mustAsk && resolved?.source === 'home' ? '先选一个项目' : ''}
+            onClick={() => void run()}
+          >
+            {busy
+              ? '打开中…'
+              : prefillMode
+                ? `在${toolName ? ` ${toolName}` : ''} 中打开新建页`
+                : `${directSend ? '直接发送并打开' : '预填文案并打开'}${
+                    toolName ? ` ${toolName}` : ''
+                  }`}
+          </button>
+          {!prefillMode && (
+            <label
+              className="ns-direct"
+              title="勾选后把文案作为启动消息直接发给工具（启动即发）；不勾则预填到工具输入框，确认后回车"
+            >
+              <input
+                type="checkbox"
+                checked={directSend}
+                disabled={busy || !tool}
+                onChange={(e) => setDirectSend(e.target.checked)}
+              />
+              <span>直接发送</span>
+            </label>
+          )}
+        </div>
         <div className="ns-note center">
-          {bound > 0
-            ? `这条线索已有 ${bound} 个会话；这次会再开一个`
-            : settings.deliver === 'argv'
-              ? '文案会直接发给 AI —— 不自动发送只适用于剪贴板'
-              : '文案先进剪贴板，你确认后再发 —— 不自动发送'}
+          {prefillMode
+            ? `只打开 ${toolName} 的新建任务页并预填文案/项目；发送后可用「倒入历史会话」绑定`
+            : bound > 0
+              ? `这条线索已有 ${bound} 个会话；这次会再开一个`
+              : directSend
+                ? '文案会直接发给 AI —— 勾选后不经过预填'
+                : '文案会预填到工具输入框，你确认后回车发送 —— 不自动发送'}
         </div>
       </div>
     </div>

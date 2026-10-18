@@ -30,11 +30,11 @@ export interface SessionBinding {
   boundAt: string // ISO
   /**
    * 会话在工具侧的状态：
-   *  - pending  = 已在终端打开 pi，但用户还没发送第一条消息（剪贴板投递时正常）→ 还没有 session 文件
+   *  - pending  = 已在终端打开 pi，但用户还没发送第一条消息（预填/剪贴板投递时正常）→ 还没有 session 文件
    *  - verified = 会话文件已真实产生（verify 通过）
    *  - 缺省     = 旧数据，按 verified 处理
    *
-   * 为什么需要 pending：默认投递是剪贴板，pi 启动后不会立刻落盘；若坚持「verify 通过才绑定」，
+   * 为什么需要 pending：默认投递是预填（等用户回车），pi 启动后不会立刻落盘；若坚持「verify 通过才绑定」，
    * 默认路径会永远不绑定。所以先写 pending，再由后台对账改成 verified。
    */
   state?: 'pending' | 'verified'
@@ -102,6 +102,8 @@ export interface SessionView {
   lastUsedAt?: number
   filePath: string
   exists: boolean
+  /** false = 本工具里这条会话不能「回到会话」（如 WorkBuddy AI 的 playground 会话，保守置灰） */
+  resumable?: boolean
   boundTodoId?: string
   boundTodoTitle?: string
 }
@@ -163,7 +165,8 @@ export interface SessionsListOptions {
 
 // ---------- 设置（F4-b） ----------
 
-export type LaunchDeliverSetting = 'clipboard' | 'argv'
+/** 设置里的投递方式：默认预填（可审阅）；argv = 启动即发送。clipboard 仅作为运行期降级，不再允许写进 settings */
+export type LaunchDeliverSetting = 'prefill' | 'argv'
 export type DefaultProjectSetting = 'home' | 'recent' | 'ask'
 
 // ---------- 面板 Chat 自配 Provider（PRD F5 来源 2，M3 尾巴） ----------
@@ -208,7 +211,7 @@ export interface ProviderSaveInput {
 
 /** 首版设置项（PRD F4-b + F6-b 用量开关 + M3 自配 provider） */
 export interface AppSettings {
-  /** 拉起时的投递方式：默认剪贴板（可审阅） */
+  /** 拉起时的投递方式：默认预填到工具输入框（可审阅），argv = 启动即发 */
   deliver: LaunchDeliverSetting
   /** 默认项目：home（确定兜底）/ recent（最近使用，猜）/ ask（每次必问） */
   defaultProject: DefaultProjectSetting
@@ -219,7 +222,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  deliver: 'clipboard',
+  deliver: 'prefill',
   defaultProject: 'home',
   usageEnabled: false,
   customProvider: null,
@@ -282,6 +285,49 @@ export const ToolsIpc = {
   status: 'tools:status',
 } as const
 
+/** 「新建会话」能力枚举：各工具按自己的设计规范选其一，不做跨工具 id 生成方式统一 */
+export type NewSessionMode = 'launch' | 'prefill' | 'none'
+
+/** tools:status 的返回项（main 生产 / preload 转发 / renderer 消费，单一来源） */
+export interface ToolStatus {
+  toolId: string
+  /** 展示名（主进程统一映射，不要在各组件里硬编码分支） */
+  name: string
+  installed: boolean
+  version?: string
+  reason?: string
+  /**
+   * false = 已安装但当前不可用（如 pi 版本低于最低要求）。
+   * 新建会话/预填必须同时看 installed + usable；只 installed 会把旧版本当成可用。
+   */
+  usable: boolean
+  /** 新建会话能力：launch = Tick 预生成 id 并绑定；prefill = 只打开 GUI 新建页预填；none = 不支持 */
+  newSessionMode: NewSessionMode
+  /**
+   * 当前这台机器上这条「新建会话」路径是否真的可用（版本/扩展/gate 都算）。
+   * 注意：UI 仍会列出「本机已安装」的工具；false 时该行禁用并显示 reason，
+   * 不能因为暂时不可新建就把已安装工具从列表里删掉。
+   */
+  newSessionAvailable: boolean
+  newSessionReason?: string
+  /** true = 支持回到已有会话（CLI 终端 resume 或桌面深链接） */
+  resumeSession: boolean
+}
+
+/**
+ * 工具展示名唯一映射。main（tools:status）与 renderer 都从这里取，
+ * 避免各组件各写一份 `toolId === 'pi' ? ...` 分支。
+ */
+export const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  pi: 'pi',
+  workbuddy: 'WorkBuddy',
+  'workbuddy-ai': 'WorkBuddy AI',
+}
+
+export function toolDisplayName(toolId: string): string {
+  return TOOL_DISPLAY_NAMES[toolId] ?? toolId
+}
+
 // ---------- 面板 Chat（M2，pi-durable） ----------
 
 export type ChatRole = 'user' | 'assistant'
@@ -321,12 +367,14 @@ export const ChatIpc = {
 
 // ---------- 拉起 / 恢复（M2，ai-picker） ----------
 
-export type LaunchDeliver = 'clipboard' | 'argv'
-/** adapter 内部对 resume 的投递是 none；UI 永远只选前两个 */
+export type LaunchDeliver = 'prefill' | 'argv' | 'clipboard'
+/** adapter 内部对 resume 的投递是 none；UI 永远只选 prefill / argv */
 export type DeliveredMode = LaunchDeliver | 'none'
 
 export interface LaunchRequest {
   todoId: string
+  /** 用哪个工具新建（缺省 = 主适配器 pi；仅 newSessionMode='launch' 的工具适用） */
+  toolId?: string
   /** 不传则用 CwdResolver（绑定 session 的 cwd → lastLaunch → home） */
   projectPath?: string
   deliver: LaunchDeliver
@@ -343,15 +391,44 @@ export interface LaunchOutcome {
   delivered: DeliveredMode
   /**
    * true = 会话尚未产生内容（绑定已写为 pending）。
-   * 剪贴板投递的正常结果：pi 已在终端打开，用户发送第一条消息后由后台对账转 verified。
+   * 预填/剪贴板投递的正常结果：pi 已在终端打开，用户发送第一条消息后才会有会话文件。
    */
   pending?: boolean
+  /**
+   * 非致命提示：例如 prefill 回执超时/扩展未运行，已降级为剪贴板。
+   * UI 应原样显示，不要把它藏起来（否则又变成「假成功」）。
+   */
+  notice?: string
 }
 
 export interface ResumeRequest {
   todoId?: string
   sessionId: CliSessionId
+  /** 会话所属工具（缺省按 todo.bindings 反查；desktop 工具走各自深链接） */
+  toolId?: string
   projectPath?: string
+}
+
+/**
+ * 桌面工具「打开新建页并预填」的请求。
+ * 不预生成 sessionId、不投递、不绑定；用户仍需在工具里自行发送。
+ */
+export interface PrefillNewSessionRequest {
+  todoId: string
+  toolId: string
+  /** 工作目录；缺省走 LaunchService.resolveCwd（绑定会话 cwd → lastLaunch → home） */
+  projectPath?: string
+  /** 预填文案；缺省用 todo.title */
+  promptText?: string
+}
+
+export interface PrefillNewSessionOutcome {
+  ok: boolean
+  reason?: string
+  /** 实际使用的项目路径（便于 UI 说明「在哪个项目下打开」） */
+  cwd?: string
+  /** true = 文案超过深链接安全长度，预填时已截断 */
+  truncated?: boolean
 }
 
 export const LaunchIpc = {
@@ -359,4 +436,6 @@ export const LaunchIpc = {
   resume: 'launch:resume',
   /** 解析默认项目（主按钮上显示它） */
   resolveCwd: 'launch:resolve-cwd',
+  /** 桌面工具：打开 GUI 新建页并预填（不自动发送/不绑定） */
+  prefillNewSession: 'launch:prefill-new-session',
 } as const

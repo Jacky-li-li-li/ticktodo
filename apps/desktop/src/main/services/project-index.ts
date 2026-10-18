@@ -3,76 +3,71 @@
  *
  * 取数纪律（照 magpie 实证，RESEARCH-magpie §7）：
  *   - 冷启动首帧走 cache/projects.json（renderer 不等扫描）
- *   - 后台重扫 + (size,mtime) 文件级增量（未变的文件复用缓存的 header 结论）
- *   - verify 类判定绕缓存直读（本项目：resolve 项目路径存在性每次现算）
- *   - Warm/Ask 两级调度 M1 简化为「启动后台扫 + 手动 refresh」；2s racy 窗口由 (size,mtime)
- *     缓存 + 存在性现算自然覆盖，checkpoint 接口留待 M3 需要时再开
+ *   - 后台重扫：向每个 adapter 要**原始证据**（discoverProjects），归并交给 core 的 mergeProjects
+ *   - 单工具读取失败必须隔离（规则 §7）：只丢它的证据，不拖垮整个项目列表
+ *   - Warm/Ask 两级调度 M1 简化为「启动后台扫 + 手动 refresh」；存在性每次现算
+ *
+ * 历史包袱（M1 单工具期的 files 增量缓存）已删除：它是 pi 专属实现（要扫 pi 的会话根），
+ * 第二/第三个工具的会话存储格式各不相同，文件级增量只能在各自 adapter 内部做。
+ * 老 cache/projects.json 里多余的 `files` 字段读取时忽略，下次重扫写回即消失。
  *
  * lastLaunchedAt / pinned 是 Tick 侧状态：lastLaunch 由 TodoStore 提供（跨工具时钟），
  * pinned（用户手动加项目）持久在 cache 文件里，重扫时保留。
  */
 
-import { existsSync, mkdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import type { ProjectEntry, ProjectSource } from '@tick/ai-core'
+import type { AiToolAdapter, ProjectEntry, ProjectSource } from '@tick/ai-core'
 import { canonicalPath, mergeProjects, sortEntries } from '@tick/ai-core'
-import type { PiAdapter } from '@tick/ai-pi'
-import { collectJsonlFiles, readFirstLineHeader, type SessionRoot } from '@tick/ai-pi'
 import { atomicWriteJson, readJson } from './storage'
-
-interface CachedFileMeta {
-  size: number
-  mtimeMs: number
-  cwd: string
-  id?: string
-}
 
 interface CacheFile {
   version: 1
   updatedAt: string
-  files: Record<string, CachedFileMeta>
   projects: ProjectEntry[]
   pinned: string[]
-  /** 失效目录的重新定位映射：old canonical → new canonical（只做映射，不动 pi 的文件） */
+  /** 失效目录的重新定位映射：old canonical → new canonical（只做映射，不动工具自己的文件） */
   aliases?: Record<string, string>
 }
 
-const EMPTY_CACHE: CacheFile = {
-  version: 1,
-  updatedAt: '',
-  files: {},
-  projects: [],
-  pinned: [],
-  aliases: {},
+/** 旧版本（单工具期）的缓存可能多带 `files`；读取时显式挑字段，避免把多余数据带进新缓存 */
+type CachedFileMaybeLegacy = Partial<CacheFile> & { files?: unknown }
+
+function emptyCache(): CacheFile {
+  return { version: 1, updatedAt: '', projects: [], pinned: [], aliases: {} }
 }
 
 export interface ProjectIndexOptions {
   /** 跨工具时钟：路径 → 该项目最近一次被 Tick 拉起的时间（来自 TodoStore.lastLaunch） */
   launchClock?: () => Map<string, number>
-  /** 根注入（测试隔离；默认 adapter 自行解析） */
-  sessionRoots?: () => SessionRoot[]
 }
 
 export class ProjectIndexService {
-  private adapter: PiAdapter
+  private adapters: AiToolAdapter[]
   private cacheFile: string
   private opts: ProjectIndexOptions
 
-  private cache: CacheFile = { ...EMPTY_CACHE, files: {}, projects: [], pinned: [] }
+  private cache: CacheFile = emptyCache()
   private loaded = false
   private scanning: Promise<ProjectEntry[]> | null = null
 
-  constructor(adapter: PiAdapter, cacheFile: string, opts: ProjectIndexOptions = {}) {
-    this.adapter = adapter
+  constructor(adapters: AiToolAdapter[], cacheFile: string, opts: ProjectIndexOptions = {}) {
+    this.adapters = adapters
     this.cacheFile = cacheFile
     this.opts = opts
   }
 
   /** 启动时读缓存（丢了/坏了 = 从零重扫，可再生层语义） */
   async init(): Promise<void> {
-    const cached = readJson<CacheFile>(this.cacheFile)
+    const cached = readJson<CachedFileMaybeLegacy>(this.cacheFile)
     if (cached?.version === 1) {
-      this.cache = { ...cached, aliases: cached.aliases ?? {} }
+      this.cache = {
+        version: 1,
+        updatedAt: cached.updatedAt ?? '',
+        projects: cached.projects ?? [],
+        pinned: cached.pinned ?? [],
+        aliases: cached.aliases ?? {},
+      }
     }
     this.loaded = true
   }
@@ -88,60 +83,13 @@ export class ProjectIndexService {
     if (this.scanning) return this.scanning
     this.scanning = (async () => {
       try {
-        const files = new Map<string, CachedFileMeta>(Object.entries(this.cache.files))
-        const byCwd = new Map<string, { sessionCount: number; lastUsedAt?: number }>()
-        // Q8 硬约束：文件级增量按 (size,mtime)，消失的条目必须从缓存删除。
-        // 旧实现只增不删，cache/projects.json 的 files 会无限增长。
-        const seen = new Set<string>()
-
-        for (const root of this.sessionRoots()) {
-          for (const file of collectJsonlFiles(root.dir)) {
-            seen.add(file)
-            let st
-            try {
-              st = statSync(file)
-            } catch {
-              files.delete(file)
-              continue
-            }
-            if (st.size === 0) {
-              files.delete(file) // 僵尸：永远不索引（D16）
-              continue
-            }
-            const cached = files.get(file)
-            if (cached && cached.size === st.size && cached.mtimeMs === st.mtimeMs) {
-              // (size,mtime) 未变 → 复用上次 header 结论，不重读首行
-              this.bump(byCwd, cached.cwd, st.mtimeMs)
-              continue
-            }
-            const header = readFirstLineHeader(file)
-            if (!header?.cwd || !path.isAbsolute(header.cwd)) {
-              files.delete(file)
-              continue
-            }
-            files.set(file, { size: st.size, mtimeMs: st.mtimeMs, cwd: header.cwd, id: header.id })
-            this.bump(byCwd, header.cwd, st.mtimeMs)
-          }
-        }
-
-        for (const known of files.keys()) {
-          if (!seen.has(known)) files.delete(known)
-        }
-
-        const source: ProjectSource = {
-          toolId: this.adapter.id,
-          projects: [...byCwd.entries()].map(([p, e]) => ({
-            path: p,
-            sessionCount: e.sessionCount,
-            lastUsedAt: e.lastUsedAt,
-            exists: existsSync(p),
-          })),
-        }
-        const merged = mergeProjects([source])
+        const sources = (await Promise.all(this.adapters.map((a) => this.sourceOf(a)))).filter(
+          (s): s is ProjectSource => s !== undefined,
+        )
+        const merged = mergeProjects(sources)
         this.cache = {
           version: 1,
           updatedAt: new Date().toISOString(),
-          files: Object.fromEntries(files),
           projects: merged,
           pinned: this.cache.pinned,
           aliases: this.cache.aliases ?? {},
@@ -157,8 +105,22 @@ export class ProjectIndexService {
   }
 
   /**
+   * 单个工具的证据；没实现 discoverProjects 的工具跳过，实现抛错也只丢自己（失败降级）。
+   * 日志只记工具 id 与错误消息，不含项目/会话内容。
+   */
+  private async sourceOf(adapter: AiToolAdapter): Promise<ProjectSource | undefined> {
+    if (!adapter.discoverProjects) return undefined
+    try {
+      return { toolId: adapter.id, projects: await adapter.discoverProjects() }
+    } catch (e) {
+      console.warn(`[tick] ${adapter.id} 项目发现失败:`, (e as Error).message)
+      return undefined
+    }
+  }
+
+  /**
    * 用户手动加项目（F3）：canonical 化后 pin 进缓存并立即落盘，
-   * 这样即使 pi 不可用/没有会话，项目也能一直出现在选择器里（不参与 stale 清理）。
+   * 这样即使工具不可用/没有会话，项目也能一直出现在选择器里（不参与 stale 清理）。
    */
   pin(projectPath: string): void {
     const p = canonicalPath(projectPath)
@@ -200,36 +162,12 @@ export class ProjectIndexService {
     }
   }
 
-  /** evidence-only merge 结果晚于缓存：调用方把 Tick 时钟/pinned 叠到最新结果上 */
-  private async ensureLoaded(): Promise<void> {
-    if (!this.loaded) await this.init()
-  }
-
-  private sessionRoots(): SessionRoot[] {
-    if (this.opts.sessionRoots) return this.opts.sessionRoots()
-    return this.adapter.sessionRoots()
-  }
-
-  private bump(
-    byCwd: Map<string, { sessionCount: number; lastUsedAt?: number }>,
-    cwd: string,
-    mtimeMs: number,
-  ): void {
-    let e = byCwd.get(cwd)
-    if (!e) {
-      e = { sessionCount: 0 }
-      byCwd.set(cwd, e)
-    }
-    e.sessionCount += 1
-    if (e.lastUsedAt === undefined || mtimeMs > e.lastUsedAt) e.lastUsedAt = mtimeMs
-  }
-
   /** 叠加 Tick 侧状态：lastLaunchedAt（时钟）+ pinned 用户条目 + 失效目录别名 */
   private overlay(entries: ProjectEntry[], clock: Map<string, number>): ProjectEntry[] {
     const aliases = this.cache.aliases ?? {}
     for (const e of entries) {
       if (aliases[e.path]) {
-        // 目录改名的替代：列表按新路径展示（不移动任何 pi 文件）
+        // 目录改名的替代：列表按新路径展示（不移动任何工具文件）
         e.path = aliases[e.path] as string
         e.exists = existsSync(e.path)
       }
@@ -255,5 +193,9 @@ export class ProjectIndexService {
   /** 保障 init 已跑（refresh 前调用）——显式 async 入口 */
   ready(): Promise<void> {
     return this.ensureLoaded()
+  }
+
+  private async ensureLoaded(): Promise<void> {
+    if (!this.loaded) await this.init()
   }
 }

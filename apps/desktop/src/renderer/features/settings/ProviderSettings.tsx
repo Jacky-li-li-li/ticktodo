@@ -222,7 +222,8 @@ export function ProviderSettings({
 
           <div className="sheet-note">
             Key 只经系统钥匙串加密存储（~/.ticktodo 与同步层里永远不出现 Key）；Endpoint 与模型名存
-            settings.json。自配后面板 Chat 不再依赖 pi 本体，但 CLI 拉起与项目索引仍需要 pi。
+            settings.json。自配后面板 Chat 不再依赖 pi 本体，但 CLI 拉起与项目索引仍会用到本机的
+            agent 工具（pi / WorkBuddy）。
           </div>
         </div>
       ) : (
