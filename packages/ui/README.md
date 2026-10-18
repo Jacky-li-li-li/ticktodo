@@ -32,9 +32,22 @@ import { GlassPanel, GlassRow, GlassPill, glassTokens } from '@tick/ui'
 | `--glass-pill-bg` | 胶囊按钮底 | 略不透明于底板 |
 | `--panel-base` | 兼容旧暗透面板 | `rgba(18,20,31,0.2)` |
 | `--t-*` | 文字层级 | 与 desktop 一致 |
-| `--r-*` / `--pad-panel` / `--gap-std` / `--accent` | 圆角、间距、强调色 | 兼容映射 |
+| `--r-*` / `--pad-panel` / `--gap-std` | 圆角、间距 | 兼容映射 |
+| `--accent` / `--accent-text` | 强调色（**统一 UI 后为墨黑，不再用蓝色**） | `#2a2d33` / `#0b1a2a` |
+| `--metal-hi` / `--metal-mid` / `--metal-lo` | 金属黑按钮渐变三段 | `#3f434c` → `#1c1f25` → `#0a0b0e` |
+| `--metal-line` / `--metal-text` / `--metal-text-dim` | 金属按钮描边与文字 | 白 22% / `#f3f5f9` / 白 60% |
+| `--metal-sheen` / `--metal-shadow` | 顶部高光 / 底部投影 | 白 36% / 黑 34% |
 
 TS 镜像见 `src/tokens/tokens.ts`（`glassTokens`）。
+
+## 按钮规范（2026-10-18 定）
+
+- **主按钮**：抛光金属黑（`--metal-*` 三段渐变 + 顶部高光 + 底部投影），白字；
+- **次按钮 / 小按钮 / 分段选中 / chip 选中 / 列表选中行**：哑光石墨（同色系低一档），白字；
+- **文本按钮 / 链接 / 状态标记**：墨黑（`--accent-text`），不用蓝色；
+- **键盘焦点环**：墨色 `2px`，不再用蓝色；
+- **语义色**：只保留绿（成功/完成）与红（危险/失效）。
+- 具体落地见 `apps/desktop/src/renderer/styles.css` 末尾「UI 规范统一」两段。
 
 ## 材质 class
 

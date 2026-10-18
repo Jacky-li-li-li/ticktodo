@@ -25,12 +25,23 @@
   );
 
   /* ---------- 色板（兼容 desktop 旧名） ---------- */
-  --accent: #0a84ff;
-  --accent-text: #0a5fbf;
+  /* 统一 UI（2026-10-18）：强调色不再用蓝色 —— 可点/强调 = 墨黑，按钮 = 金属黑 */
+  --accent: #2a2d33;
+  --accent-text: #0b1a2a;
   --success: #34c759;
   --danger: #ff6b6b;
   --panel-base: rgba(18, 20, 31, 0.2);
   --board-bg: #0c0d12;
+
+  /* ---------- 金属黑按钮（主按钮抛光 / 次按钮哑光） ---------- */
+  --metal-hi: #3f434c;
+  --metal-mid: #1c1f25;
+  --metal-lo: #0a0b0e;
+  --metal-line: rgba(255, 255, 255, 0.22);
+  --metal-text: #f3f5f9;
+  --metal-text-dim: rgba(243, 245, 249, 0.6);
+  --metal-sheen: rgba(255, 255, 255, 0.36);
+  --metal-shadow: rgba(0, 0, 0, 0.34);
 
   /* ---------- 文字层级（浅色玻璃 + 黑字） ---------- */
   --t-title: rgba(0, 0, 0, 0.9);
