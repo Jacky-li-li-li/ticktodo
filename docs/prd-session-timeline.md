@@ -52,7 +52,7 @@
 - P0-2 **进展时间线**：todo 详情按会话最后事件时间倒序，跨工具混排，每项显示：工具图标、最后事件时间、状态、最后一条 user 消息（折叠）、操作（回到会话）。
 - P0-3 **会话状态归一**：`active / idle / done / missing`（定义见 §4；完成状态读各工具会话记录自带字段）。
 - P0-7 **第二个接入工具：WorkBuddy 适配器**（桌面形态，需求见 §9；依据与风险见 §10）。
-- P0-8 **第三个接入工具：WorkBuddy AI（国际版）适配器**（独立于国内版，需求见 §9B；依据见 §10 表 B）。⚠️ 本机目前无会话数据、深链接未实测，**部分能力为“按国内版同内核推测、未验证”，验收前须在有会话的机器上补测**（§9B.9）。
+- P0-8 **第三个接入工具：WorkBuddy AI（国际版）适配器**（独立于国内版，需求见 §9B；依据见 §10 表 B）。⚠️ 本机目前无会话数据、深链接 `home` 已实测、真实会话 `chat/<id>` 未验证，**部分能力为“按国内版同内核推测、未验证”，验收前须在有会话的机器上补测**（§9B.9）。
 - P0-4 **一键回到会话**：pi 沿用现有 resume；desktop 工具（WorkBuddy：`workbuddy://`；WorkBuddy AI：`workbuddy-ai://`，两者独立）用**深链接**拉起应用并定位到会话（§9.6）；`missing`（文件不在）时置灰并显示原路径。
 - P0-5 **缓存与增量**：按 `(filePath, mtime, size)` 缓存，仅变化时重新读取，不阻塞详情打开。
 - P0-6 **todo 列表行**：显示最近一个会话的最后一条 user 消息（单行截断，替代当前纯 `lastMessage`）。
@@ -257,7 +257,7 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 目标：与 §9 并列的**独立** `AiToolAdapter`（desktop 形态），输出 `SessionLastUserEvidence`。对象：WorkBuddy AI（workbuddy.ai，`/Applications/WorkBuddy AI.app`，bundle `com.workbuddy.workbuddy-ai`，5.8.4，scheme `workbuddy-ai`，数据目录 `~/.workbuddy-ai`）。实测记录见 `docs/workbuddy-adapter-notes.md` §10。
 
-> ⚠️ **实测边界（2026-10-18）**：本机国际版**尚无任何会话**（`sessions` 表 0 行、无 `projects/`、无 jsonl），所以 jsonl 事件格式、`status` 取值、`user_query` 包装、`isMeta` 等**无法在本机实测，均标“未验证”**；仅表结构与迁移脚本已实测。深链接因屏幕锁定未执行。国内版结论只作“同内核的假设”，不当作国际版事实；适配器按“探测到即用、探测不到则降级”实现。
+> ⚠️ **实测边界（2026-10-18）**：本机国际版**尚无任何会话**（`sessions` 表 0 行、无 `projects/`、无 jsonl），所以 jsonl 事件格式、`status` 取值、`user_query` 包装、`isMeta` 等**无法在本机实测，均标“未验证”**；仅表结构与迁移脚本已实测。深链接已于解锁后补测（`home` 通过，真实会话仍无法测）。国内版结论只作“同内核的假设”，不当作国际版事实；适配器按“探测到即用、探测不到则降级”实现。
 
 ### 9B.1 数据源
 
@@ -285,10 +285,11 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 ### 9B.6 拉起与定位
 
-- 命令：`open "workbuddy-ai://chat/<encodeURIComponent(id)>"`、`open "workbuddy-ai://home"`（路径**仅由国内版推测，国际版未验证**）。
-- 已知证据：Info.plist 声明 scheme `workbuddy-ai`（实测）；国际版 app.asar 中 `[DeepLink]` 处理日志与国内版同构，且含 `workbuddy://chat/`、`workbuddy://home` 字面量与“ignored non-workbuddy url”校验，**未检索到 `workbuddy-ai://` 字面量**——校验函数是否接受 `workbuddy-ai://` 尚不明确，**必须实测**（本次因屏幕锁定未执行 `open`）。
-- 开关策略：**默认关闭“回到会话”**，直至在有会话且屏幕解锁的机器上通过冷/热启动 + 不存在 id 的实测；未通过则按钮置灰并显示会话信息，不降级为调用 `workbuddy://`（那会拉起国内版，属于错误工具）。
-- 前台判断：主进程可执行名为 `Electron`（Info.plist `CFBundleExecutable`，已实测），bundle id 为 `com.workbuddy.workbuddy-ai`；实际前台 bundle id 需拉起时实测（国内版为 `com.github.Electron`）。
+- 命令：`open "workbuddy-ai://chat/<encodeURIComponent(id)>"`、`open "workbuddy-ai://home"`（`home` 已实测可用；`chat/<id>` 路由已实测会分发到会话页，但**真实会话尚未实测**，见下）。
+- 实测（2026-10-18 18:00 UTC+8，5.8.4，屏幕已解锁；详见 notes §10.5）：`workbuddy-ai://` **未被忽略**，冷启动与热启动均被主进程 `[DeepLink]` 分发到渲染进程；`home` → 路由 `/home`，拉起并前置 WorkBuddy AI（前台 bundle id `com.workbuddy.workbuddy-ai`）；`chat/<id>` → 路由切到 `/conversation/<id>`（对不存在的全零 id 同样如此，随后可能回落首页，`open` 恒 exit 0，无法得知成败）。**本机无任何会话，未能对真实会话 id 验证“定位到该会话页”。**
+- 前台判断：前台应用 bundle id 实测为 `com.workbuddy.workbuddy-ai`（用 `lsappinfo` 取；System Events 的进程名 `Electron` 与国内版重名，不可用于区分）。
+- 开关策略：**仍默认关闭“回到会话”**（`home` 通过，但真实会话 `chat/<id>` 未实测）；待在有会话的机器上补测通过后再开启；未通过则按钮置灰并显示会话信息，不降级为调用 `workbuddy://`（那会拉起国内版，属于错误工具）。
+- 调用前先校验 id 存在于 DB 且未软删除；不存在 id 不调用。
 - 调用前先校验 id 存在于 DB 且未软删除。
 
 ### 9B.7 版本探测与降级
@@ -305,8 +306,8 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 1. 有会话后核对：jsonl 位置与文件名结构、`type`/`role` 字段、`user_query` 包装、`isMeta`/`isCompacted`/`startsNewUserRequest`；
 2. `sessions.status` 取值与 `deleted_at` 语义；
-3. 深链接：`chat/<id>`、`home`、不存在 id、冷/热启动、窗口最小化；
-4. 前台 bundle id。
+3. 深链接：**真实会话 `chat/<id>`**（`home`、冷/热启动、不存在 id 路由已测，见 §9B.6）、窗口最小化；
+4. ~~前台 bundle id~~ 已测：`com.workbuddy.workbuddy-ai`。
 
 ## 10. 官方规范依据
 
@@ -352,7 +353,7 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 | --- | --- | --- | --- |
 | B1 | 应用与 bundle id：`WorkBuddy AI.app`、`com.workbuddy.workbuddy-ai`，版本 5.8.4，可执行名 `Electron` | 仅本机逆向+实测（非公开契约） | Info.plist 只读；版本号与 [I] Changelog 5.8.4 条目一致 |
 | B2 | URL scheme `workbuddy-ai` 已注册 | 仅本机逆向+实测（非公开契约） | Info.plist 声明（实测）；官方 [I] 无 deeplink 说明 |
-| B3 | 深链接路径 `workbuddy-ai://chat/<id>` / `home` 的拉起与定位 | **未验证** | 仅由国内版推测；app.asar 有 `[DeepLink]` 处理但未检索到 `workbuddy-ai://` 字面量；`open` 未执行（屏幕锁定） |
+| B3 | 深链接 `workbuddy-ai://home` / `chat/<id>` 的拉起与定位 | `home`：仅本机实测（非公开契约）；`chat/<真实id>`：**未验证**（无会话） | 2026-10-18 实测：scheme 未被忽略；冷/热启动均分发；`home`→`/home` 并前置，前台 bundle `com.workbuddy.workbuddy-ai`；`chat/<id>` 路由到 `/conversation/<id>`，但本机无会话，真实会话未验证；不存在 id 行为不稳定（可能停在空会话页或回落首页）；官方 [I] 无 deeplink 说明 |
 | B4 | 数据目录 `~/.workbuddy-ai` 与 `workbuddy.db`（WAL 之外的单库实测） | 仅本机逆向+实测（非公开契约） | 目录与库存在；官方 [I] 无存储说明 |
 | B5 | `sessions` 表结构（40 列，核心列与国内版一致，含 `status` 默认 `Pending`、`deleted_at`、`transport`、`unread`） | 仅本机逆向+实测（非公开契约） | 只读 `PRAGMA table_info` + 迁移脚本；官方无 |
 | B6 | 会话数量 / 实际 `status` 取值 / `deleted_at` 语义 | **未验证** | 本机 sessions 表 0 行 |

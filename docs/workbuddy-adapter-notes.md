@@ -152,7 +152,7 @@
 
 ### 10.1 实测环境
 - 应用：`/Applications/WorkBuddy AI.app`，bundle `com.workbuddy.workbuddy-ai`，5.8.4，可执行名 `Electron`；Info.plist `CFBundleURLSchemes = workbuddy-ai`（URLName `WorkBuddy AI Deep Links`）。
-- 主进程测试时**未运行**；Mac **屏幕锁定**（IOConsoleLocked=Yes，HID 空闲约 56 分钟）；前台 Google Chrome。
+- 首轮（17:36–17:50）：应用未运行、屏幕锁定，深链接未测；18:00 补测见 §10.5（屏幕已解锁）。
 
 ### 10.2 数据库（只读）
 - `~/.workbuddy-ai/workbuddy.db`：单文件（无 -wal/-shm），表：`sessions`、`workspaces`、`automations`、`automation_runs`、`automation_runtime_state`、`automation_delivery_outbox`、`migration_meta`、`session_usage`、`buddy_snapshots`、`workspace_trust_decisions`、`__workbuddy_drizzle_migrations`（**无** `cloud_conversations` 表，已在迁移 0012 合并进 `sessions`）。
@@ -175,9 +175,14 @@
 | deleted_at 语义 | **未验证**（列存在、可空；迁移脚本显示云端行用 -1 表示未删除） |
 | 主进程名 | 可执行名 `Electron`，与国内版同；前台 bundle id 未测 |
 
-### 10.5 深链接
-- **未执行 `open`**：按要求“测试前确认屏幕未锁”，当前锁屏且应用未运行，执行会冷启动应用且无法目视/截图验证，故跳过 `workbuddy-ai://home`、`workbuddy-ai://chat/<id>`、不存在 id 三项。本机亦无已存在会话可测。
-- 静态证据（app.asar 字符串，未执行）：含 `[DeepLink] dispatching open url to renderer`、`handleOpenUrl ignored non-workbuddy url` 等与国内版同构的处理；字面量有 `workbuddy://chat/`、`workbuddy://home`、`workbuddy://automation/run?`、`workbuddy://agentmail`，**未检索到 `workbuddy-ai://` 字面量**；URL 校验函数是否放行 `workbuddy-ai://` **不明**。→ 深链接行为**未验证**，且存在“scheme 被忽略”的风险。
+### 10.5 深链接（2026-10-18 18:00 UTC+8 补测，屏幕已解锁，IOConsoleLocked=No）
+- 前提：`sessions` 表 0 行，**无真实会话可测**；故未测 `chat/<真实id>`。截图未保存。判断依据：`lsappinfo` 前台 bundle id、System Events 窗口名、应用 main/renderer 日志中的 `[DeepLink]` 与路由变化。
+- **冷启动 `workbuddy-ai://home`**（应用未运行）：拉起应用；主进程日志先 “stored until WindowManager ready”，窗口就绪后分发到渲染进程；窗口标题 `WorkBuddy AI`，前台 bundle id `com.workbuddy.workbuddy-ai`。
+- **热 `workbuddy-ai://home`**（已运行，含前台切到 Finder 后再调用）：重新前置应用，路由 `/home`，前台 bundle id 同上。
+- **`workbuddy-ai://chat/00000000-0000-0000-0000-000000000000`（不存在）**：被分发，渲染进程路由切到 `/conversation/<该id>`（activePanelView=conversation）。一次观测约 1 秒后回落 `/`（首页）；另一次在被下一条 home 覆盖前停留了数秒。结论：行为不稳定（空会话页或回落首页），`open` 恒 exit 0，无法得知成败，故调用前必须由 DB 校验 id 存在。
+- **`chat/<真实id>`：未验证**（无会话）。
+- **`workbuddy-ai://` 未被忽略**（此前静态检索无字面量的担忧排除）。System Events 的进程名为 `Electron`，与国内版重名，区分须用 bundle id。
+- 结论：`home` 通过；真实会话定位未验证 → “回到会话”对国际版**仍默认关闭**，待有会话时补测。
 - 另：app 内以 `WORKBUDDY_CONFIG_DIR` 含 `workbuddy-ai` 判断 overseas/cn（仅逆向字符串）。
 
 ### 10.6 官网文档（workbuddy.ai，只读）
@@ -185,4 +190,4 @@
 - Quickstart：登录用 Google/GitHub OAuth（见 §9.2）。官方无存储/深链/hooks 规范。
 
 ### 10.7 仍未验证
-会话 jsonl 格式与全部消息规则；status 取值与 deleted_at 语义；三种深链接及冷/热启动、不存在 id、前台 bundle id；hooks；根目录环境变量实际行为。需在有国际版会话、屏幕解锁时补测，补测前适配器“回到会话”默认关闭（PRD §9B.6）。
+会话 jsonl 格式与全部消息规则；status 取值与 deleted_at 语义；真实会话 `chat/<id>` 深链接定位；hooks；根目录环境变量实际行为。需在有国际版会话、屏幕解锁时补测，补测前适配器“回到会话”默认关闭（PRD §9B.6）。
