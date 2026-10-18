@@ -128,7 +128,7 @@
     <h1 data-i18n="h1">AI 会话的索引层</h1>
     <p class="sub" data-i18n="sub">一个置顶在桌面一角的 Todo 工作台。<span class="nb">每条线索都能绑定一个 agent 会话——</span><span class="nb">线索是索引，会话是被索引的对象。</span></p>
     <div class="cta" id="download">
-      <a class="btn" href="#download-placeholder" data-download>
+      <a class="btn" href="#download-placeholder" data-download download>
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.3 1.88-3.4 1.97-3.46-1.07-1.57-2.74-1.78-3.33-1.8-1.42-.15-2.77.83-3.49.83-.72 0-1.83-.81-3-.79-1.55.02-2.97.9-3.77 2.28-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.78.74 2.99.72 1.24-.02 2.02-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.42-3.66zM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.67 1.37-.58.67-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z"/></svg>
         <span data-i18n="dl">下载 macOS 版</span>
       </a>
@@ -137,6 +137,7 @@
         <button class="copy" id="copy" type="button" data-i18n="copy">复制</button>
       </div>
       <span class="note" data-i18n="note">或者在终端里一行安装</span>
+      <span class="note dl-alt"><span data-i18n="alt_label">其他架构：</span><a id="dl-alt" href="#" download></a> · <a href="https://github.com/Jacky-li-li-li/ticktodo/releases" data-i18n="all_rel">所有版本</a></span>
     </div>
   </header>
 </div>
@@ -176,7 +177,7 @@
       </div>
       <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v4"/><rect x="5" y="7" width="14" height="11" rx="4"/><circle cx="9.5" cy="12.5" r=".6"/><circle cx="14.5" cy="12.5" r=".6"/><path d="M9 21h6"/></svg></div>
-        <h3 data-i18n="f5t">agent 自己记 Todo</h3><p data-i18n="f5d">装上 tick 扩展后，agent 可以直接调用 <code>create_todo</code>，把待办写回 Ticktodo。</p>
+        <h3 data-i18n="f5t">agent 自己记 Todo</h3><p data-i18n="f5d">装上 Ticktodo 扩展后，agent 可以直接调用 <code>create_todo</code>，把待办写回 Ticktodo。</p>
       </div>
       <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h9v7H8l-4 3z"/><path d="M13 9h7v7l-3-2h-4"/></svg></div>
@@ -192,7 +193,7 @@
     <h2 data-i18n="h_how">三步，开始用线索管理会话。</h2>
     <div class="grid g3 steps">
       <div class="card step"><h3 data-i18n="s1t">安装并常驻托盘</h3><p data-i18n="s1d">下载 macOS 版或用终端命令安装。Ticktodo 会待在菜单栏，点一下就弹出面板。</p></div>
-      <div class="card step"><h3 data-i18n="s2t">记下一条线索</h3><p data-i18n="s2d">在面板里写下 Todo，或者让装了 tick 扩展的 agent 直接替你 <code>create_todo</code>。</p></div>
+      <div class="card step"><h3 data-i18n="s2t">记下一条线索</h3><p data-i18n="s2d">在面板里写下 Todo，或者让装了 Ticktodo 扩展的 agent 直接替你 <code>create_todo</code>。</p></div>
       <div class="card step"><h3 data-i18n="s3t">投递并绑定会话</h3><p data-i18n="s3d">为这条 Todo 选好 cwd，一键投递到 pi。会话绑定在线索上，下次从这里接着来。</p></div>
     </div>
   </div>
@@ -202,7 +203,7 @@
   <div class="wrap">
     <img src="icon.png" alt="Ticktodo 图标">
     <h2 data-i18n="h_close">把它钉在桌面一角。</h2>
-    <a class="btn" href="#download-placeholder" data-download><span data-i18n="dl">下载 macOS 版</span></a>
+    <a class="btn" href="#download-placeholder" data-download download><span data-i18n="dl">下载 macOS 版</span></a>
   </div>
 </section>
 
@@ -214,13 +215,21 @@
 </footer>
 
 <script>
-  const DOWNLOAD_URL = 'https://github.com/Jacky-li-li-li/ticktodo/releases/latest';
+  const BASE = 'https://github.com/Jacky-li-li-li/ticktodo/releases/download/v0.1.0/';
+  const DMG = {arm64: BASE + 'Tick-0.1.0-arm64.dmg', x64: BASE + 'Tick-0.1.0-x64.dmg'};
+  const LABEL = {arm64: 'Apple Silicon (arm64)', x64: 'Intel (x64)'};
+  // Default arm64; userAgent can't reliably reveal Apple Silicon, so only pick x64 on explicit hints.
+  const ARCH = /x86_64|x64|Win64|\bIntel\b(?!.*Mac OS X)/i.test(navigator.userAgent) ? 'x64' : 'arm64';
+  const ALT = ARCH === 'arm64' ? 'x64' : 'arm64';
+  const DOWNLOAD_URL = DMG[ARCH];
+  const altEl = document.getElementById('dl-alt'); altEl.href = DMG[ALT]; altEl.textContent = LABEL[ALT];
   const INSTALL_CMD = 'curl -fsSL https://ticktodo.cc/install.sh | bash';
 
   document.querySelectorAll('[data-download]').forEach(a => a.href = DOWNLOAD_URL);
   document.querySelectorAll('[data-install]').forEach(el => el.textContent = INSTALL_CMD);
 
   const EN = {
+    alt_label:'Other architecture: ', all_rel:'All releases',
     nav_what:'What', nav_feat:'Features', nav_how:'How',
     eyebrow:'macOS · Local-first · Built for AI sessions',
     h1:'The index layer for your AI sessions',
@@ -235,11 +244,11 @@
     f2t:'Simple Todo CRUD', f2d:'Completing a Todo only changes its status — nothing is deleted, so you can always look back.',
     f3t:'Bind an AI session', f3d:'Every Todo can be bound to a pi session, keeping the thread and its context together.',
     f4t:'Send to pi in one click', f4d:'Pick a working directory (cwd) and send the Todo into a pi session via clipboard or launch arguments.',
-    f5t:'Agents write Todos too', f5d:'With the tick extension, an agent can call <code>create_todo</code> to add Todos back into Ticktodo.',
+    f5t:'Agents write Todos too', f5d:'With the Ticktodo extension, an agent can call <code>create_todo</code> to add Todos back into Ticktodo.',
     f6t:'Isolated conversations', f6d:'Chats in the panel are isolated from your CLI sessions — no crossed wires.',
     l_how:'How it works', h_how:'Three steps to manage sessions by thread.',
     s1t:'Install, live in the tray', s1d:'Download the macOS app or install from Terminal. Ticktodo sits in the menu bar; click to open the panel.',
-    s2t:'Capture a thread', s2d:'Write a Todo in the panel, or let an agent with the tick extension <code>create_todo</code> for you.',
+    s2t:'Capture a thread', s2d:'Write a Todo in the panel, or let an agent with the Ticktodo extension <code>create_todo</code> for you.',
     s3t:'Send and bind', s3d:'Choose a cwd for the Todo and send it to pi. The session stays bound to the thread, ready to resume.',
     h_close:'Pin it to your desktop.', foot:'Made for macOS · Your data stays on your computer'
   };
