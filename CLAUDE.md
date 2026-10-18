@@ -107,7 +107,7 @@ packages/ai/core  工具无关合同 + 纯函数（不得依赖任何具体 adap
 
 ## 文档地图
 
-- `README.md`：面向用户的产品介绍、安装、功能、架构图与开发入口。
+- `README.md`（英文，默认）/ `README.zh-CN.md`（简体中文）：面向用户的产品介绍、安装与功能。
 - `docs/已对齐/PRD-tick.md`、`docs/已对齐/TECH-ARCH-tick.md`：产品与架构权威设计（含 pi 的实测事实与陷阱）。
 - `docs/已对齐/RESEARCH-pi.md`、`docs/已对齐/RESEARCH-magpie.md`：pi 与本地会话读取器的调研依据。
 - `docs/release-playbook.md`：macOS 签名/公证/发版全链路。
