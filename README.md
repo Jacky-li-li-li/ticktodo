@@ -1,6 +1,9 @@
-# Tick — 置顶 Todo 工作台（AI 会话的索引层）
+# Ticktodo — 一件事的所有 AI 会话，一眼看全
 
-> **线索（Todo）是索引，agent 会话是被索引对象。**
+> **Ticktodo 以 todo（事情）为中心，把同一件事在不同工具（Claude Code、pi、Cursor 等）里的多个 AI 会话聚到一起，让你一眼看到这件事做过什么、做到哪，并能回到任意会话继续。**
+>
+> 痛点：一件事的工作历史散落在多个工具的多个会话里，只能靠回忆再逐个工具翻找。Ticktodo 要消除的就是这份“回忆加翻找”的成本。
+>
 > 产品文档：`docs/已对齐/PRD-tick.md`（v0.3） · 架构：`docs/已对齐/TECH-ARCH-tick.md`
 
 ## 快速开始
@@ -118,8 +121,7 @@ tick/
 ### 4. M3 + F8 功能（UI 已按 UI-SPEC 第二轮 Calm Panel 对齐）
 
 - **macOS 纯菜单栏模式**：`app.dock.hide()` + 打包 `LSUIElement=true`，不显示 Dock 图标；常驻 Tray 模板图标（左键显隐面板，右键菜单：显示/隐藏、新建线索、退出；悬停 tooltip 显示 `Ticktodo-<open 线索数>个`）；图标源 `build/trayTemplate.svg`，打包时经 `extraResources` 带进 App。
-- **应用图标**：源文件 `apps/desktop/build/icon.svg`（深色玻璃 squircle + 图钉云豆 mascot；浅色备选 `icon-light.svg`），
-  产物 `icon.png`（1024）与 `icon.icns`；electron-builder 默认从 `build/` 取 `icon.icns`（无需额外配置），dev 下 main 会把 Dock 图标指到 `icon.png`。
+- **应用图标**：唯一正式套：源文件 `apps/desktop/build/icon.svg`（满版 macOS：1024 全画布不透明底板 + **白描边/线框**云豆+天线 mascot）。主体比例与已确认的原线框版一致，仅去掉预裁圆角改为 HIG 满版底板（系统负责 squircle mask）；不做放大变形。产物 `icon.png`（1024 opaque）与完整 `icon.icns`（16…512 @1x/@2x）；`site/icon.png` 同源。托盘仍用 `trayTemplate*`（菜单栏模板，另一套）。electron-builder 默认从 `build/` 取 `icon.icns`。无第二套应用图标 / 无 `icon-light` 备选。
 - **首页顶栏**：右侧对话入口改为 14×14 会话气泡图标（去掉不存在的「⌘对话」假快捷键；`⋯` 仍是归档/设置/导出菜单）；左侧品牌位为「小尺寸云豆+图钉图标 + Ticktodo」（归档页仍显示「归档」；图标来源见 `build/icon.svg`，UI 组件 `features/brand/TickMark.tsx`）。
 - **Todo（重构 2026-10-18）**：首页行不再展开 —— 点行或右侧圆形箭头进**线索详情整页**；双击标题原地改名；
   行悬停显示箭头（替代原「继续」胶囊）。**详情页标题收到顶栏**：`‹ 返回 + 状态灯 + 标题（超长省略）`，
