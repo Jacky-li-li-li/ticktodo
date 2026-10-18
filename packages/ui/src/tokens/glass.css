@@ -1,0 +1,62 @@
+/**
+ * @tick/ui 玻璃拟态令牌
+ *
+ * - 新增 --glass-*：浅色毛玻璃材质（参考图质感）
+ * - 兼容映射现有 desktop 变量名，旧 CSS 不炸
+ * - .tick-glass-* 默认用浅玻璃；--panel-base 保留偏暗透历史偏好
+ */
+
+:root {
+  /* ---------- 玻璃专用 ---------- */
+  --glass-bg: rgba(255, 255, 255, 0.42);
+  --glass-bg-light: rgba(255, 255, 255, 0.42);
+  --glass-blur: 40px;
+  --glass-saturate: 1.4;
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-highlight: inset 0 1px 2px rgba(255, 255, 255, 0.28);
+  --glass-shadow: 0 30px 80px rgba(3, 5, 13, 0.45);
+  --glass-overlay: rgba(0, 0, 0, 0.06);
+  --glass-pill-bg: rgba(255, 255, 255, 0.55);
+  --glass-top-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.03) 30%,
+    rgba(255, 255, 255, 0) 62%
+  );
+
+  /* ---------- 色板（兼容 desktop 旧名） ---------- */
+  --accent: #0a84ff;
+  --accent-text: #0a5fbf;
+  --success: #34c759;
+  --danger: #ff6b6b;
+  --panel-base: rgba(18, 20, 31, 0.2);
+  --board-bg: #0c0d12;
+
+  /* ---------- 文字层级（浅色玻璃 + 黑字） ---------- */
+  --t-title: rgba(0, 0, 0, 0.9);
+  --t-row: rgba(0, 0, 0, 0.85);
+  --t-body: rgba(0, 0, 0, 0.75);
+  --t-secondary: rgba(0, 0, 0, 0.58);
+  --t-label: rgba(0, 0, 0, 0.5);
+  --t-weak: rgba(0, 0, 0, 0.38);
+  --t-faint: rgba(0, 0, 0, 0.32);
+  --t-time: rgba(0, 0, 0, 0.42);
+  --t-done: rgba(0, 0, 0, 0.45);
+  --danger-text: #c62828;
+  --success-text: #1b7f3a;
+  --warn-text: #8a5a00;
+
+  /* ---------- 圆角 ---------- */
+  --r-panel: 20px;
+  --r-window: 10px;
+  --r-card: 16px;
+  --r-pop: 14px;
+  --r-row: 12px;
+  --r-pill: 15px;
+  --r-check: 9px;
+  --r-chip: 14px;
+
+  /* ---------- 间距 ---------- */
+  --pad-panel: 14px;
+  --gap-std: 12px;
+}
