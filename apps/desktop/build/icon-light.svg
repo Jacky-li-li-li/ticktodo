@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Ticktodo app icon light">
-  <!--
-    Light variant of macOS app icon master — same geometry as icon.svg.
-    Full-bleed opaque 1024 canvas; system applies squircle mask.
-  -->
+  <!-- Light variant — same outline cloud-bean + full-bleed layout as icon.svg. -->
   <defs>
     <linearGradient id="plate" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FFFFFF"/>
@@ -11,22 +8,10 @@
       <stop offset="100%" stop-color="#E5ECF6"/>
     </linearGradient>
     <radialGradient id="sheen" cx="36%" cy="20%" r="58%" gradientUnits="objectBoundingBox">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
       <stop offset="100%" stop-color="#D5DEEC" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="beanShade" x1="0" y1="-248" x2="0" y2="318" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#2A3548"/>
-      <stop offset="100%" stop-color="#121A27"/>
-    </linearGradient>
-    <filter id="lift" x="-25%" y="-25%" width="150%" height="150%">
-      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#1A2740" flood-opacity="0.18"/>
-    </filter>
-  </defs>
-  <rect width="1024" height="1024" fill="url(#plate)"/>
-  <rect width="1024" height="1024" fill="url(#sheen)"/>
-  <g transform="translate(512 540) scale(1.62 1.38)" filter="url(#lift)">
-    <path
-      fill="url(#beanShade)"
+    <path id="bean"
       d="M0 -248
          C118 -248 225 -175 248 -55
          C258 15 242 78 205 120
@@ -40,19 +25,28 @@
          C-248 188 -230 148 -205 120
          C-242 78 -258 15 -248 -55
          C-225 -175 -118 -248 0 -248 Z"/>
-    <!-- white sclera + dark pupils + white glints -->
-    <circle cx="-78" cy="-28" r="48" fill="#F7FAFF"/>
-    <circle cx="78" cy="-28" r="48" fill="#F7FAFF"/>
-    <circle cx="-78" cy="-28" r="22" fill="#121A27"/>
-    <circle cx="78" cy="-28" r="22" fill="#121A27"/>
-    <circle cx="-68" cy="-38" r="8" fill="#F7FAFF"/>
-    <circle cx="88" cy="-38" r="8" fill="#F7FAFF"/>
-    <circle cx="-84" cy="-18" r="4" fill="#F7FAFF" opacity="0.9"/>
-    <circle cx="72" cy="-18" r="4" fill="#F7FAFF" opacity="0.9"/>
-    <ellipse cx="-98" cy="42" rx="26" ry="13" fill="#FF8A9B" fill-opacity="0.55"/>
-    <ellipse cx="98" cy="42" rx="26" ry="13" fill="#FF8A9B" fill-opacity="0.55"/>
-    <rect x="-11" y="-300" width="22" height="68" rx="8" fill="#0A84FF"/>
-    <circle cx="0" cy="-328" r="34" fill="#0A84FF"/>
-    <circle cx="-8" cy="-336" r="10" fill="#FFFFFF" fill-opacity="0.4"/>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#1A2740" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#plate)"/>
+  <rect width="1024" height="1024" fill="url(#sheen)"/>
+
+  <g transform="translate(512 540) scale(1.66 1.40)" filter="url(#lift)">
+    <use href="#bean" fill="none" stroke="#121A27" stroke-width="38" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <circle cx="-78" cy="-28" r="50" fill="#121A27"/>
+    <circle cx="78" cy="-28" r="50" fill="#121A27"/>
+    <circle cx="-66" cy="-36" r="9" fill="#F7FAFF"/>
+    <circle cx="90" cy="-36" r="9" fill="#F7FAFF"/>
+    <circle cx="-86" cy="-10" r="4.5" fill="#F7FAFF" opacity="0.95"/>
+    <circle cx="70" cy="-10" r="4.5" fill="#F7FAFF" opacity="0.95"/>
+
+    <ellipse cx="-105" cy="46" rx="26" ry="13" fill="#121A27" fill-opacity="0.88"/>
+    <ellipse cx="105" cy="46" rx="26" ry="13" fill="#121A27" fill-opacity="0.88"/>
+
+    <rect x="-11" y="-308" width="22" height="72" rx="9" fill="#121A27"/>
+    <circle cx="0" cy="-336" r="34" fill="#121A27"/>
   </g>
 </svg>
