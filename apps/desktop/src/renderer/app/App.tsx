@@ -31,7 +31,7 @@ import { PinIcon } from '../features/icons/PinIcon'
 type View = 'threads' | 'archive' | 'chat'
 
 export default function App(): React.JSX.Element {
-  const { todos, create, patch, setStatus, remove, refresh: refreshTodos } = useTodos()
+  const { todos, create, patch, setStatus, refresh: refreshTodos } = useTodos()
   const { projects, refresh: refreshProjects } = useProjects()
   const { settings, update: updateSettings } = useSettings()
   const open = todos.filter((t) => t.status === 'open')
@@ -172,16 +172,6 @@ export default function App(): React.JSX.Element {
           todo={activeDetail}
           onBack={() => setDetailId(null)}
           onSave={async (p) => Boolean(await patch(activeDetail.id, p))}
-          onSetStatus={(status) => {
-            if (status === 'done') archive(activeDetail)
-            else restore(activeDetail)
-          }}
-          onDelete={() => {
-            void remove(activeDetail.id).then((ok) => {
-              setDetailId(null)
-              showToast(ok ? '已删除（会话文件未动）' : '删除失败')
-            })
-          }}
           onNewSession={() => setPicker(activeDetail)}
           onClaimSessions={() => setSessionPicker({ todo: activeDetail })}
           onSessionsChanged={() => void refreshTodos()}

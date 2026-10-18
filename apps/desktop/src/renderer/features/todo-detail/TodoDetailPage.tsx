@@ -3,12 +3,11 @@
  *
  * 信息分层（自上而下）：
  *  1) 顶栏标题（双击只编辑标题；Enter/失焦保存、Esc 放弃）
- *  2) 补充上下文 body（双击或「改描述」进入编辑；失焦/Enter 保存、Shift+Enter 换行、Esc 放弃）
+ *  2) 补充上下文 body（双击进入编辑；失焦/Enter 保存、Shift+Enter 换行、Esc 放弃）
  *  3) 元信息：状态灯 / 来源 / 创建更新与最近拉起（悬停标题查看）
  *  4) 主操作：新建会话 / 认领历史会话（接着做只放在每个会话行里）
  *  5) 会话列表：每条会话的工具、时间、状态、最后一条 user 消息、项目名与路径，
  *     以及「接着做 / 解绑」；设置开启时显示单会话用量
- *  6) 其他：归档或恢复、改描述、导出（JSON+MD）、删除（二次确认，只解绑不动会话文件）
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
@@ -35,8 +34,6 @@ export function TodoDetailPage({
   todo,
   onBack,
   onSave,
-  onSetStatus,
-  onDelete,
   onNewSession,
   onClaimSessions,
   onSessionsChanged,
@@ -47,8 +44,6 @@ export function TodoDetailPage({
   todo: Todo
   onBack: () => void
   onSave: (patch: TodoPatch) => Promise<boolean>
-  onSetStatus: (status: Todo['status']) => void
-  onDelete: () => void
   onNewSession: () => void
   onClaimSessions: () => void
   onSessionsChanged: () => void
@@ -62,7 +57,6 @@ export function TodoDetailPage({
   /** 标题与描述分开编辑：标题在顶栏，补充上下文在正文区，互不干扰 */
   const [editing, setEditing] = useState<'title' | 'body' | null>(null)
   const [hoverTimes, setHoverTimes] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const skipSaveRef = useRef(false)
   const [sessions, setSessions] = useState<TodoSessionView[]>([])
   const [usages, setUsages] = useState<Record<string, SessionUsage | undefined>>({})
@@ -351,46 +345,6 @@ export function TodoDetailPage({
               ))}
             </div>
           )}
-        </section>
-
-        {/* 其他操作 */}
-        <section className="detail-section">
-          <div className="detail-section-head">
-            <span className="detail-section-title">其他</span>
-          </div>
-          <div className="detail-actions">
-            <button className="mini" onClick={() => onSetStatus(done ? 'open' : 'done')}>
-              {done ? '恢复' : '归档'}
-            </button>
-            <button className="mini" onClick={() => setEditing('body')}>
-              改描述
-            </button>
-            <button
-              className="mini"
-              onClick={() => {
-                void window.tick.export
-                  .run({ scope: 'todo', todoId: todo.id })
-                  .then((r) => onToast(`已导出到 exports/（${r.sessionCount} 个会话）`))
-                  .catch((e) => onToast(`导出失败：${(e as Error).message}`))
-              }}
-            >
-              导出
-            </button>
-            <button
-              className={`mini danger ${confirmDelete ? 'confirm' : ''}`}
-              title="删除只解绑，不动 AI 工具的会话文件"
-              onClick={() => {
-                if (!confirmDelete) {
-                  setConfirmDelete(true)
-                  return
-                }
-                onDelete()
-              }}
-            >
-              {confirmDelete ? '再点一次确认' : '删除'}
-            </button>
-          </div>
-          <div className="detail-note">删除只解绑，不会动 pi / 其他工具里的会话文件。</div>
         </section>
       </div>
       {children}

@@ -3116,18 +3116,6 @@ a:focus-visible {
   font-size: 9px;
 }
 
-.detail-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.detail-note {
-  font-size: 9px;
-  line-height: 1.4;
-  color: var(--t-weak);
-}
-
 /* 详情页没有捕获行：toast 改浮在面板底部，避免盖住标题与元信息 */
 .detail-page ~ .toast {
   top: auto;
