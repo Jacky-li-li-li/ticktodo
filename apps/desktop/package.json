@@ -27,17 +27,19 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dir",
+        "dmg",
         "zip"
       ],
-      "identity": null,
+      "identity": "Developer ID Application",
       "darkModeSupport": true,
       "extendInfo": {
         "LSUIElement": true
-      }
+      },
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": true
     },
     "npmRebuild": false,
-    "electronDist": "../../node_modules/electron/dist",
     "extraResources": [
       {
         "from": "build/trayTemplate.png",
@@ -46,6 +48,14 @@
       {
         "from": "build/trayTemplate@2x.png",
         "to": "trayTemplate@2x.png"
+      }
+    ],
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Jacky-li-li-li",
+        "repo": "ticktodo"
       }
     ]
   },
