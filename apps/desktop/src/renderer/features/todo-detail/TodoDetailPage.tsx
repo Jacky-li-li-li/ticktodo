@@ -467,10 +467,11 @@ function SessionCard({
     if (!card || !block) return
     const rect = card.getBoundingClientRect()
     const blockRect = block.getBoundingClientRect()
-    // 终点 = 卡片最左侧 1/8 区的中心；maxLeft 是 1/8 方块从当前位置能拖到终点的位移
-    const startCenter = blockRect.left + blockRect.width / 2
-    const targetCenter = rect.left + rect.width / 8
+    // 终点 = 卡片最左侧 1/8 区的中心（W/16）；方块静止时贴右，中心 = rect.right - blockWidth/2
+    const startCenter = rect.right - blockRect.width / 2
+    const targetCenter = rect.left + rect.width / 16
     startRef.current = { x: e.clientX, y: e.clientY, maxLeft: targetCenter - startCenter }
+    setDx(0)
     lockedRef.current = false
     movedRef.current = false
     e.currentTarget.setPointerCapture(e.pointerId)

@@ -3200,9 +3200,8 @@ a:focus-visible {
   border: none;
   border-left: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 0 var(--r-row) var(--r-row) 0;
-  background: linear-gradient(180deg, #3a3e46 0%, #1b1d22 60%, #101114 100%);
-  color: rgba(243, 245, 249, 0.9);
-  box-shadow: inset 1px 0 1px rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--t-secondary);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -3217,12 +3216,12 @@ a:focus-visible {
 .detail-session-grip {
   width: 7px;
   height: 16px;
-  border-left: 1.5px solid rgba(255, 255, 255, 0.3);
-  border-right: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-left: 1.5px solid rgba(0, 0, 0, 0.24);
+  border-right: 1.5px solid rgba(0, 0, 0, 0.24);
 }
 
 .detail-session-block:hover {
-  background: linear-gradient(180deg, #464a53 0%, #23262c 60%, #15161a 100%);
+  background: rgba(255, 255, 255, 0.34);
 }
 
 .detail-session-block.is-disabled {
@@ -3237,9 +3236,9 @@ a:focus-visible {
 }
 
 .detail-session-block.is-armed {
-  border-left-color: rgba(255, 120, 120, 0.5);
-  background: linear-gradient(180deg, #5a1f1f 0%, #2c0d0d 100%);
-  color: #ffd9d9;
+  border-left-color: rgba(198, 40, 40, 0.4);
+  background: rgba(198, 40, 40, 0.1);
+  color: var(--danger-text);
 }
 
 .detail-session-block svg {
