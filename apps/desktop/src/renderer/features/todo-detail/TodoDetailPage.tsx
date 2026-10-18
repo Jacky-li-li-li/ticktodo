@@ -5,7 +5,7 @@
  *  1) 顶栏标题（双击只编辑标题；Enter/失焦保存、Esc 放弃）
  *  2) 补充上下文 body（双击或「改描述」进入编辑；失焦/Enter 保存、Shift+Enter 换行、Esc 放弃）
  *  3) 元信息：状态灯 / 来源 / 创建更新与最近拉起（悬停标题查看）
- *  4) 主操作：接着做（主会话）/ 新建会话 / 认领历史会话
+ *  4) 主操作：新建会话 / 认领历史会话（接着做只放在每个会话行里）
  *  5) 会话列表：每条会话的工具、时间、状态、最后一条 user 消息、项目名与路径，
  *     以及「接着做 / 解绑」；设置开启时显示单会话用量
  *  6) 其他：归档或恢复、改描述、导出（JSON+MD）、删除（二次确认，只解绑不动会话文件）
@@ -122,8 +122,6 @@ export function TodoDetailPage({
       alive = false
     }
   }, [usageEnabled, sessions])
-
-  const primary = sessions.find((s) => s.primary) ?? sessions[0]
 
   const resumeSession = async (session: TodoSessionView): Promise<void> => {
     if (session.missing) return
@@ -289,21 +287,14 @@ export function TodoDetailPage({
         )}
 
         {/* 主操作 */}
+        {/* 主操作：接着做只放在每个会话行里，这里只新建/认领 */}
         <div className="detail-actions-primary">
-          {primary && !primary.missing ? (
-            <button className="pill primary" onClick={() => void resumeSession(primary)}>
-              接着做
-            </button>
-          ) : (
-            <button className="pill primary" onClick={onNewSession}>
-              新建会话
-            </button>
-          )}
-          {primary && !primary.missing && (
-            <button className="pill secondary" onClick={onNewSession}>
-              新建会话
-            </button>
-          )}
+          <button
+            className={`pill ${sessions.length > 0 ? 'secondary' : 'primary'}`}
+            onClick={onNewSession}
+          >
+            新建会话
+          </button>
           <button className="pill secondary" onClick={onClaimSessions}>
             认领
           </button>
