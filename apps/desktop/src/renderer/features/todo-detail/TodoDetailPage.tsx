@@ -490,9 +490,11 @@ function SessionCard({
         return // 竖向意图：不接管
       }
     }
-    const next = Math.max(start.maxLeft, Math.min(8, rawX))
+    // 只允许向左拖：初始位置不能向右滑
+    const next = Math.max(start.maxLeft, Math.min(0, rawX))
     setDx(next)
-    setArmed(next <= start.maxLeft + 10)
+    // 与终点虚线框（同尺寸）重叠到基本贴合时才 armed
+    setArmed(next <= start.maxLeft + 6)
   }
 
   const endDrag = (e: React.PointerEvent<HTMLButtonElement>, cancelled: boolean): void => {
