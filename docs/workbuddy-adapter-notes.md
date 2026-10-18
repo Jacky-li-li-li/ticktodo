@@ -3,7 +3,7 @@
 > 全程只读：DB 复制到 /tmp 后用 `sqlite3 -readonly` 读取；未读取任何密钥/token；未对 WorkBuddy 数据做任何写操作；未执行 open/深链接实验。文中不含真实对话内容。
 
 ## 1. 应用信息
-> **两个独立工具，不是同一工具的变体**：本文档的适配对象是**国内版 WorkBuddy**（workbuddy.cn）。国际版 **WorkBuddy AI**（workbuddy.ai）是另一个独立工具（不同官网、文档、bundle、scheme、数据目录），**本期不接入**，仅在 §9 单独记录本机观察，二者的结论、依据等级互不套用。
+> **两个独立工具，不是同一工具的变体**：本文档的适配对象是**国内版 WorkBuddy**（workbuddy.cn）。国际版 **WorkBuddy AI**（workbuddy.ai）是另一个独立工具（不同官网、文档、bundle、scheme、数据目录），**本期同样接入，作为并列的第三个独立适配器（`workbuddy-ai`）**，其调研与实测见 §9（观察）与 §10（本期实测），二者的结论、依据等级互不套用。
 
 国内版 WorkBuddy（workbuddy.cn）：
 
@@ -125,8 +125,8 @@
 - 注意：System Events 窗口名恒为 “WorkBuddy”，会话标题是应用内标题栏，不在 AX 窗口名中，验证需截图。判断前台应用应用 bundle id com.github.Electron。
 - 测后已激活 Google Chrome 恢复前台。截图含个人内容，勿外传。
 
-## 9. 国际版 WorkBuddy AI（workbuddy.ai）——独立工具，本期不接入
-> 定位：与国内版 WorkBuddy 是**两个独立工具**。本期不接入，列为后续**独立适配器**。以下仅为本机只读观察与官网文档核对（2026-10-18），**其 scheme / 目录 / 数据格式均未经充分验证，不得套用 §2–§8 的国内版结论**。未修改任何应用配置，未读取会话/密钥内容，未执行 open / 深链接。
+## 9. 国际版 WorkBuddy AI（workbuddy.ai）——独立工具（初次只读观察；本期实测见 §10）
+> 定位：与国内版 WorkBuddy 是**两个独立工具**。（原“后续”已升为本期 P0 独立适配器，见 §10。）以下仅为本机只读观察与官网文档核对（2026-10-18），**其 scheme / 目录 / 数据格式均未经充分验证，不得套用 §2–§8 的国内版结论**。未修改任何应用配置，未读取会话/密钥内容，未执行 open / 深链接。
 
 ### 9.1 本机只读观察（仅本机观察，未验证）
 | 项 | 观察值 | 等级 |
@@ -146,3 +146,43 @@
 - 结论：国际版**没有**公开的 scheme、数据目录、数据格式规范；其 deeplink、会话存储是否与国内版一致**未验证**。
 - 后续独立适配器前置项：独立验证 scheme 与路径、`workbuddy.db`/jsonl 格式、完成状态字段、前台进程名；单独建立依据表。
 
+## 10. 国际版 WorkBuddy AI 本期实测（2026-10-18 17:36–17:50 UTC+8，5.8.4）——独立适配器 `workbuddy-ai`
+
+> 不得与 §2–§8（国内版）混用。全程只读：db 复制到临时目录后以 `mode=ro` 打开；未读取会话标题/内容/ID，也未读 keyblob/settings。文档不含任何会话标题/ID/截图路径。
+
+### 10.1 实测环境
+- 应用：`/Applications/WorkBuddy AI.app`，bundle `com.workbuddy.workbuddy-ai`，5.8.4，可执行名 `Electron`；Info.plist `CFBundleURLSchemes = workbuddy-ai`（URLName `WorkBuddy AI Deep Links`）。
+- 主进程测试时**未运行**；Mac **屏幕锁定**（IOConsoleLocked=Yes，HID 空闲约 56 分钟）；前台 Google Chrome。
+
+### 10.2 数据库（只读）
+- `~/.workbuddy-ai/workbuddy.db`：单文件（无 -wal/-shm），表：`sessions`、`workspaces`、`automations`、`automation_runs`、`automation_runtime_state`、`automation_delivery_outbox`、`migration_meta`、`session_usage`、`buddy_snapshots`、`workspace_trust_decisions`、`__workbuddy_drizzle_migrations`（**无** `cloud_conversations` 表，已在迁移 0012 合并进 `sessions`）。
+- `sessions` 共 40 列：id、cwd、user_id、title、custom_title、status、created_at、updated_at、last_activity_at、deleted_at、is_playground、source_mode、is_background_automation、mode、model、expert_*、permission_mode、use_sandbox_cli、project_id、plugin_context_json、addon_selection、session_settings、last_user_prompt_expert_selection、context_window、buddy_*、thought_level、transport、conversation_origin、visibility、group_id、group_title、agent_dirty*、verified_at、unread。
+- **会话数量：0**（`sessions` 0 行、`session_usage` 0、`workspaces` 0）。迁移脚本最新 0017；`status` 默认 `Pending`，`deleted_at` 可空，`transport` 默认 `local`，`unread` 默认 0。
+- 注意：本机 `sqlite3` CLI 对 `.tables` 与 `-readonly` 打开在此环境报 “unable to open database file”，改用 Python `sqlite3` 的 `file:…?mode=ro` URI 读取正常（环境问题，适配器应以库 API 读取并处理打开失败）。
+
+### 10.3 会话记录位置
+- `~/.workbuddy-ai/projects/`：**不存在**；全盘 `~/.workbuddy-ai` 下 `*.jsonl` 0 个；`sessions/` 目录为空（无进程心跳）。
+- 结论：**消息流位置与格式无法在本机验证**。
+
+### 10.4 与国内版逐项对照
+| 项 | 结果 |
+|---|---|
+| sessions 表存在及核心列（id/cwd/title/custom_title/status/时间戳/deleted_at/transport/is_background_automation/unread） | **一致**（已实测） |
+| 迁移机制 `.workbuddy-sqlite-migrations`、drizzle 迁移表 | 一致（国际版最新 0017，国内版另有差异未逐项比对） |
+| 表集合 | 国际版无独立 `cloud_conversations` 表（合并入 sessions）；国内版未做逐表对照，**不下结论** |
+| role=user、`user_query` 包装、`isMeta`/`isCompacted`/`startsNewUserRequest` | **未验证**（无 jsonl） |
+| status 完成判定（completed/active/error） | **未验证**（0 行；仅确认默认 `Pending`） |
+| deleted_at 语义 | **未验证**（列存在、可空；迁移脚本显示云端行用 -1 表示未删除） |
+| 主进程名 | 可执行名 `Electron`，与国内版同；前台 bundle id 未测 |
+
+### 10.5 深链接
+- **未执行 `open`**：按要求“测试前确认屏幕未锁”，当前锁屏且应用未运行，执行会冷启动应用且无法目视/截图验证，故跳过 `workbuddy-ai://home`、`workbuddy-ai://chat/<id>`、不存在 id 三项。本机亦无已存在会话可测。
+- 静态证据（app.asar 字符串，未执行）：含 `[DeepLink] dispatching open url to renderer`、`handleOpenUrl ignored non-workbuddy url` 等与国内版同构的处理；字面量有 `workbuddy://chat/`、`workbuddy://home`、`workbuddy://automation/run?`、`workbuddy://agentmail`，**未检索到 `workbuddy-ai://` 字面量**；URL 校验函数是否放行 `workbuddy-ai://` **不明**。→ 深链接行为**未验证**，且存在“scheme 被忽略”的风险。
+- 另：app 内以 `WORKBUDDY_CONFIG_DIR` 含 `workbuddy-ai` 判断 overseas/cn（仅逆向字符串）。
+
+### 10.6 官网文档（workbuddy.ai，只读）
+- Changelog（https://www.workbuddy.ai/docs/workbuddy/Changelog ）：5.8.4、5.7.6、5.6.2、5.5.0、5.2.7、5.2.3；**无** deeplink/scheme、本地存储格式、hooks 的说明；仅 5.8.4 提到“Scheduled task status, recovery, notifications, and result navigation”、“Large or malformed history records preventing conversations from opening”（说明历史记录格式会变/有损坏情形）。
+- Quickstart：登录用 Google/GitHub OAuth（见 §9.2）。官方无存储/深链/hooks 规范。
+
+### 10.7 仍未验证
+会话 jsonl 格式与全部消息规则；status 取值与 deleted_at 语义；三种深链接及冷/热启动、不存在 id、前台 bundle id；hooks；根目录环境变量实际行为。需在有国际版会话、屏幕解锁时补测，补测前适配器“回到会话”默认关闭（PRD §9B.6）。

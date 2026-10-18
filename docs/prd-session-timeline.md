@@ -10,7 +10,7 @@
 **已决定（Jacky，2026-10-18）**
 
 1. 不做 AI 摘要：「摘要」＝该会话最后一条 user 发的消息原文，不改写、不生成。
-2. 第二个接入工具是**桌面形态的国内版 WorkBuddy（workbuddy.cn）**（不再是 Claude Code），列入 P0 范围；Claude Code / Cursor 降为后续。**国际版 WorkBuddy AI（workbuddy.ai）是独立工具，本期不接入**，列为后续独立适配器（见 §9.8、§10 表 B）。
+2. 第二个接入工具是**桌面形态的国内版 WorkBuddy（workbuddy.cn）**（不再是 Claude Code），列入 P0 范围；Claude Code / Cursor 降为后续。**国际版 WorkBuddy AI（workbuddy.ai）是与国内版并列的独立工具，本期同样列入 P0，作为第三个适配器**（独立适配器 `workbuddy-ai`，与国内版 `workbuddy` 不共用适配器、配置、依据表；见 §9B、§10 表 B）。
 3. 时间线**只读**，不影响 todo 完成状态。
 4. 用户消息：用各工具会话记录自带的角色字段（`role: user`）识别，并在**各 adapter 内**过滤合成 user 消息。
 5. 完成状态：读各工具会话记录自带字段，不由 Ticktodo 另行推断。
@@ -52,7 +52,8 @@
 - P0-2 **进展时间线**：todo 详情按会话最后事件时间倒序，跨工具混排，每项显示：工具图标、最后事件时间、状态、最后一条 user 消息（折叠）、操作（回到会话）。
 - P0-3 **会话状态归一**：`active / idle / done / missing`（定义见 §4；完成状态读各工具会话记录自带字段）。
 - P0-7 **第二个接入工具：WorkBuddy 适配器**（桌面形态，需求见 §9；依据与风险见 §10）。
-- P0-4 **一键回到会话**：pi 沿用现有 resume；desktop 工具（WorkBuddy）用**深链接**拉起应用并定位到会话（§9.6）；`missing`（文件不在）时置灰并显示原路径。
+- P0-8 **第三个接入工具：WorkBuddy AI（国际版）适配器**（独立于国内版，需求见 §9B；依据见 §10 表 B）。⚠️ 本机目前无会话数据、深链接未实测，**部分能力为“按国内版同内核推测、未验证”，验收前须在有会话的机器上补测**（§9B.9）。
+- P0-4 **一键回到会话**：pi 沿用现有 resume；desktop 工具（WorkBuddy：`workbuddy://`；WorkBuddy AI：`workbuddy-ai://`，两者独立）用**深链接**拉起应用并定位到会话（§9.6）；`missing`（文件不在）时置灰并显示原路径。
 - P0-5 **缓存与增量**：按 `(filePath, mtime, size)` 缓存，仅变化时重新读取，不阻塞详情打开。
 - P0-6 **todo 列表行**：显示最近一个会话的最后一条 user 消息（单行截断，替代当前纯 `lastMessage`）。
 - 约束：**纯本地、零外发**。
@@ -60,7 +61,7 @@
 ### P1（后续）
 
 - P1-1 **第二个接入工具为 WorkBuddy（P0 范围内，见 P0-7）**；Claude Code / Cursor 降为后续（Claude Code 会话同为本地 JSONL，可在 WorkBuddy 验证归一后复用；Cursor 存储格式待查）。
-- P1-1b **国际版 WorkBuddy AI（workbuddy.ai）独立适配器**：与国内版是两个独立工具，不共用适配器与配置；其 scheme、目录、数据格式未验证，需单独验证后另立需求（现状见 §9.8、§10 表 B）。
+- P1-1b ~~国际版 WorkBuddy AI 独立适配器~~ → 已升为 P0-8（§9B）。
 - P1-2 时间线里标注 fork 血缘（`parentSessionPath`）与会话间「接手」关系。
 - P1-3 导出（接入现有 F8 导出，加入时间线与最后 user 消息）。
 - P1-4 全部会话视图里按最后 user 消息搜索。
@@ -162,6 +163,7 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 6. 抓包/日志验证**无任何外发请求**。
 7. 会话文件被删：条目显示 `missing` 并置灰，不报错，不影响其他条目。
 8. 「回到会话」：pi 行为与现有一致；WorkBuddy 经深链接拉起并定位（冷/热启动均验证），id 不存在时不调用并提示；`primary` 逻辑不回归。
+9B. WorkBuddy AI（国际版）适配器：与国内版独立（`toolId=workbuddy-ai`，会话 ID 前缀 `workbuddy-ai:`），同样满足「读不到/格式不识别时降级」「不写其数据、不读 keyblob/settings」；深链接必须在目标机器实测通过后才开启「回到会话」，否则该按钮置灰（见 §9B.6）。
 9. WorkBuddy 适配器：读不到/格式不识别时降级为空（保底文案）且仍可定位；任何情况下不写 WorkBuddy 数据、不读 keyblob/settings。
 10. todo 列表行显示最近一个会话的最后一条 user 消息。
 11. 单测覆盖 core 层归一逻辑（最后 user 消息识别、状态判定、保底、排序）；`pnpm typecheck` 通过。
@@ -184,7 +186,7 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 3. **多 todo 归属**：一个会话是否允许出现在多个 todo 的时间线里（现为唯一归属）？
 4. **WorkBuddy 官方验证**：是否由 Jacky 或团队向 WorkBuddy 官方并行确认存储格式 / 深链接 / hooks 的稳定性承诺（见 §10 结论）？
 
-## 9. WorkBuddy 适配器需求
+## 9. WorkBuddy 适配器需求（国内版 `workbuddy`）
 
 目标：实现 `AiToolAdapter` 的 WorkBuddy 版本（desktop 形态），输出 `SessionLastUserEvidence`，支持列出会话、取最后一条 user 消息、判断完成状态、拉起定位。实测环境：WorkBuddy 5.8.3（见 `docs/workbuddy-adapter-notes.md`）。
 
@@ -240,9 +242,9 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 ### 9.8 根目录配置与国际版边界
 
-- 本适配器**仅针对国内版 WorkBuddy**（workbuddy.cn）：数据目录 `~/.workbuddy`，scheme `workbuddy`，bundle `com.tencent.workbuddy.mac`。目录名与 scheme 可做成配置项，但仅作用于国内版。
+- 本适配器**仅针对国内版 WorkBuddy**（workbuddy.cn）：数据目录 `~/.workbuddy`，scheme `workbuddy`，bundle `com.tencent.workbuddy.mac`，toolId `workbuddy`。
 - 根目录解析优先级：用户配置 > 环境变量 `WORKBUDDY_CONFIG_DIR` > `CODEBUDDY_CONFIG_DIR` > 默认 `~/.workbuddy`。环境变量**仅第三方说法、仅按国内版对待、本机未验证**（§10 #15）。
-- **国际版 WorkBuddy AI（workbuddy.ai）是独立工具，本期不接入**：不作为"变体"、不通过切换根目录/scheme/环境变量复用本适配器；后续需另建独立适配器并单独验证。本机观察（未验证）见 §10 表 B 与 notes §9。
+- **国际版 WorkBuddy AI 是并列的独立适配器（§9B）**：不作为"变体"、不通过切换根目录/scheme/环境变量复用本适配器；两者可同时启用，会话 ID 前缀（`workbuddy:` / `workbuddy-ai:`）与工具图标分开，依据表 A/B 各自独立。
 
 ### 9.9 容错与版本探测
 
@@ -250,6 +252,61 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 - 版本探测：读 App `Info.plist` 版本（5.8.x）与 `.workbuddy-sqlite-migrations` 最新迁移名；`sessions` 表用 `PRAGMA table_info` 检查所需列是否存在。
 - 字段缺失/schema 不识别 → 降级：该能力返回空（最后 user 消息为空 → 保底文案；状态为 `idle`），**不报错、不影响其他会话，且只要 id 可得仍能经深链接定位**；日志记录一次探测失败原因。
 - 已知版本范围外（探测到未验证的大版本）时在设置页提示「WorkBuddy 版本未验证」。
+
+## 9B. WorkBuddy AI（国际版）适配器需求（`workbuddy-ai`，本期 P0，第三个适配器）
+
+目标：与 §9 并列的**独立** `AiToolAdapter`（desktop 形态），输出 `SessionLastUserEvidence`。对象：WorkBuddy AI（workbuddy.ai，`/Applications/WorkBuddy AI.app`，bundle `com.workbuddy.workbuddy-ai`，5.8.4，scheme `workbuddy-ai`，数据目录 `~/.workbuddy-ai`）。实测记录见 `docs/workbuddy-adapter-notes.md` §10。
+
+> ⚠️ **实测边界（2026-10-18）**：本机国际版**尚无任何会话**（`sessions` 表 0 行、无 `projects/`、无 jsonl），所以 jsonl 事件格式、`status` 取值、`user_query` 包装、`isMeta` 等**无法在本机实测，均标“未验证”**；仅表结构与迁移脚本已实测。深链接因屏幕锁定未执行。国内版结论只作“同内核的假设”，不当作国际版事实；适配器按“探测到即用、探测不到则降级”实现。
+
+### 9B.1 数据源
+
+- **会话索引**：`<root>/workbuddy.db` 的 `sessions` 表（**已实测存在**，40 列，与国内版同名核心列一致：`id`、`cwd`、`title`、`custom_title`、`status`、`created_at / updated_at / last_activity_at`、`deleted_at`、`transport`、`is_background_automation`、`unread`；另有 `project_id`、`visibility`、`conversation_origin`、`group_id` 等）。`status` 默认值 `Pending`、`deleted_at` 可空（迁移脚本）、云端行以 `deleted_at = -1` 作未删除（迁移 0012）。
+- **消息流**：预期同国内版 `<root>/projects/<cwd 编码>/<id>.jsonl`，**本机无样本，未验证**。适配器须探测 `projects/` 是否存在；不存在或找不到该 id 的 jsonl → 最后 user 消息为空（保底文案）。
+- 只读访问：同 §9.1（`mode=ro`，必要时复制 db/-wal/-shm 到临时目录）。范围过滤：`transport='local'` 且 `is_background_automation` 非 1；`deleted_at IS NULL OR deleted_at <= 0`。
+- 根目录：默认 `~/.workbuddy-ai`，可由用户配置覆盖。应用内部以环境变量 `WORKBUDDY_CONFIG_DIR` 的值是否含 `workbuddy-ai` 判断“overseas/cn”版本（仅本机逆向，app.asar 字符串），**不据此推断其它行为**。
+
+### 9B.2 最后一条 user 消息规则（未验证，按探测）
+
+- 目标规则与 §9.2 同形：`type=="message" && role=="user"`，排除 `providerData.isMeta`/`isCompacted`，优先 `startsNewUserRequest==true`，抽取 `<user_query>…</user_query>`。
+- **国际版全部未验证**（无会话样本）。实现要求：字段不存在时按“role=user 且非 isMeta 且非 isCompacted”回退；仍取不到则为空。待有会话后逐项核对并更新表 B。
+
+### 9B.3 完成判断（未验证，按探测）
+
+- 首选 `sessions.status`。国际版 `status` 默认 `Pending`（已实测迁移），`completed/active/error` 取值**未在国际版验证**；遇到未知取值一律映射为 `idle` 并记录。辅助：jsonl 末尾 assistant completed（同样未验证）。去抖同 §9.3。
+
+### 9B.4 标题 / 软删除
+
+`custom_title` 优先，其次 `title`；软删除过滤同 §9B.1。（列存在为已实测，取值语义未验证。）
+
+### 9B.5 只读边界
+
+同 §9.7：只读 `<root>/workbuddy.db`（含 -wal/-shm）与 `<root>/projects/**/*.jsonl`；**不读** `keyblob`、`device-id`、`security/`、`settings.json`、`models.json`、`login-device-nonce` 等；不写、不改配置。
+
+### 9B.6 拉起与定位
+
+- 命令：`open "workbuddy-ai://chat/<encodeURIComponent(id)>"`、`open "workbuddy-ai://home"`（路径**仅由国内版推测，国际版未验证**）。
+- 已知证据：Info.plist 声明 scheme `workbuddy-ai`（实测）；国际版 app.asar 中 `[DeepLink]` 处理日志与国内版同构，且含 `workbuddy://chat/`、`workbuddy://home` 字面量与“ignored non-workbuddy url”校验，**未检索到 `workbuddy-ai://` 字面量**——校验函数是否接受 `workbuddy-ai://` 尚不明确，**必须实测**（本次因屏幕锁定未执行 `open`）。
+- 开关策略：**默认关闭“回到会话”**，直至在有会话且屏幕解锁的机器上通过冷/热启动 + 不存在 id 的实测；未通过则按钮置灰并显示会话信息，不降级为调用 `workbuddy://`（那会拉起国内版，属于错误工具）。
+- 前台判断：主进程可执行名为 `Electron`（Info.plist `CFBundleExecutable`，已实测），bundle id 为 `com.workbuddy.workbuddy-ai`；实际前台 bundle id 需拉起时实测（国内版为 `com.github.Electron`）。
+- 调用前先校验 id 存在于 DB 且未软删除。
+
+### 9B.7 版本探测与降级
+
+- 读 App `Info.plist` 版本（5.8.4）与 `.workbuddy-sqlite-migrations` 最新迁移名（本机为 0017）；`sessions` 表 `PRAGMA table_info` 检查所需列。
+- 已验证范围仅 5.8.4；其它版本提示「WorkBuddy AI 版本未验证」。
+- 任何探测失败：该能力返回空，不报错、不影响其它工具，状态 `idle`；工具未安装（无 App/无目录）时适配器静默禁用。
+
+### 9B.8 与国内版的并存
+
+两个适配器独立注册：`toolId` = `workbuddy` / `workbuddy-ai`，会话 ID 前缀不同，同一 cwd 下两边都有会话时各自成项；不共用配置、缓存键、依据等级；任一版本未安装不影响另一个。
+
+### 9B.9 待补测清单（验收前必须完成）
+
+1. 有会话后核对：jsonl 位置与文件名结构、`type`/`role` 字段、`user_query` 包装、`isMeta`/`isCompacted`/`startsNewUserRequest`；
+2. `sessions.status` 取值与 `deleted_at` 语义；
+3. 深链接：`chat/<id>`、`home`、不存在 id、冷/热启动、窗口最小化；
+4. 前台 bundle id。
 
 ## 10. 官方规范依据
 
@@ -289,17 +346,24 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 **等级统计（表 A，国内版，共 16 项）**：官方文档明确 **0**（针对 WorkBuddy；仅 #12 的 CodeBuddy Code hooks 与 #2 的 `projects/` 目录存在性是官方文档，但属 CodeBuddy Code，不能直接担保 WorkBuddy）；官方仅提及功能无规范 **3**（#9、#10、#12）；第三方实现佐证 **6**（#2、#3、#4、#7、#13、#15）；仅本机逆向+实测 **7**（#1、#5、#6、#8、#11、#14、#16）。
 
-**表 B：国际版 WorkBuddy AI（workbuddy.ai）——独立工具，本期不接入，下列均不与表 A 共用依据等级**
+**表 B：国际版 WorkBuddy AI（workbuddy.ai）——本期 P0 第三个适配器，独立依据，不与表 A 共用等级**
 
 | # | 项 | 依据等级 | 来源与说明 |
 | --- | --- | --- | --- |
-| B1 | 应用与 bundle id：`WorkBuddy AI.app`、`com.workbuddy.workbuddy-ai`，版本 5.8.4 | 仅本机观察（未验证） | Info.plist 只读；版本号与 [I] Changelog 5.8.4 条目一致 |
-| B2 | URL scheme `workbuddy-ai` | 仅本机观察（未验证） | Info.plist 声明；路径/参数、定位行为均未测；官方 [I] 无 deeplink 说明 |
-| B3 | 数据目录 `~/.workbuddy-ai`（含 `workbuddy.db`；sessions 空、无 `projects/`） | 仅本机观察（未验证） | 仅看文件名；表结构、jsonl 格式、完成字段均未检查；官方 [I] 无存储格式说明 |
-| B4 | 根目录环境变量 | 未验证 | 无依据 |
-| B5 | 官方文档 | 官方仅有产品用法文档 | [I] Quickstart/Changelog 无 scheme、存储格式、hooks 的说明 |
+| B1 | 应用与 bundle id：`WorkBuddy AI.app`、`com.workbuddy.workbuddy-ai`，版本 5.8.4，可执行名 `Electron` | 仅本机逆向+实测（非公开契约） | Info.plist 只读；版本号与 [I] Changelog 5.8.4 条目一致 |
+| B2 | URL scheme `workbuddy-ai` 已注册 | 仅本机逆向+实测（非公开契约） | Info.plist 声明（实测）；官方 [I] 无 deeplink 说明 |
+| B3 | 深链接路径 `workbuddy-ai://chat/<id>` / `home` 的拉起与定位 | **未验证** | 仅由国内版推测；app.asar 有 `[DeepLink]` 处理但未检索到 `workbuddy-ai://` 字面量；`open` 未执行（屏幕锁定） |
+| B4 | 数据目录 `~/.workbuddy-ai` 与 `workbuddy.db`（WAL 之外的单库实测） | 仅本机逆向+实测（非公开契约） | 目录与库存在；官方 [I] 无存储说明 |
+| B5 | `sessions` 表结构（40 列，核心列与国内版一致，含 `status` 默认 `Pending`、`deleted_at`、`transport`、`unread`） | 仅本机逆向+实测（非公开契约） | 只读 `PRAGMA table_info` + 迁移脚本；官方无 |
+| B6 | 会话数量 / 实际 `status` 取值 / `deleted_at` 语义 | **未验证** | 本机 sessions 表 0 行 |
+| B7 | 消息流 `projects/<cwd>/<id>.jsonl` 及 type/role、`user_query`、`isMeta`、`startsNewUserRequest` | **未验证** | 本机无 `projects/`、无 jsonl；国内版结论不套用 |
+| B8 | 完成判定（`status` + jsonl 末尾） | **未验证** | 同上 |
+| B9 | 根目录环境变量 `WORKBUDDY_CONFIG_DIR`（app 内部据其是否含 `workbuddy-ai` 判断版本） | 仅本机逆向+实测（仅 app.asar 字符串，行为未验证） | 第三方 [F] 对国际版无佐证 |
+| B10 | 官方文档 | 官方仅提及功能无规范（仅产品用法） | [I] Changelog 5.8.4 提到“scheduled task … result navigation”，**无 deeplink/scheme、存储格式、hooks 说明**；hooks 对国际版无任何依据，本期不依赖 |
 
-表 B 的等级不计入下方"等级统计"（统计仅针对表 A）。
+**等级统计（表 B，共 10 项）**：官方文档明确 **0**；官方仅提及功能无规范 **1**（B10，且仅为产品用法）；第三方实现佐证 **0**；仅本机逆向+实测 **5**（B1、B2、B4、B5、B9）；**未验证 4**（B3、B6、B7、B8）。
+
+表 B 的等级不计入表 A 的统计，两表独立。
 
 ### 诚实结论
 
