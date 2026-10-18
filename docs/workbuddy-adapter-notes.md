@@ -250,3 +250,21 @@
 全部：`resetRouterToHome=0`，前台 bundle id `com.workbuddy.workbuddy-ai`。**结论**：对普通会话，单次 `open` 即稳定，补发/延迟均无增益；§10.8 的冷启动回落很可能与“目标是 playground 会话”有关（假设，未对 playground 复测以免改动状态；仅另测到对 playground 会话的 `open` 也能切到其路由，但与恢复行为混淆，不作结论）。
 
 **普通会话字段核对**（不含正文/标题/id）：`status=completed`；`deleted_at=NULL`（未软删除；索引条件里的 `-1` 是云端会话用法，本地会话未见）；`is_playground=0`；jsonl 中 `isMeta`/`isCompacted` 字段均不出现（缺省），出现 `function_call`/`function_call_result`（各 12，result 的 `status=completed`），assistant `message` 4 条 `status=completed`。`active/error/软删除/isMeta=true` 仍未验证。
+
+### 10.10 第四轮实测：多普通会话深链接复测（2026-10-18 19:33–19:42 UTC+8，5.8.4，屏幕已解锁 IOConsoleLocked=No）
+
+> 只读 DB（复制 db/-wal/-shm 到临时目录）+ 深链接/退出重启；未发消息、未改配置。**不含会话标题/id/截图路径**（文中用占位符 `<A>`/`<B>`）。
+
+**库快照**：`is_playground!=1` 且 `deleted_at IS NULL` 的普通会话 **2** 个，status 分布：`completed`×2。另有 playground 会话 2 个（不参与本轮）。样本不足 3，故无 `<C>`；**未测** `B→C` / `C→A`。
+
+**方法**：每次冷启动先 `open` 到预置会话再 quit，再 `open "workbuddy-ai://chat/<目标>"`，避免把“自动恢复上次会话”判成深链接成功。判据同 §10.9：渲染日志 `cloudProjection` 最终 `pathname=/conversation/<目标>`，观察 ≥10 秒内无 `resetRouterToHome`，前台 bundle id=`com.workbuddy.workbuddy-ai`。
+
+| 场景 | 次数 | 成功 | 说明 |
+|---|---|---|---|
+| 冷启动：预置 `<A>` → 深链 `<B>` | 2 | 2/2 | 约 1.6s 内落到 `<B>`；路径序列含短暂预置恢复再切目标；`resetRouterToHome=0` |
+| 冷启动：预置 `<B>` → 深链 `<A>` | 2 | 2/2 | 对称成功 |
+| 热启动：已运行且停在 `<A>` → 深链 `<B>` | 3 | 3/3 | 约 0.4–1.2s；`resetRouterToHome=0` |
+
+**结论**：多普通会话（2 个样本）下，跨会话冷/热定位与 §10.9 单普通会话结论**一致**——单次 `open` 即稳，无需补发/延迟。国际版“回到会话”**保持默认开启**（仅 `is_playground!=1` 且未删除）；playground 仍置灰。样本限制：同机、5.8.4、**2 个**普通会话；第三会话方向未测。
+
+**jsonl 只读抽查**（2 个新普通会话，字段级，无正文入档）：均与 §10.8 一致——`type=message` + `role=user/assistant`；user 含 `<user_query>`；`providerData.startsNewUserRequest=true`；末尾 assistant `status=completed`；**`isMeta`/`isCompacted` 字段仍不出现**（缺省）。其中一个会话另含 `function_call`/`function_call_result`（与 §10.9 普通会话字段核对一致）。`isMeta=true` / `active` / 软删除仍未验证。
