@@ -67,6 +67,7 @@
     "@tick/ai-pi": "workspace:*",
     "@tick/shared": "workspace:*",
     "@tick/tick-extension": "workspace:*",
+    "@tick/ui": "workspace:*",
     "openai": "7.19.0",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1"

@@ -31,6 +31,9 @@ importers:
       '@tick/tick-extension':
         specifier: workspace:*
         version: link:../../packages/tick-extension
+      '@tick/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       openai:
         specifier: 7.19.0
         version: 7.19.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.22.0)
@@ -124,6 +127,22 @@ importers:
       typebox:
         specifier: 1.3.27
         version: 1.3.27
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ui:
+    dependencies:
+      react-dom:
+        specifier: ^18.3.0
+        version: 18.3.1(react@18.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.31
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

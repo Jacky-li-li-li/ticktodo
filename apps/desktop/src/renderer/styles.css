@@ -1,5 +1,8 @@
 /*
- * styles.css — UI-SPEC-tick §2 令牌 + §3.1/3.2 材质 + §4 组件（M0 落首页骨架）。
+ * styles.css — desktop 布局与业务 class。
+ *
+ * 令牌与玻璃材质来自 @tick/ui（import '@tick/ui/styles.css' 须在本文件之前）。
+ * 本文件保留布局 / 业务 class；材质以 @tick/ui 的 --glass-* 与 .tick-glass-* 为准。
  *
  * 硬约束（UI-SPEC §1）：
  *  - 无压力：不计数、不催、不庆祝；归档是「收好」
@@ -8,7 +11,8 @@
  */
 
 :root {
-  /* 色板（§2.1） */
+  /* 色板（§2.1）——与 @tick/ui tokens 对齐；玻璃专用见 --glass-*（由 UI 包注入） */
+
   --accent: #0a84ff;
   --accent-text: #0a5fbf; /* 浅底上的可点/强调文字用深 Accent */
   --success: #34c759;
@@ -93,15 +97,13 @@ html.using-pointer a:focus-visible {
   gap: var(--gap-std);
   padding: var(--pad-panel);
   border-radius: var(--r-window);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 30%, rgba(255, 255, 255, 0) 62%),
-    var(--panel-base);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.18),
-    0 30px 80px rgba(3, 5, 13, 0.55);
-  /* BACKGROUND_BLUR 40：窗体级交给 vibrancy；层内 widget 用 backdrop-filter */
-  backdrop-filter: blur(40px) saturate(1.4);
+  /* 材质复用 @tick/ui --glass-*，避免与 .tick-glass-panel 分叉 */
+  background: var(--glass-top-sheen), var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+  /* BACKGROUND_BLUR：窗体级交给 vibrancy；层内用 token */
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 /* ---------- 顶栏（§4.4） ---------- */
