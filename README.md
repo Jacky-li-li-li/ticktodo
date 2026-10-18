@@ -117,7 +117,7 @@ tick/
 ### 4. M3 + F8 功能（UI 已按 UI-SPEC 第二轮 Calm Panel 对齐）
 
 - **macOS 纯菜单栏模式**：`app.dock.hide()` + 打包 `LSUIElement=true`，不显示 Dock 图标；常驻 Tray 模板图标（左键显隐面板，右键菜单：显示/隐藏、新建线索、退出；悬停 tooltip 显示 `Ticktodo-<open 线索数>个`）；图标源 `build/trayTemplate.svg`，打包时经 `extraResources` 带进 App。
-- **应用图标**：源文件 `apps/desktop/build/icon.svg`（满版 macOS squircle：1024 全画布深色玻璃底板 + **白描边/线框**云豆+天线 mascot，居中放大沾满 safe area；浅色备选 `icon-light.svg`）。按 Apple HIG 不预裁圆角、不预留过大留白，系统负责 mask；产物 `icon.png`（1024 opaque）与完整 `icon.icns`（16…512 @1x/@2x）；`site/icon.png` 同源。托盘仍用 `trayTemplate*`（菜单栏模板，另一套；非实心填充脸）。electron-builder 默认从 `build/` 取 `icon.icns`，dev 下 main 会把 Dock 图标指到 `icon.png`。
+- **应用图标**：源文件 `apps/desktop/build/icon.svg`（满版 macOS：1024 全画布不透明底板 + **白描边/线框**云豆+天线 mascot；浅色备选 `icon-light.svg`）。主体比例与已确认的原线框版一致，仅去掉预裁圆角改为 HIG 满版底板（系统负责 squircle mask）；不做放大变形。产物 `icon.png`（1024 opaque）与完整 `icon.icns`（16…512 @1x/@2x）；`site/icon.png` 同源。托盘仍用 `trayTemplate*`（菜单栏模板，另一套）。electron-builder 默认从 `build/` 取 `icon.icns`，dev 下 main 会把 Dock 图标指到 `icon.png`。
 - **首页顶栏**：右侧对话入口改为 14×14 会话气泡图标（去掉不存在的「⌘对话」假快捷键；`⋯` 仍是归档/设置/导出菜单）；左侧品牌位为「小尺寸云豆+图钉图标 + Ticktodo」（归档页仍显示「归档」；图标来源见 `build/icon.svg`，UI 组件 `features/brand/TickMark.tsx`）。
 - **Todo**：点整行在当前行位置**原地展开**为线索卡片（焦点卡材质：白 10%→3% + Accent 8%，§3.3；不再统一挪到列表顶部），点卡片头/标题或卡片外空白折叠——卡片头可勾选归档、
   「上次停在哪」显示主会话最后一条 user 消息（adapter 流式扫描，按文件 (mtime,size) 缓存元数据；卡片打开时窗口聚焦/15s 刷新）、动作三态（0 会话=新建会话；
