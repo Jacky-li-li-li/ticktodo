@@ -3047,6 +3047,7 @@ a:focus-visible {
 }
 
 .detail-session {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 9px;
@@ -3176,18 +3177,145 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 
-.detail-session-actions {
-  flex-shrink: 0;
+/* 右侧 1/8：会话滑块槽 */
+.detail-session-rail {
+  position: relative;
+  flex: 0 0 12.5%;
+  align-self: stretch;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
 }
 
-.detail-session-actions .mini {
-  height: 22px;
-  padding: 0 8px;
-  font-size: 9px;
+.detail-session-thumb {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #2e3138 0%, #1a1c21 100%);
+  color: #f3f5f9;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    0 3px 8px rgba(0, 0, 0, 0.2);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition:
+    transform 160ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.detail-session-thumb svg {
+  display: block;
+  transition: transform 120ms ease;
+}
+
+.detail-session-thumb:hover {
+  background: linear-gradient(180deg, #383c44 0%, #202329 100%);
+}
+
+.detail-session-thumb.is-disabled {
+  opacity: 0.55;
+  cursor: grab;
+}
+
+.detail-session-thumb.is-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.detail-session-thumb.is-dragging svg {
+  transform: scaleX(-1);
+}
+
+.detail-session-thumb.is-armed {
+  border-color: rgba(255, 120, 120, 0.6);
+  background: linear-gradient(180deg, #5a1f1f 0%, #2c0d0d 100%);
+  color: #ffd9d9;
+}
+
+/* 拖动时的终点区（最左 1/8）与引导线 */
+.detail-session-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  z-index: 1;
+  border-top: 1px dashed rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+}
+
+.detail-session-target {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  z-index: 2;
+  width: 12.5%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px dashed rgba(0, 0, 0, 0.2);
+  border-radius: var(--r-row);
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--t-weak);
+  font-size: 8px;
+  font-weight: 600;
+  pointer-events: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.detail-session-target.is-armed {
+  border-color: rgba(198, 40, 40, 0.55);
+  background: rgba(198, 40, 40, 0.1);
+  color: var(--danger-text);
+}
+
+/* 拖动中：弱化卡片正文，让终点和滑块更清楚 */
+.detail-session.is-dragging .detail-session-main,
+.detail-session.is-dragging .detail-session-tool {
+  opacity: 0.35;
+}
+
+/* 单击接着做：拇指右滑 + 卡片轻推 */
+.detail-session.is-resuming {
+  animation: detail-session-nudge 220ms ease;
+}
+
+.detail-session.is-resuming .detail-session-thumb {
+  transform: translateX(5px);
+}
+
+@keyframes detail-session-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+}
+
+/* 解绑二次确认弹窗的危险按钮 */
+.sheet-actions .danger {
+  flex: 1;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 120, 120, 0.5);
+  background: linear-gradient(180deg, #5a1f1f 0%, #2c0d0d 100%);
+  color: #ffd9d9;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* 详情页没有捕获行：toast 改浮在面板底部，避免盖住标题与元信息 */
