@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-10-18T18:17:13.298Z",
+  "serverPid": 3680,
+  "argv": [
+    "/Users/jacky/.hermes/node/bin/node",
+    "/Users/jacky/Desktop/tick/scripts/mcp-spike/server.mjs"
+  ],
+  "env": {
+    "TICK_HOME": "/tmp/tick-spike/pi-data",
+    "TICK_AGENT_TOOL": "pi",
+    "TICK_AGENT_SESSION": null,
+    "TICK_MCP_READONLY": null
+  },
+  "params": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {
+      "roots": {}
+    },
+    "clientInfo": {
+      "name": "pi",
+      "version": "1.3.0"
+    }
+  },
+  "negotiatedProtocolVersion": "2025-11-25"
+}

@@ -1,0 +1,34 @@
+{
+  "capturedAt": "2026-10-18T18:17:13.525Z",
+  "serverPid": 3686,
+  "argv": [
+    "/Users/jacky/.hermes/node/bin/node",
+    "/Users/jacky/Desktop/tick/scripts/mcp-spike/server.mjs"
+  ],
+  "env": {
+    "TICK_HOME": "/tmp/tick-spike/claude-data",
+    "TICK_AGENT_TOOL": "claude-code",
+    "TICK_AGENT_SESSION": null,
+    "TICK_MCP_READONLY": null
+  },
+  "params": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {
+      "roots": {
+        "listChanged": true
+      },
+      "elicitation": {
+        "form": {},
+        "url": {}
+      }
+    },
+    "clientInfo": {
+      "name": "claude-code",
+      "title": "Claude Code",
+      "version": "2.1.302",
+      "description": "Anthropic's agentic coding tool",
+      "websiteUrl": "https://claude.com/claude-code"
+    }
+  },
+  "negotiatedProtocolVersion": "2025-11-25"
+}
