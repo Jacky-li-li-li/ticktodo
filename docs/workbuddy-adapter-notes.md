@@ -81,13 +81,13 @@
 
 ### 8.1 实测环境与方法
 - 测试前：WorkBuddy 主进程**未运行**（仅有 editor_sdk、browser-extension-native-host 两个辅助进程；注意主进程名是 `Electron`，不是 `WorkBuddy`，`System Events` 里 `process "WorkBuddy"` 取不到）。前台应用 Google Chrome。
-- **Mac 处于锁屏状态**（CGSSessionScreenIsLocked=true，HID 空闲约 43 分钟）→ `screencapture` 只截到锁屏壁纸（~/wb_test1.png），**无法用截图/窗口标题验证**。改用应用自身日志验证（~/.workbuddy/logs/main.log、renderer.log、日期目录下 sdk/conversations/*.log），日志只含 URL 元数据、路由，不含会话正文。
-- 测试会话（local，非删除、非后台自动化）：A=515f7045-…（最老，标题“用户问候”）；B=b5230597-…（较新，completed）。
+- **Mac 处于锁屏状态**（CGSSessionScreenIsLocked=true，HID 空闲约 43 分钟）→ `screencapture` 只截到锁屏壁纸（本地截图），**无法用截图/窗口标题验证**。改用应用自身日志验证（~/.workbuddy/logs/main.log、renderer.log、日期目录下 sdk/conversations/*.log），日志只含 URL 元数据、路由，不含会话正文。
+- 测试会话（local，非删除、非后台自动化）：A=<session-id-A>（最老，示例会话）；B=<session-id-B>（较新，completed）。
 
 ### 8.2 逐项结果
-1. **冷启动（意外覆盖，应用本就未运行）** `open "workbuddy://chat/515f7045-…"`：应用被拉起；main 日志 `[DeepLink] stored until WindowManager ready` → 约 1.7s 后 `dispatching open url to renderer`（scheme=workbuddy, host=chat, pathname=/<id>）→ renderer 写入 pending store；SDK 随后为该 id 建立会话实例（`lifecycle:created conversationId=515f7045…`）。路由日志显示 `/` → `/conversation/418d22ee…`(应用恢复的上次会话) → `/conversation/515f7045…`，即**最终定位到了目标会话**。冷启动场景因此有一次真实观测（但非“用户未保存状态”风险场景：启动时应用本来就没运行）。
-2. **热启动，另一会话 B** `open "workbuddy://chat/b5230597-…"`：路由 `/conversation/515f7045… → /conversation/b5230597…`，SDK 日志出现 `get conversationId=b5230597…`；**确认切换到指定会话**，不是保持原状。
-3. **不存在的随机 UUID**（6c5c1f58-d40e-43bd-be09-41902643d349）：深链被正常分发；路由先到 `/conversation/6c5c1f58…`，SDK 请求 `GET /console/as/conversations/:id` 返回 **404**（`cloud.http.detail.request_failed httpStatus=404`，生成 -warning.log），约 0.2s 内路由**自动回退到 `/`（首页）**。表现：无报错弹窗证据（未能目视确认，锁屏），但行为是“落到首页”，不会停在空白会话。适配器应把“落首页”视为失败，需先用 DB 校验 id 存在。
+1. **冷启动（意外覆盖，应用本就未运行）** `open "workbuddy://chat/<session-id-A>"`：应用被拉起；main 日志 `[DeepLink] stored until WindowManager ready` → 约 1.7s 后 `dispatching open url to renderer`（scheme=workbuddy, host=chat, pathname=/<id>）→ renderer 写入 pending store；SDK 随后为该 id 建立会话实例（`lifecycle:created conversationId=<session-id-A>`）。路由日志显示 `/` → `/conversation/<restored-session-id>…`(应用恢复的上次会话) → `/conversation/<session-id-A>`，即**最终定位到了目标会话**。冷启动场景因此有一次真实观测（但非“用户未保存状态”风险场景：启动时应用本来就没运行）。
+2. **热启动，另一会话 B** `open "workbuddy://chat/<session-id-B>"`：路由 `/conversation/<session-id-A> → /conversation/<session-id-B>`，SDK 日志出现 `get conversationId=<session-id-B>`；**确认切换到指定会话**，不是保持原状。
+3. **不存在的随机 UUID**（<random-uuid>）：深链被正常分发；路由先到 `/conversation/<random-uuid>…`，SDK 请求 `GET /console/as/conversations/:id` 返回 **404**（`cloud.http.detail.request_failed httpStatus=404`，生成 -warning.log），约 0.2s 内路由**自动回退到 `/`（首页）**。表现：无报错弹窗证据（未能目视确认，锁屏），但行为是“落到首页”，不会停在空白会话。适配器应把“落首页”视为失败，需先用 DB 校验 id 存在。
 4. 注意：深链对 id 的存在性不做同步校验，也无返回码（`open` 总是 exit 0），无法从命令结果得知是否成功。
 - **未验证**：可见窗口前置/窗口标题（锁屏所致，需用户解锁后目视复测）；“应用已运行且在后台/最小化”时的前置行为；删除（deleted_at）会话 id 的行为；云端会话（transport=cloud）。
 - 实测后已 activate Google Chrome 恢复前台（锁屏下无可见变化）。WorkBuddy 是因本次测试被拉起的，当前仍在运行（原本未运行），未强制关闭以免影响用户。
@@ -114,10 +114,10 @@
 - 结论：深链接可用但属“有功能、无规范”；存储格式无官方承诺。建议：适配层加版本探测与容错；`open workbuddy://chat/<id>` 前先校验 id 存在于 DB（无效 id 会落首页且不报错）；用户解锁后目视复测窗口前置。
 
 ### 8.5 解锁后目视复测（2026-10-18 16:41 UTC+8，WorkBuddy 5.8.3 界面显示 v5.8.3）
-- 会话选取：A=515f7045-…（标题“用户问候”），B=b5230597-…（标题“详细阅读 tick 项目 PRD 文档”）；均 deleted_at 非删除、local、非后台自动化。DB `sessions` 有 `title`/`custom_title` 字段，可直接取标题。
+- 会话选取：A=<session-id-A>（示例会话 A），B=<session-id-B>（示例会话 B）；均 deleted_at 非删除、local、非后台自动化。DB `sessions` 有 `title`/`custom_title` 字段，可直接取标题。
 - 前置状态：前台 Google Chrome；WorkBuddy 主进程 `Electron`（`/Applications/WorkBuddy.app/Contents/MacOS/Electron`，bundle id **com.github.Electron**，不是 com.tencent.workbuddy.mac）已运行，窗口 1 个。`pgrep -fl WorkBuddy` 能匹配到完整路径含 WorkBuddy.app 的进程。
-- 测试1（先激活 Finder，再 open A，等 4s）：前台变为 Electron(com.github.Electron)；截图确认 WorkBuddy 窗口在最前，顶部会话标题=“用户问候”，与 A 一致。~/wb_a.png
-- 测试2（先激活 Finder，再 open B）：同样前置；窗口标题=“详细阅读 tick 项目 PRD 文档”，侧栏高亮 B，与 B 一致。~/wb_b.png
-- 测试3（AXMinimized=true 最小化后 open A）：最小化后前台仍是 Electron；open 后窗口 AXMinimized 变 false、窗口恢复并前置，标题回到“用户问候”。~/wb_c.png
+- 测试1（先激活 Finder，再 open A，等 4s）：前台变为 Electron(com.github.Electron)；截图确认 WorkBuddy 窗口在最前，顶部会话标题=“示例会话 A”，与 A 一致。
+- 测试2（先激活 Finder，再 open B）：同样前置；窗口标题=“示例会话 B”，侧栏高亮 B，与 B 一致。
+- 测试3（AXMinimized=true 最小化后 open A）：最小化后前台仍是 Electron；open 后窗口 AXMinimized 变 false、窗口恢复并前置，标题回到“示例会话 A”。
 - 注意：System Events 窗口名恒为 “WorkBuddy”，会话标题是应用内标题栏，不在 AX 窗口名中，验证需截图。判断前台应用应用 bundle id com.github.Electron。
 - 测后已激活 Google Chrome 恢复前台。截图含个人内容，勿外传。
