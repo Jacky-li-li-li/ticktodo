@@ -451,6 +451,7 @@ function SessionCard({
 
   const firstText = (s.firstMessage ?? s.name ?? '未命名会话').trim()
   const lastText = s.lastMessage?.trim()
+  const timeText = s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'
 
   const reset = (): void => {
     startRef.current = null
@@ -537,9 +538,14 @@ function SessionCard({
           <ToolIcon toolId={s.toolId} size={16} />
         </div>
         <div className="detail-session-main">
-          {/* 第一行 = 该会话的第一条 user 消息（会话是什么事） */}
-          <div className="detail-session-title" title={firstText}>
-            {firstText}
+          {/* 第一行 = 该会话的第一条 user 消息；时间 = 最后使用时间，跟在文本后 */}
+          <div className="detail-session-headline">
+            <div className="detail-session-title" title={firstText}>
+              {firstText}
+            </div>
+            <span className="detail-session-time" title={`最后使用：${timeText}`}>
+              {timeText}
+            </span>
           </div>
           {lastText && lastText !== firstText && (
             <div className="detail-session-last" title={lastText}>
@@ -547,14 +553,13 @@ function SessionCard({
               {lastText}
             </div>
           )}
-          <div className="detail-session-top">
-            <span>
-              {s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'}
-            </span>
-            {s.state === 'pending' && <span className="session-tag">待发送</span>}
-            {s.missing && <span className="session-tag">已不在本机</span>}
-            {usageEnabled && usage && <span className="session-usage">{usageText(usage)}</span>}
-          </div>
+          {(s.state === 'pending' || s.missing || (usageEnabled && usage)) && (
+            <div className="detail-session-top">
+              {s.state === 'pending' && <span className="session-tag">待发送</span>}
+              {s.missing && <span className="session-tag">已不在本机</span>}
+              {usageEnabled && usage && <span className="session-usage">{usageText(usage)}</span>}
+            </div>
+          )}
         </div>
       </div>
 
