@@ -61,7 +61,7 @@
 - 「当前最后一条 user 之后是否已有 assistant completed」可作为 Ticktodo「任务完成」的稳妥判据。
 
 ## 6. 拉起与定位
-- 自定义 URL scheme：`workbuddy://`（国内版 WorkBuddy.app）。国际版 WorkBuddy AI 的 scheme 见 §9（独立工具，本期不接入，未验证）。
+- 自定义 URL scheme：`workbuddy://`（国内版 WorkBuddy.app）。国际版 WorkBuddy AI 的 scheme 见 §9/§10（独立适配器 `workbuddy-ai`，深链接未验证）。
 - 从 app.asar 字符串分析（未执行）到的深链接：
   - `workbuddy://chat/<encodeURIComponent(sessionId)>[?query]` —— 打开指定会话（应用内通知点击、托盘 navigateToSession 都用它）；
   - `workbuddy://home` —— 回主页；
@@ -73,7 +73,7 @@
 
 ## 7. 风险与建议
 - 内部格式无公开契约：jsonl/DB schema 随版本（5.8.x）变化，需做字段容错并带版本探测（Info.plist 版本 + migrations 目录 `.workbuddy-sqlite-migrations`）。
-- 国际版 WorkBuddy AI 是独立工具，不与国内版共用适配器配置；若后续接入，须另建独立适配器并单独验证（见 §9）。
+- 国际版 WorkBuddy AI 是独立工具，不与国内版共用适配器配置；国际版为本期并列的独立适配器 `workbuddy-ai`，单独验证（见 §9、§10）。
 - 敏感数据：同目录下有 keyblob/settings/认证文件，适配器只应读 workbuddy.db 与 projects/*.jsonl，且 user 文本进入 Ticktodo 前建议截断/脱敏（wrapper 中含系统提示、记忆、路径）。
 - 读取并发：应用运行时 DB 处于 WAL，务必只读（`-readonly` 或 immutable 复制）；jsonl 追加写，按行读取容忍末行半行。
 - 会话删除为软删除（deleted_at），jsonl 可能仍在，需用 DB 过滤。
@@ -144,7 +144,7 @@
 - Changelog：含 5.8.4、5.7.6、5.6.2 等条目；**未见 deeplink、会话存储格式、hooks 的任何说明**。
 - Tencent Cloud International 的 WorkBuddy 产品/文档页（intl.cloud.tencent.com）为企业版文档，与桌面端本地存储无关。
 - 结论：国际版**没有**公开的 scheme、数据目录、数据格式规范；其 deeplink、会话存储是否与国内版一致**未验证**。
-- 后续独立适配器前置项：独立验证 scheme 与路径、`workbuddy.db`/jsonl 格式、完成状态字段、前台进程名；单独建立依据表。
+- 独立适配器前置项（本期实测见 §10，仍未完成部分）：独立验证 scheme 与路径、`workbuddy.db`/jsonl 格式、完成状态字段、前台进程名；单独建立依据表。
 
 ## 10. 国际版 WorkBuddy AI 本期实测（2026-10-18 17:36–17:50 UTC+8，5.8.4）——独立适配器 `workbuddy-ai`
 
