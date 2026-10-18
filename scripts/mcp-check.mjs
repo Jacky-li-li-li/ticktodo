@@ -389,6 +389,8 @@ async function main() {
 
   // ---- Tick 未运行：句柄回扫 ----
   const piSessionId = '11111111-2222-4333-8444-555555555555'
+  // 同 cwd 的诱饵会话：也带一个合法 handle，但和本 probe 的 handle 不同 → 不能绑错
+  writePiSession(mainCtx.agentDir, '99999999-0000-4000-8000-000000000000', `tk_${'0'.repeat(26)}`)
   writePiSession(mainCtx.agentDir, piSessionId, handle)
   const scanned = await waitFor(() => {
     const todo = findTodo(mainCtx.home, createdId)
@@ -403,6 +405,21 @@ async function main() {
   check('pi 回扫: sessionId 来自 header.id', scanned?.sessionId === piSessionId, scanned?.sessionId)
   check('pi 回扫: toolId=pi、filePath 指向命中的会话文件', scanned?.toolId === 'pi' && scanned?.filePath?.endsWith(`${piSessionId}.jsonl`), JSON.stringify(scanned))
   check('pi 回扫: 命中后删除 probe', probeCount(mainCtx.home) === 0, String(probeCount(mainCtx.home)))
+  check(
+    'pi 回扫: 同 cwd 诱饵会话不会被误绑',
+    findTodo(mainCtx.home, createdId)?.bindings?.length === 1 &&
+      findTodo(mainCtx.home, createdId)?.bindings?.[0]?.sessionId === piSessionId,
+    JSON.stringify(findTodo(mainCtx.home, createdId)?.bindings),
+  )
+  const scanAudit = await waitFor(
+    () => readAudit(mainCtx.home).find((entry) => entry.tool === 'scan' && entry.code === 'BOUND' && entry.todoId === createdId),
+    2_000,
+  )
+  check(
+    'scan 审计: 命中写 tool=scan/code=BOUND，且不含路径',
+    scanAudit?.toolId === 'pi' && !JSON.stringify(scanAudit).includes('/'),
+    JSON.stringify(scanAudit),
+  )
 
   // ---- list_todos：无 body、排序、过滤 ----
   const listed = await client.callTool('list_todos', {})
@@ -503,6 +520,22 @@ async function main() {
       probeCount(linkCtx.home) === 0,
     JSON.stringify(sc(linkTarget)),
   )
+  const bindFalseCtx = makeContext('bind-false-explicit')
+  const { client: bindFalseClient } = await startClient(bindFalseCtx)
+  const bindFalseExplicit = sc(
+    await bindFalseClient.callTool('create_todo', {
+      title: 'bind=false 时忽略 session_id',
+      session_id: 'sess-should-be-ignored',
+      bind: false,
+    }),
+  )
+  check(
+    'create_todo bind=false: 即使给了 session_id 也不绑定',
+    bindFalseExplicit.binding?.state === 'unbound' &&
+      findTodo(bindFalseCtx.home, bindFalseExplicit.todoId)?.bindings?.length === 0,
+    JSON.stringify(bindFalseExplicit),
+  )
+  await bindFalseClient.close()
 
   const linked = await linkClient.callTool('link_session', {
     todo_id: linkTargetId,
@@ -851,6 +884,40 @@ async function main() {
   )
   await settingsScanOnClient.close()
 
+  // SettingsStore 真实写盘形状：{version:1, settings:{...}}（不是顶层）
+  const nestedRoCtx = makeContext('settings-nested-readonly')
+  fs.mkdirSync(path.join(nestedRoCtx.home, 'data'), { recursive: true })
+  fs.writeFileSync(
+    path.join(nestedRoCtx.home, 'data', 'settings.json'),
+    JSON.stringify({ version: 1, settings: { mcpReadOnly: true } }),
+  )
+  const { client: nestedRoClient } = await startClient(nestedRoCtx)
+  const nestedRoCreate = await nestedRoClient.callTool('create_todo', { title: '嵌套只读' })
+  check(
+    'settings.json: {version,settings:{mcpReadOnly:true}} → TICK_E_READONLY',
+    errorCode(nestedRoCreate) === 'TICK_E_READONLY',
+    JSON.stringify(sc(nestedRoCreate)),
+  )
+  await nestedRoClient.close()
+
+  const nestedScanCtx = makeContext('settings-nested-scan-off')
+  fs.mkdirSync(path.join(nestedScanCtx.home, 'data'), { recursive: true })
+  fs.writeFileSync(
+    path.join(nestedScanCtx.home, 'data', 'settings.json'),
+    JSON.stringify({ version: 1, settings: { mcpScan: false } }),
+  )
+  const { client: nestedScanClient } = await startClient(nestedScanCtx)
+  const nestedScan = await nestedScanClient.callTool('create_todo', { title: '嵌套关扫描' })
+  check(
+    'settings.json: {version,settings:{mcpScan:false}} → unbound/scan_disabled',
+    sc(nestedScan).ok === true &&
+      sc(nestedScan).binding?.state === 'unbound' &&
+      sc(nestedScan).binding?.reason === 'scan_disabled' &&
+      probeCount(nestedScanCtx.home) === 0,
+    JSON.stringify(sc(nestedScan)),
+  )
+  await nestedScanClient.close()
+
   // ============================================================
   // G. stdin EOF：关机前做一次最终回扫（不靠 3s/10s/30s 定时器）
   // ============================================================
@@ -875,6 +942,221 @@ async function main() {
   )
   check('stdin EOF: 命中后 probe 被删除', probeCount(eofCtx.home) === 0, String(probeCount(eofCtx.home)))
   check('stdin EOF: 进程及时退出（<2.5s）', closeElapsed < 2_500, `${closeElapsed}ms`)
+
+  // ============================================================
+  // I. 启动回扫 / 过期 probe / 损坏数据 fail-closed
+  // ============================================================
+  const startupCtx = makeContext('startup-scan')
+  const { client: startupFirst } = await startClient(startupCtx)
+  const startupCreated = sc(await startupFirst.callTool('create_todo', { title: '启动回扫' }))
+  check(
+    '启动回扫: 第一次 create 留下 pending probe',
+    HANDLE_RE.test(startupCreated.handle ?? '') && probeCount(startupCtx.home) === 1,
+    JSON.stringify(startupCreated),
+  )
+  // 先关掉旧进程（EOF 时还没有会话文件，probe 不会被删），再写会话文件，最后启动新进程
+  await startupFirst.close()
+  check('启动回扫: 旧进程退出后 probe 仍在', probeCount(startupCtx.home) === 1, String(probeCount(startupCtx.home)))
+  const startupSessionId = 'abcabcab-1111-4222-8333-444444444444'
+  writePiSession(startupCtx.agentDir, startupSessionId, startupCreated.handle)
+  const { client: startupSecond } = await startClient(startupCtx)
+  const startupBound = await waitFor(() => {
+    const binding = findTodo(startupCtx.home, startupCreated.todoId)?.bindings?.[0]
+    return binding?.state === 'verified' ? binding : undefined
+  }, 3_000)
+  check(
+    '启动回扫: 新进程启动后处理上次留下的 probe',
+    startupBound?.sessionId === startupSessionId,
+    JSON.stringify(findTodo(startupCtx.home, startupCreated.todoId)?.bindings),
+  )
+  await startupSecond.close()
+
+  const expiredCtx = makeContext('expired-probe')
+  const expiredDir = path.join(expiredCtx.home, 'cache', 'mcp-pending')
+  fs.mkdirSync(expiredDir, { recursive: true })
+  const expiredHandle = `tk_${'0'.repeat(26)}`
+  fs.writeFileSync(
+    path.join(expiredDir, `${expiredHandle}.json`),
+    JSON.stringify({
+      version: 1,
+      handle: expiredHandle,
+      purpose: 'create',
+      todoId: '00000000-0000-4000-8000-000000000000',
+      toolId: 'pi',
+      at: new Date(Date.now() - 25 * 3600_000).toISOString(),
+      expiresAt: new Date(Date.now() - 3600_000).toISOString(),
+      pid: 1,
+    }),
+  )
+  const { client: expiredClient } = await startClient(expiredCtx)
+  const expiredRemoved = await waitFor(() => probeCount(expiredCtx.home) === 0, 3_000)
+  check('过期 probe: 启动回扫删除（不留下垃圾）', expiredRemoved === true, String(probeCount(expiredCtx.home)))
+  await expiredClient.close()
+
+  const corruptCtx = makeContext('corrupt')
+  const corruptFile = path.join(corruptCtx.home, 'data', 'todos.json')
+  fs.mkdirSync(path.dirname(corruptFile), { recursive: true })
+  fs.writeFileSync(corruptFile, '{ this is not valid json')
+  const { client: corruptClient } = await startClient(corruptCtx)
+  const corruptCreate = await corruptClient.callTool('create_todo', { title: '损坏时不能写' })
+  check(
+    '数据损坏: create_todo fail-closed（TICK_E_DATA_CORRUPT）',
+    errorCode(corruptCreate) === 'TICK_E_DATA_CORRUPT',
+    JSON.stringify(sc(corruptCreate)),
+  )
+  const corruptList = await corruptClient.callTool('list_todos', {})
+  check('数据损坏: list_todos 报错且不覆盖', errorCode(corruptList) === 'TICK_E_DATA_CORRUPT', JSON.stringify(sc(corruptList)))
+  const corruptLink = await corruptClient.callTool('link_session', { todo_id: 'nope', session_id: 'x' })
+  check('数据损坏: link_session fail-closed', errorCode(corruptLink) === 'TICK_E_DATA_CORRUPT', JSON.stringify(sc(corruptLink)))
+  check('数据损坏: 原文件逐字节未变', fs.readFileSync(corruptFile, 'utf8') === '{ this is not valid json')
+  check(
+    '数据损坏: 已生成 .corrupt-* 备份',
+    fs.readdirSync(path.dirname(corruptFile)).some((name) => name.includes('.corrupt-')),
+    fs.readdirSync(path.dirname(corruptFile)).join(','),
+  )
+  check('数据损坏: 不写 probe', probeCount(corruptCtx.home) === 0, String(probeCount(corruptCtx.home)))
+  await corruptClient.close()
+
+  // 标题窗口去重 + pending 投影（不需要 request_id/session_id）
+  const dedupeCtx = makeContext('title-dedupe')
+  const { client: dedupeClient } = await startClient(dedupeCtx)
+  const firstTitle = sc(await dedupeClient.callTool('create_todo', { title: 'Repeat   Title', tool_id: 'pi' }))
+  const secondTitle = sc(await dedupeClient.callTool('create_todo', { title: 'repeat title', tool_id: 'pi' }))
+  check(
+    '标题去重: 同 toolId + 规范化标题 10 分钟内只建一条',
+    firstTitle.created === true &&
+      secondTitle.created === false &&
+      secondTitle.dedupedBy === 'title' &&
+      secondTitle.todoId === firstTitle.todoId &&
+      readTodos(dedupeCtx.home).length === 1,
+    JSON.stringify({ firstTitle, secondTitle }),
+  )
+  const pendingList = sc(await dedupeClient.callTool('list_todos', {}))
+  check(
+    'list_todos: probe 未回扫时 bindingState=pending',
+    pendingList.todos?.find((todo) => todo.todoId === firstTitle.todoId)?.bindingState === 'pending',
+    JSON.stringify(pendingList.todos),
+  )
+  await dedupeClient.close()
+
+  // ============================================================
+  // H. modern 2026-07-28：stateless + 每请求 _meta 信封（SDK 双代）
+  // request_id 的作用域是 (toolId, request_id)：跨工具同 key 不能互相命中
+  const crossCtx = makeContext('request-scope')
+  const { client: crossPi } = await startClient(crossCtx, 'pi')
+  const crossPiSc = sc(await crossPi.callTool('create_todo', { title: 'pi 的同 key', request_id: 'same-key', tool_id: 'pi' }))
+  const { client: crossWb } = await startClient(crossCtx, 'workbuddy', '5.8.3')
+  const crossWbSc = sc(await crossWb.callTool('create_todo', { title: 'workbuddy 的同 key', request_id: 'same-key', tool_id: 'workbuddy' }))
+  check(
+    '幂等作用域: 同 request_id 换 toolId 会新建（不是全局 key）',
+    crossPiSc.created === true &&
+      crossWbSc.created === true &&
+      crossPiSc.todoId !== crossWbSc.todoId &&
+      readTodos(crossCtx.home).length === 2,
+    JSON.stringify({ pi: crossPiSc, wb: crossWbSc }),
+  )
+  await crossPi.close()
+  await crossWb.close()
+
+  // ============================================================
+  // H. modern 2026-07-28：stateless + 每请求 _meta 信封（SDK 双代）
+  // ============================================================
+  const modernCtx = makeContext('modern')
+  const ENVELOPE = {
+    'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    'io.modelcontextprotocol/clientInfo': { name: 'pi', version: '1.3.0' },
+    'io.modelcontextprotocol/clientCapabilities': {},
+  }
+  const modernReq = (id, method, params = {}) => ({
+    jsonrpc: '2.0',
+    id,
+    method,
+    params: { ...params, _meta: ENVELOPE },
+  })
+  const modern = spawnSync(process.execPath, [SERVER_ENTRY], {
+    env: modernCtx.env,
+    encoding: 'utf8',
+    timeout: 15_000,
+    input:
+      [
+        modernReq(1, 'server/discover'),
+        modernReq(2, 'tools/list'),
+        modernReq(3, 'tools/call', {
+          name: 'create_todo',
+          arguments: { title: 'modern 2026 绑定' },
+        }),
+        modernReq(4, 'tools/call', {
+          name: 'create_todo',
+          arguments: { title: '' },
+        }),
+        modernReq(5, 'resources/read', { uri: 'tick://todos/nope' }),
+      ]
+        .map((message) => JSON.stringify(message))
+        .join('\n') + '\n',
+  })
+  const modernMessages = String(modern.stdout ?? '')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line)
+      } catch {
+        return undefined
+      }
+    })
+  const modernBy = new Map(modernMessages.filter(Boolean).map((message) => [message.id, message]))
+  check(
+    'modern: server/discover 宣告 2026-07-28',
+    modernBy.get(1)?.result?.supportedVersions?.includes('2026-07-28') === true &&
+      modernBy.get(1)?.result?.resultType === 'complete',
+    JSON.stringify(modernBy.get(1)?.result),
+  )
+  check(
+    'modern: tools/list 带 ttlMs=60000/cacheScope=private',
+    modernBy.get(2)?.result?.ttlMs === 60_000 &&
+      modernBy.get(2)?.result?.cacheScope === 'private' &&
+      modernBy.get(2)?.result?.tools?.length === 3,
+    JSON.stringify(modernBy.get(2)?.result && { ttlMs: modernBy.get(2).result.ttlMs, cacheScope: modernBy.get(2).result.cacheScope }),
+  )
+  const modernCreate = modernBy.get(3)?.result
+  const modernSc = sc(modernCreate)
+  check(
+    'modern: create_todo 用 _meta clientInfo 推断 toolId=pi',
+    modernSc.ok === true &&
+      modernSc.binding?.state === 'pending' &&
+      HANDLE_RE.test(modernSc.handle ?? '') &&
+      findTodo(modernCtx.home, modernSc.todoId)?.mcpOrigin?.toolId === 'pi',
+    JSON.stringify(modernSc),
+  )
+  const modernProbeFile = (() => {
+    try {
+      const dir = path.join(modernCtx.home, 'cache', 'mcp-pending')
+      const name = fs.readdirSync(dir).find((entry) => entry.endsWith('.json'))
+      return name ? path.join(dir, name) : undefined
+    } catch {
+      return undefined
+    }
+  })()
+  const modernProbe = modernProbeFile ? readJson(modernProbeFile) : undefined
+  check(
+    'modern: probe 为 spec 格式（clientInfo 对象 + ISO 时间）',
+    modernProbe?.clientInfo?.name === 'pi' &&
+      Number.isFinite(Date.parse(modernProbe?.at)) &&
+      Number.isFinite(Date.parse(modernProbe?.expiresAt)),
+    JSON.stringify(modernProbe && { clientInfo: modernProbe.clientInfo, at: modernProbe.at, expiresAt: modernProbe.expiresAt }),
+  )
+  check(
+    'modern: schema 校验失败 → isError（SDK 2.3.1 as-built，不是 -32602）',
+    modernBy.get(4)?.result?.isError === true &&
+      textOf(modernBy.get(4)?.result).startsWith('Input validation error'),
+    JSON.stringify(modernBy.get(4)?.result),
+  )
+  check(
+    'modern: resources/read 不存在 → -32602（SDK 映射）',
+    modernBy.get(5)?.error?.code === -32602,
+    JSON.stringify(modernBy.get(5)?.error),
+  )
 }
 
 try {

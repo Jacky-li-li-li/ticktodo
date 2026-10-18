@@ -22,8 +22,8 @@ export interface LocatedSession {
 }
 
 export type ResumeSpec =
-  | { kind: 'terminal'; executable: string; args: string[]; cwd?: string }
-  | { kind: 'deeplink'; url: string }
+  | { kind: 'terminal'; target: string; executable: string; args: string[]; cwd?: string }
+  | { kind: 'deeplink'; target: string; url: string }
 
 export interface SessionLocator {
   /** 写进 binding.toolId / mcpOrigin.toolId；必须是稳定 kebab-case */

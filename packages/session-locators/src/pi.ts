@@ -48,6 +48,12 @@ export const piLocator: SessionLocator = {
   resumeSpec(sessionId, cwd) {
     // 真正的 resume 走 @tick/ai-pi adapter（--session <path> + header cwd）；
     // 这里只给调用方一个提示，不直接执行。
-    return { kind: 'terminal', executable: 'pi', args: ['--session', sessionId], ...(cwd ? { cwd } : {}) }
+    return {
+      kind: 'terminal',
+      target: sessionId,
+      executable: 'pi',
+      args: ['--session', sessionId],
+      ...(cwd ? { cwd } : {}),
+    }
   },
 }

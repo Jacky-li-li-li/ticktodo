@@ -86,7 +86,8 @@ export function createWorkbuddyLocator(
     },
 
     resumeSpec(sessionId) {
-      return { kind: 'deeplink', url: `${identity.scheme}://chat/${sessionId}` }
+      const url = `${identity.scheme}://chat/${sessionId}`
+      return { kind: 'deeplink', target: url, url }
     },
   }
 }

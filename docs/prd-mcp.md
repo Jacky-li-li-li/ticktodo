@@ -1321,12 +1321,17 @@ console.error('[tick-mcp] running on stdio')
 - **resources 已实现**：`tick://todos` 与模板 `tick://todos/{todoId}`；未做订阅通知。
 - **分发**：只做 app 内置 shim；npm / MCPB / Registry 均未发布（仍按 §12.3 默认）。
 - **打包验证**：`apps/desktop` 的 `extraResources` 已含 `mcp/tick-mcp.sh` + `mcp/tick-mcp.mjs`，`electronFuses.runAsNode=true`；从 `Tick.app/Contents/Resources/mcp/tick-mcp.sh` 实测 `initialize`/`tools/list` 成功。完整 dmg 签名受本机 iCloud Desktop 的 codesign 限制（见 CLAUDE.md 环境约束），未在本轮完成。
-- **审计**：`cache/mcp-audit.log`（0600、append、≤1MB 轮转）已实现，字段不含 title/body/路径。
+- **审计**：`cache/mcp-audit.log`（0600、append、≤1MB 轮转）已实现，字段不含 title/body/路径；扫描的命中/冲突/过期/坏 probe 也写 `tool:"scan"` 条目。
+- **启动补扫**：server 进程一启动就处理 `cache/mcp-pending/` 里上次留下的 probe（不再等第一次工具调用）；设置读取兼容 Tick 的真实落盘形状 `{version:1, settings:{mcpReadOnly,mcpScan}}`，也兼容顶层手写字段。
+- **probe 格式**：按 spec 使用 `clientInfo:{name,version}` 对象与 ISO 时间；modern 2026-07-28 的客户端身份从每请求 `_meta` 信封读取（stdio 不会 seed `getClientVersion()`）。
 - **认证客户端**：实际按决策 7 收窄为 `pi` / `workbuddy` / `workbuddy-ai`；Claude Code / Codex 协议兼容但没有 locator，绑定会停在 unbound（只记 `mcpOrigin`）。
 
 ### 14.3 验证
 
 - `pnpm typecheck`：全仓通过。
-- `node scripts/mcp-check.mjs`：**88 PASS / 0 FAIL**（真实 stdio 客户端；覆盖 pi/WorkBuddy 回扫、Tick 未运行、只读、限流、幂等、stdin EOF、resources）。
+- `node scripts/mcp-check.mjs`：**112 PASS / 0 FAIL**（真实 stdio 客户端；覆盖 pi/WorkBuddy 回扫、Tick 未运行、只读、限流、幂等、cross-tool requestId 作用域、stdin EOF、启动补扫、过期 probe、损坏 fail-closed、modern 2026-07-28、resources）。
+- 真 `pi 1.3.0`：临时 `PI_CODING_AGENT_DIR` 下 `pi mcp add tick -- node dist/tick-mcp.mjs` → `pi mcp list --json` 显示 `state:"connected"`、3 个工具、resources=true。
+- 真实 locator 只读冒烟：`pi` / `workbuddy` / `workbuddy-ai` 各命中一条真实会话，`sessionId`/`cwd` 正确（未改用户数据）。
+- `@tick/todo-core` 并发：8 进程 × 20 条 = 160 条全保留、无残留 `.lock`。
 - `pnpm --filter @tick/tick-extension build`：通过（`@tick/todo-core` 已被打进 extension 单文件）。
 - 打包 app 内 shim：`initialize` + `tools/list` 成功（见 14.2）。

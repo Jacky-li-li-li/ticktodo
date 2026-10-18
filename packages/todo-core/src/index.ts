@@ -313,7 +313,14 @@ export class TodoStoreCore {
 
         // 1) requestId 幂等
         if (input.requestId) {
-          const hit = data.todos.find((t) => t.requestId === input.requestId)
+          // spec §1.6：request_id 的作用域是 (toolId, request_id)，不同工具的相同 key 不互相命中
+          const hit = data.todos.find(
+            (t) =>
+              t.requestId === input.requestId &&
+              (!input.toolId ||
+                (t.mcpOrigin?.toolId ??
+                  (t.source === 'mcp' ? t.bindings[0]?.toolId : undefined)) === input.toolId),
+          )
           if (hit) return { result: { todo: hit, created: false, dedupedBy: 'request_id' }, dirty: false }
         }
         // 2) 同会话已绑（一个 session 最多绑一条 todo）

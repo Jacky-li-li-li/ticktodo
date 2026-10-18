@@ -18,7 +18,7 @@
 | `@tick/session-locators` | 已落地：`pi` / `workbuddy` / `workbuddy-ai` 三个只读 locator（`roots()` / `readSession()` / `resumeSpec()`），复用 `@tick/ai-*` 的路径解析 |
 | `@tick/probe-scan` | 已落地：`tk_` handle、probe 读写/过期、字节级回扫、命中后写 verified 绑定；写路径 fail-closed |
 | `@tick/mcp-server` | 已落地：stdio + `@modelcontextprotocol/server@2.3.1`（默认双代协议）、3 个 v1 工具、rate limit、审计、resources、stdin EOF 最终回扫 |
-| 回归 | `node scripts/mcp-check.mjs`：**88 PASS / 0 FAIL**（含 Tick 未运行时 pi/WorkBuddy 回扫、只读、限流、stdin EOF） |
+| 回归 | `node scripts/mcp-check.mjs`：**112 PASS / 0 FAIL**（含 Tick 未运行时 pi/WorkBuddy 回扫、只读、限流、stdin EOF） |
 | 打包 | `apps/desktop` extraResources 内置 `mcp/tick-mcp.sh` + `mcp/tick-mcp.mjs`，`electronFuses.runAsNode=true`；已从 `Tick.app` 实测 shim 握手成功 |
 | P1（未做） | Tier 1 bridge / `get_todo` / `complete_todo` / `list_sessions` / UI「Agent 连接」与来源角标 / npm·Registry 分发 |
 
@@ -108,7 +108,7 @@
 规则：
 
 - **协议错误**（-32601 等）只用于「方法/参数结构不合法」；业务失败一律 `isError: true`。
-- **`inputSchema` 校验失败由 SDK 直接回 JSON-RPC `-32602`**（在进入 handler 之前），不走本节的 `TICK_E_*`；`TICK_E_INVALID_INPUT` 只覆盖 schema 管不了的语义校验（如 title 全空白、todo 已完成等）。
+- **`inputSchema` 校验失败（as-built，SDK 2.3.1）**：SDK 在 `tools/call` 的 catch 里统一把校验错误转成 **`isError: true` 的工具结果**（text 以 `Input validation error:` 开头），不是 JSON-RPC `-32602`，也不进 handler。`TICK_E_INVALID_INPUT` 只覆盖 schema 管不了的语义校验（如 title 全空白、非法 cwd 等）。这是 v2 SDK 的既定行为，客户端应按 `isError` 处理；不要依赖 `-32602`。
 - `content[0].text` 必须以 `[CODE]` 开头，方便不支持 structuredContent 的客户端也能读出错误码。
 - `error.message` 面向模型，不超过 200 字；`error.next` 必须给下一步动作；`retryable` 决定模型是否该重试。
 - 结果文本一律不超过 20 KB；超长时截断中段并注明 `…N chars truncated…`（与 pi 行为一致）。
@@ -723,7 +723,8 @@ interface SessionLocator {
 
 - MIME：`application/json`；`resources/list` 只列前两个模板；第三个用 template 形式。
 - 资源内容不含会话正文；`lastMessage` 是会话元数据（既有 `SessionInfo` 字段），不是全文。
-- `resources/read` 的错误走协议 error：`-32602`（参数/URI 不合法）、`-32002`（资源不存在）、`-32001`（需要 Tick 在跑，`data.code = "TICK_E_BRIDGE_UNAVAILABLE"`）。与工具错误模型区分。
+- `resources/read` 的错误走协议 error：`-32602`（参数/URI 不合法）。**as-built**：SDK 2.3.1 把 `ResourceNotFoundError` 统一投影为 `-32602`（2026-07-28 MUST；SDK 只接收 `-32002` 作为入站 mapping），因此「资源不存在」实测也是 `-32602`，不是 `-32002`。P1 的 bridge 不可用用 `data.code = "TICK_E_BRIDGE_UNAVAILABLE"`（-32001）在 bridge 落地时补。
+- P0 只注册前两个 URI；`tick://sessions/{toolId}/{sessionId}` 依赖 Tier 1 bridge，P0 不注册（避免返回伪造的 live 会话元数据）。
 
 ---
 
@@ -790,7 +791,7 @@ interface SessionLocator {
 | `packages/probe-scan` | handle、probe 读写、扫描、绑定写、过期清理 | 纯 Node；server/main 共用 |
 | `packages/session-locators` | pi/workbuddy/workbuddy-ai 的 roots/readSession/resumeSpec | 只读；不 import Electron |
 | `packages/mcp-server` | v2 SDK、3 工具、限流、审计、bridge client、扫描调度 | stdout 纯净；stdin EOF 退出 |
-| `apps/desktop/.../mcp-bridge.ts` | Unix socket + token；Tier 1 能力；5s 补扫 | 复用 TodoStore/SessionService |
+| `apps/desktop/.../mcp-bridge.ts`（P1，未实现） | Unix socket + token；Tier 1 能力；5s 补扫 | 复用 TodoStore/SessionService |
 | `apps/desktop/package.json` | `extraResources` shim + server.cjs + `electronFuses.runAsNode` | 签名覆盖 |
 | `packages/shared` | `source:'mcp'`、`origin:'mcp'`、`mcpOrigin`、`McpIpc` | 只增不改 |
 

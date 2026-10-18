@@ -58,6 +58,8 @@ export class SettingsStore {
     }
     if (patch.usageEnabled !== undefined) next.usageEnabled = Boolean(patch.usageEnabled)
     if (patch.customProvider !== undefined) next.customProvider = normalizeProvider(patch.customProvider)
+    if (patch.mcpReadOnly !== undefined) next.mcpReadOnly = Boolean(patch.mcpReadOnly)
+    if (patch.mcpScan !== undefined) next.mcpScan = Boolean(patch.mcpScan)
     this.settings = { ...this.settings, ...next }
     this.save()
     return this.get()
@@ -76,5 +78,7 @@ function normalize(raw: Partial<AppSettings> | undefined): AppSettings {
   }
   if (typeof raw?.usageEnabled === 'boolean') s.usageEnabled = raw.usageEnabled
   if (raw?.customProvider !== undefined) s.customProvider = normalizeProvider(raw.customProvider)
+  if (typeof raw?.mcpReadOnly === 'boolean') s.mcpReadOnly = raw.mcpReadOnly
+  if (typeof raw?.mcpScan === 'boolean') s.mcpScan = raw.mcpScan
   return s
 }

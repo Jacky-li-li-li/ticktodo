@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/server'
 import { serveStdio } from '@modelcontextprotocol/server/stdio'
 import { scanProbes } from '@tick/probe-scan'
+import { auditScan } from './audit'
 import { openRuntime, type McpRuntime } from './config'
 import { logError, logInfo } from './logger'
 import { registerResources } from './resources'
@@ -66,12 +67,29 @@ export function buildServerWithRuntime(): BuiltServer {
 
   registerTools(server, runtime, state)
   registerResources(server, runtime)
+  installStartupScan(runtime)
   installFinalScan(runtime, state)
   return { server, runtime, state }
 }
 
 export function buildServer(): McpServer {
   return buildServerWithRuntime().server
+}
+
+/**
+ * 进程启动时先处理上一次运行留下的 probe（spec §4.5「下次启动」）。
+ * 典型场景：上次客户端退出时 tool result 还没写进会话文件，probe 留在 cache；
+ * 下次客户端启动即使第一个动作不是调工具，也应该把它绑上。
+ */
+function installStartupScan(runtime: McpRuntime): void {
+  // 同步启动、异步完成：不要用 500ms 定时器 —— 客户端可能 initialize 后立刻关闭，
+  // 定时器被 unref 后进程先退出，上次留下的 probe 永远没人处理。
+  void scanProbes({
+    home: runtime.home,
+    store: runtime.store,
+    budgetMs: 1_000,
+    onEvent: (event) => auditScan(runtime.home, event),
+  }).catch((error: unknown) => logError('启动回扫失败', error))
 }
 
 let finalScanInstalled = false
@@ -96,7 +114,12 @@ function installFinalScan(runtime: McpRuntime, state: ServerState): void {
     const hold = setTimeout(() => {
       /* 保活占位；扫描完成会 clear */
     }, 2_000)
-    void scanProbes({ home: runtime.home, store: runtime.store, budgetMs: 2_000 })
+    void scanProbes({
+      home: runtime.home,
+      store: runtime.store,
+      budgetMs: 2_000,
+      onEvent: (event) => auditScan(runtime.home, event),
+    })
       .catch((error: unknown) => logError('退出前最终回扫失败', error))
       .finally(() => clearTimeout(hold))
   }

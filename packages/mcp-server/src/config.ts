@@ -33,7 +33,14 @@ function readSettings(home: string): Record<string, unknown> {
     if (!fs.existsSync(file)) return {}
     const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return parsed as Record<string, unknown>
+    // Tick 的 SettingsStore 写的是 {version, settings:{...}}；也兼容直接把开关写在顶层
+    // 的旧/手工文件（spec §1.8）。绝不把坏配置回写。
+    const record = parsed as Record<string, unknown>
+    const nested = record.settings
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      return nested as Record<string, unknown>
+    }
+    return record
   } catch {
     // 配置坏掉是 Tick 自己的问题；MCP 不回写、不备份，按默认值继续
     return {}

@@ -8,6 +8,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import type { ScanEvent } from '@tick/probe-scan'
 import { logError } from './logger'
 
 const MAX_BYTES = 1024 * 1024
@@ -15,7 +16,7 @@ const MAX_BYTES = 1024 * 1024
 export interface AuditEntry {
   /** 归一化后的客户端 toolId */
   toolId: string
-  tool: 'create_todo' | 'list_todos' | 'link_session'
+  tool: 'create_todo' | 'list_todos' | 'link_session' | 'scan'
   todoId?: string
   sessionId?: string
   /** 业务错误码；成功为 `OK` */
@@ -52,6 +53,26 @@ function rotateIfNeeded(file: string, incomingBytes: number): void {
       /* 忽略 */
     }
   }
+}
+
+/** 扫描命中/冲突/过期/坏 probe 的审计（spec §4.1 / §4.2；不含路径与正文） */
+export function auditScan(home: string, event: ScanEvent): void {
+  const code =
+    event.type === 'hit'
+      ? 'BOUND'
+      : event.type === 'conflict'
+        ? 'SESSION_TAKEN'
+        : event.type === 'expired'
+          ? 'EXPIRED'
+          : 'PROBE_CORRUPT'
+  audit(home, {
+    toolId: 'toolId' in event ? event.toolId : 'mcp',
+    tool: 'scan',
+    ...('todoId' in event ? { todoId: event.todoId } : {}),
+    ...('sessionId' in event ? { sessionId: event.sessionId } : {}),
+    code,
+    ms: 0,
+  })
 }
 
 export function audit(home: string, entry: AuditEntry): void {

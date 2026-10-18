@@ -233,6 +233,10 @@ export interface AppSettings {
   usageEnabled: boolean
   /** 面板 Chat 自配 provider（null = 跟随 pi 凭据）。含 keyStored 标记但不含 key */
   customProvider?: CustomProviderConfig | null
+  /** MCP 只读模式（只读时写工具全部拒绝；读工具不受影响） */
+  mcpReadOnly?: boolean
+  /** MCP 句柄回扫开关（关闭后新绑定退化为 unbound） */
+  mcpScan?: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -240,6 +244,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProject: 'home',
   usageEnabled: false,
   customProvider: null,
+  mcpReadOnly: false,
+  mcpScan: true,
 }
 
 export const SettingsIpc = {

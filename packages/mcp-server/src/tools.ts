@@ -25,7 +25,7 @@ import {
 } from '@tick/probe-scan'
 import { normalizeClientToolId } from '@tick/session-locators'
 import type { McpRuntime } from './config'
-import { audit } from './audit'
+import { audit, auditScan } from './audit'
 import { clampText, failure, success } from './errors'
 import { logError } from './logger'
 import { readLimiter, writeLimiter } from './limits'
@@ -212,24 +212,61 @@ function normalizeToolId(raw: string): string {
   return normalizeClientToolId({ name: raw })
 }
 
-function clientInfo(server: McpServer): { name: string; version?: string } {
-  const info = server.server.getClientVersion()
-  // modern（2026-07-28）请求可能没有 initialize 会话；回退 "mcp"
-  if (!info?.name) return { name: 'mcp' }
-  return { name: info.name, ...(info.version ? { version: info.version } : {}) }
+/** 现代协议信封里的保留键（与 @modelcontextprotocol/core 一致） */
+const ENVELOPE_CLIENT_INFO = 'io.modelcontextprotocol/clientInfo'
+
+/**
+ * 工具 handler 的 ctx 只用到 mcpReq.envelope。
+ * v2 SDK 在 stdio 的 modern 路径不会 seed `getClientVersion()`（那是 HTTP 入口做的），
+ * 所以现代请求必须从每个请求的 `_meta` 信封里读 clientInfo，否则 tool_id 永远退化成 "mcp"。
+ */
+interface ToolContext {
+  mcpReq?: { envelope?: Record<string, unknown> }
 }
 
-function resolveToolId(server: McpServer, explicit?: string): string {
+function envelopeClientInfo(ctx: ToolContext | undefined): { name: string; version?: string } | undefined {
+  const raw = ctx?.mcpReq?.envelope?.[ENVELOPE_CLIENT_INFO]
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const record = raw as { name?: unknown; version?: unknown }
+  if (typeof record.name !== 'string' || !record.name) return undefined
+  return {
+    name: record.name,
+    ...(typeof record.version === 'string' && record.version ? { version: record.version } : {}),
+  }
+}
+
+function clientInfo(server: McpServer, ctx?: ToolContext): { name: string; version?: string } {
+  // 1) modern：每请求 _meta 信封（最权威，且不依赖 initialize）
+  const fromEnvelope = envelopeClientInfo(ctx)
+  if (fromEnvelope) return fromEnvelope
+  // 2) legacy：initialize 的 clientInfo
+  const info = server.server.getClientVersion()
+  if (info?.name) return { name: info.name, ...(info.version ? { version: info.version } : {}) }
+  // 3) 两者都没有：不猜
+  return { name: 'mcp' }
+}
+
+function resolveToolId(server: McpServer, explicit?: string, ctx?: ToolContext): string {
   if (explicit) return normalizeToolId(explicit)
   const fromEnv = (process.env.TICK_AGENT_TOOL ?? '').trim()
   if (fromEnv) return normalizeToolId(fromEnv)
-  return normalizeClientToolId(clientInfo(server))
+  return normalizeClientToolId(clientInfo(server, ctx))
 }
 
-function clientInfoLabel(server: McpServer): string | undefined {
-  const info = clientInfo(server)
+function clientInfoLabel(server: McpServer, ctx?: ToolContext): string | undefined {
+  const info = clientInfo(server, ctx)
   if (!info.name) return undefined
   return info.version ? `${info.name} ${info.version}` : info.name
+}
+
+/** probe 的 clientInfo 是对象（spec §4.1）；没有真实客户端身份时省略，不写 "mcp" */
+function probeClientInfo(
+  server: McpServer,
+  ctx?: ToolContext,
+): { name: string; version?: string } | undefined {
+  const info = clientInfo(server, ctx)
+  if (info.name === 'mcp' && !info.version) return undefined
+  return info
 }
 
 /** sessionId 是不透明字符串，但要能安全写进 JSON / 文件名比较：不许路径分隔符与 NUL */
@@ -261,8 +298,8 @@ function bindingOf(todo: Todo, preferredSessionId?: string, preferredToolId?: st
 function findReusableProbe(home: string, todoId: string): ProbeRecord | undefined {
   const now = Date.now()
   return listProbes(home)
-    .filter((p) => p.todoId === todoId && p.expiresAt > now)
-    .sort((a, b) => b.at - a.at)[0]
+    .filter((p) => p.todoId === todoId && Date.parse(p.expiresAt) > now)
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0]
 }
 
 function writeProbeSafely(home: string, probe: ProbeRecord): boolean {
@@ -285,7 +322,12 @@ function ensureScans(state: ServerState, runtime: McpRuntime): void {
   state.lastScanScheduledAt = now
   // 定时器 unref：绝不为等 30s 的扫描把进程挂住（spec §4.5）
   scheduleScans(
-    () => scanProbes({ home: runtime.home, store: runtime.store }),
+    () =>
+      scanProbes({
+        home: runtime.home,
+        store: runtime.store,
+        onEvent: (event) => auditScan(runtime.home, event),
+      }),
     [3_000, 10_000, 30_000],
   )
 }
@@ -399,9 +441,9 @@ export function registerTools(server: McpServer, runtime: McpRuntime, state: Ser
       outputSchema: createOutputSchema,
       annotations: WRITE_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, ctx) => {
       const startedAt = Date.now()
-      const toolId = resolveToolId(server, args.tool_id)
+      const toolId = resolveToolId(server, args.tool_id, ctx)
       const ids: { todoId?: string; sessionId?: string } = {}
       try {
         const flags = runtime.flags()
@@ -492,7 +534,7 @@ export function registerTools(server: McpServer, runtime: McpRuntime, state: Ser
         if (explicitSessionId && shouldBind) ids.sessionId = explicitSessionId
         const at = Date.now()
         const originAt = new Date(at).toISOString()
-        const infoLabel = clientInfoLabel(server)
+        const infoLabel = clientInfoLabel(server, ctx)
 
         // 幂等顺序由 todo-core 保证：request_id → 会话 → 标题窗口
         const result = runtime.store.create({
@@ -529,16 +571,17 @@ export function registerTools(server: McpServer, runtime: McpRuntime, state: Ser
             binding = { state: 'unbound', reason: 'scan_disabled' }
           } else {
             handle = newHandle()
+            const probeClient = probeClientInfo(server, ctx)
             const probe: ProbeRecord = {
               version: 1,
               handle,
               purpose: 'create',
               todoId: todo.id,
               toolId,
-              ...(infoLabel ? { clientInfo: infoLabel } : {}),
+              ...(probeClient ? { clientInfo: probeClient } : {}),
               ...(args.cwd ? { cwd: args.cwd } : {}),
-              at,
-              expiresAt: at + PROBE_TTL_MS,
+              at: new Date(at).toISOString(),
+              expiresAt: new Date(at + PROBE_TTL_MS).toISOString(),
               pid: process.pid,
               ...(args.request_id ? { requestId: args.request_id } : {}),
             }
@@ -599,9 +642,9 @@ export function registerTools(server: McpServer, runtime: McpRuntime, state: Ser
       outputSchema: listOutputSchema,
       annotations: READ_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, ctx) => {
       const startedAt = Date.now()
-      const toolId = resolveToolId(server)
+      const toolId = resolveToolId(server, undefined, ctx)
       try {
         const limited = readLimiter.take()
         if (!limited.ok) {
@@ -633,7 +676,7 @@ export function registerTools(server: McpServer, runtime: McpRuntime, state: Ser
         // 还在等回扫的线索没有 binding（pending 不落盘），但 UI 语义上应显示 pending
         const pending = new Set(
           listProbes(runtime.home)
-            .filter((probe) => probe.expiresAt > Date.now())
+            .filter((probe) => Date.parse(probe.expiresAt) > Date.now())
             .map((probe) => probe.todoId),
         )
         const page = filtered.slice(0, limit).map((todo) => projectTodo(todo, pending))
@@ -666,9 +709,9 @@ export function registerTools(server: McpServer, runtime: McpRuntime, state: Ser
       outputSchema: linkOutputSchema,
       annotations: WRITE_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, ctx) => {
       const startedAt = Date.now()
-      const toolId = resolveToolId(server, args.tool_id)
+      const toolId = resolveToolId(server, args.tool_id, ctx)
       const ids: { todoId?: string; sessionId?: string } = {}
       try {
         const flags = runtime.flags()
@@ -851,17 +894,17 @@ export function registerTools(server: McpServer, runtime: McpRuntime, state: Ser
         if (!handle) {
           handle = newHandle()
           const probeAt = Date.now()
-          const infoLabel = clientInfoLabel(server)
+          const probeClient = probeClientInfo(server, ctx)
           const probe: ProbeRecord = {
             version: 1,
             handle,
             purpose: 'link',
             todoId: todo.id,
             toolId,
-            ...(infoLabel ? { clientInfo: infoLabel } : {}),
+            ...(probeClient ? { clientInfo: probeClient } : {}),
             ...(args.cwd ? { cwd: args.cwd } : {}),
-            at: probeAt,
-            expiresAt: probeAt + PROBE_TTL_MS,
+            at: new Date(probeAt).toISOString(),
+            expiresAt: new Date(probeAt + PROBE_TTL_MS).toISOString(),
             pid: process.pid,
             ...(args.request_id ? { requestId: args.request_id } : {}),
           }

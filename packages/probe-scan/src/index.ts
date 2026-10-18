@@ -14,7 +14,7 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { newCliSessionId } from '@tick/shared'
 import { TodoStoreCore, resolveTickHome, type TodoStoreCore as Store } from '@tick/todo-core'
-import { allLocators, locatorForTool, type SessionLocator } from '@tick/session-locators'
+import { allLocators, locatorForTool, matchLocator, type SessionLocator } from '@tick/session-locators'
 
 // ---------- handle ----------
 
@@ -51,10 +51,12 @@ export interface ProbeRecord {
   todoId: string
   /** 来源客户端标识（展示/回退扫描用；真正绑定用命中的 locator.toolId） */
   toolId: string
-  clientInfo?: string
+  /** 客户端自报身份（spec §4.1；modern 从 _meta 信封读，legacy 从 initialize 读） */
+  clientInfo?: { name: string; version?: string }
   cwd?: string
-  at: number
-  expiresAt: number
+  /** ISO 8601 UTC 带毫秒（spec §1.4） */
+  at: string
+  expiresAt: string
   pid: number
   requestId?: string
 }
@@ -95,7 +97,10 @@ export function deleteProbe(handle: string, home = resolveTickHome()): void {
   }
 }
 
-export function listProbes(home = resolveTickHome()): ProbeRecord[] {
+export function listProbes(
+  home = resolveTickHome(),
+  onCorrupt?: (file: string) => void,
+): ProbeRecord[] {
   const dir = probeDir(home)
   let names: string[]
   try {
@@ -115,16 +120,28 @@ export function listProbes(home = resolveTickHome()): ProbeRecord[] {
         HANDLE_RE.test(raw.handle) &&
         typeof raw.todoId === 'string' &&
         (raw.purpose === 'create' || raw.purpose === 'link') &&
-        typeof raw.at === 'number' &&
-        typeof raw.expiresAt === 'number'
+        typeof raw.at === 'string' &&
+        Number.isFinite(Date.parse(raw.at)) &&
+        typeof raw.expiresAt === 'string' &&
+        Number.isFinite(Date.parse(raw.expiresAt)) &&
+        (raw.clientInfo === undefined ||
+          (typeof raw.clientInfo === 'object' &&
+            raw.clientInfo !== null &&
+            typeof (raw.clientInfo as { name?: unknown }).name === 'string'))
       ) {
         out.push(raw as ProbeRecord)
       } else {
         fs.rmSync(file, { force: true }) // 损坏的 probe 是可再生的 cache
+        try {
+          onCorrupt?.(file)
+        } catch {
+          /* 审计失败不影响扫描 */
+        }
       }
     } catch {
       try {
         fs.rmSync(file, { force: true })
+        onCorrupt?.(file)
       } catch {
         /* 忽略 */
       }
@@ -134,6 +151,12 @@ export function listProbes(home = resolveTickHome()): ProbeRecord[] {
 }
 
 // ---------- 扫描 ----------
+
+export type ScanEvent =
+  | { type: 'hit'; handle: string; todoId: string; toolId: string; sessionId: string }
+  | { type: 'conflict'; handle: string; todoId: string; toolId: string; sessionId: string; conflictTodoId: string }
+  | { type: 'expired'; handle: string; todoId: string }
+  | { type: 'probe_corrupt'; file: string }
 
 export interface ScanOptions {
   home?: string
@@ -149,6 +172,8 @@ export interface ScanOptions {
   maxFileBytes?: number
   /** 时间窗：probe.at 之前多少毫秒的文件也算（默认 10s） */
   beforeMs?: number
+  /** 审计/可观测性回调；抛错不影响扫描 */
+  onEvent?: (event: ScanEvent) => void
 }
 
 export interface ScanHit {
@@ -213,15 +238,21 @@ function fileContains(file: string, needle: Buffer, maxBytes: number): boolean {
   }
 }
 
-/** 递归收集候选文件（跳过 symlink / 超大文件；按 mtime 窗口过滤） */
+/**
+ * 递归收集候选文件（跳过 symlink / 超大文件；按 mtime 窗口过滤），按 mtime 倒序截断。
+ *
+ * 为什么先全收再排序：会话根下可能有几百个历史文件，按目录序取前 200 个会把刚写入的
+ * 新文件漏掉（最需要命中的恰恰是最新的）。这里用 HARD_CAP 兜住内存/时间，再取最新 N 个。
+ */
 function collectFiles(
   root: string,
   window: { from: number; to: number },
   opts: { maxFiles: number; maxBytes: number; deadline: number },
 ): string[] {
-  const files: string[] = []
+  const HARD_CAP = Math.max(opts.maxFiles * 10, 2_000)
+  const found: { file: string; mtime: number }[] = []
   const walk = (dir: string): void => {
-    if (files.length >= opts.maxFiles || Date.now() > opts.deadline) return
+    if (found.length >= HARD_CAP || Date.now() > opts.deadline) return
     let names: string[]
     try {
       names = fs.readdirSync(dir)
@@ -229,7 +260,7 @@ function collectFiles(
       return
     }
     for (const name of names) {
-      if (files.length >= opts.maxFiles || Date.now() > opts.deadline) return
+      if (found.length >= HARD_CAP || Date.now() > opts.deadline) return
       if (name === 'node_modules' || name === '.git') continue
       const p = path.join(dir, name)
       let st: fs.Stats
@@ -246,11 +277,12 @@ function collectFiles(
       if (!st.isFile()) continue
       if (st.size === 0 || st.size > opts.maxBytes) continue
       if (st.mtimeMs < window.from || st.mtimeMs > window.to) continue
-      files.push(p)
+      found.push({ file: p, mtime: st.mtimeMs })
     }
   }
   walk(root)
-  return files
+  found.sort((a, b) => b.mtime - a.mtime)
+  return found.slice(0, opts.maxFiles).map((entry) => entry.file)
 }
 
 /**
@@ -267,22 +299,32 @@ export async function scanProbes(options: ScanOptions = {}): Promise<ScanResult>
   const deadline = now + budgetMs
   const locators = options.locators ?? allLocators()
   const result: ScanResult = { scanned: 0, hits: [], conflicts: [], expired: 0 }
+  const emit = (event: ScanEvent): void => {
+    try {
+      options.onEvent?.(event)
+    } catch {
+      /* 审计失败不影响绑定 */
+    }
+  }
 
-  for (const probe of listProbes(home)) {
-    if (probe.expiresAt <= now) {
+  for (const probe of listProbes(home, (file) => emit({ type: 'probe_corrupt', file }))) {
+    const expiresAt = Date.parse(probe.expiresAt)
+    if (expiresAt <= now) {
       deleteProbe(probe.handle, home)
       result.expired++
+      emit({ type: 'expired', handle: probe.handle, todoId: probe.todoId })
       continue
     }
     if (Date.now() > deadline) break
 
     // 已知 toolId 且装了 locator → 只扫它：避免为了找一条线索去翻别的工具的全部会话
-    // （隐私边界）。只有 toolId 未知/无 locator 时才回退到全部认证 locator。
+    // （隐私边界）。toolId 未知时才用 clientInfo.name 匹配；仍匹配不到才扫全部认证 locator。
     const primary = locatorForTool(probe.toolId)
-    const candidates = primary ? [primary] : locators
+    const matched = primary ?? (probe.clientInfo ? matchLocator(probe.clientInfo, process.env) : undefined)
+    const candidates = matched ? [matched] : locators
     const needle = Buffer.from(probe.handle, 'utf8')
-    const from = probe.at - (options.beforeMs ?? DEFAULT_BEFORE_MS)
-    const to = Math.min(now + 5_000, probe.expiresAt)
+    const from = Date.parse(probe.at) - (options.beforeMs ?? DEFAULT_BEFORE_MS)
+    const to = Math.min(now + 5_000, expiresAt)
     let resolved = false
 
     for (const locator of candidates) {
@@ -315,21 +357,25 @@ export async function scanProbes(options: ScanOptions = {}): Promise<ScanResult>
             continue
           }
           if (bound.ok) {
-            result.hits.push({
+            const hit: ScanHit = {
               handle: probe.handle,
               todoId: probe.todoId,
               toolId: locator.toolId,
               sessionId: located.sessionId,
               filePath: located.filePath,
-            })
+            }
+            result.hits.push(hit)
+            emit({ type: 'hit', handle: hit.handle, todoId: hit.todoId, toolId: hit.toolId, sessionId: hit.sessionId })
           } else if (bound.conflictTodo) {
-            result.conflicts.push({
+            const conflict = {
               handle: probe.handle,
               todoId: probe.todoId,
               toolId: locator.toolId,
               sessionId: located.sessionId,
               conflictTodoId: bound.conflictTodo.id,
-            })
+            }
+            result.conflicts.push(conflict)
+            emit({ type: 'conflict', ...conflict })
           }
           deleteProbe(probe.handle, home)
           resolved = true

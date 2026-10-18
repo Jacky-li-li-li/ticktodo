@@ -7,6 +7,7 @@
  */
 
 import { McpServer, ResourceNotFoundError, ResourceTemplate } from '@modelcontextprotocol/server'
+import { listProbes } from '@tick/probe-scan'
 import type { Todo } from '@tick/shared'
 import type { McpRuntime } from './config'
 
@@ -20,7 +21,7 @@ function openTodos(todos: Todo[]): Todo[] {
     )
 }
 
-function indexProjection(todo: Todo): Record<string, unknown> {
+function indexProjection(todo: Todo, pendingTodoIds: ReadonlySet<string>): Record<string, unknown> {
   const states = todo.bindings.map((b) => b.state ?? 'verified')
   return {
     todoId: todo.id,
@@ -32,7 +33,7 @@ function indexProjection(todo: Todo): Record<string, unknown> {
     sessionCount: todo.bindings.length,
     bindingState: states.includes('verified')
       ? 'verified'
-      : states.includes('pending')
+      : states.includes('pending') || pendingTodoIds.has(todo.id)
         ? 'pending'
         : 'none',
     ...(todo.primarySessionId ? { primarySessionId: todo.primarySessionId } : {}),
@@ -50,11 +51,11 @@ function detailProjection(todo: Todo): Record<string, unknown> {
     updatedAt: todo.updatedAt,
     origin: todo.source === 'mcp' ? 'mcp' : 'local',
     ...(todo.mcpOrigin ? { mcpOrigin: todo.mcpOrigin } : {}),
+    // 资源不暴露本地文件路径（spec §5：只有会话索引，不含正文/路径）
     sessions: todo.bindings.map((binding) => ({
       toolId: binding.toolId,
       sessionId: binding.sessionId,
       state: binding.state ?? 'verified',
-      ...(binding.filePath ? { filePath: binding.filePath } : {}),
     })),
   }
 }
@@ -70,7 +71,12 @@ export function registerResources(server: McpServer, runtime: McpRuntime): void 
       cacheHint: CACHE_HINT,
     },
     async (uri) => {
-      const todos = openTodos(runtime.store.list()).map(indexProjection)
+      const pending = new Set(
+        listProbes(runtime.home)
+          .filter((probe) => Date.parse(probe.expiresAt) > Date.now())
+          .map((probe) => probe.todoId),
+      )
+      const todos = openTodos(runtime.store.list()).map((todo) => indexProjection(todo, pending))
       return {
         contents: [
           {
