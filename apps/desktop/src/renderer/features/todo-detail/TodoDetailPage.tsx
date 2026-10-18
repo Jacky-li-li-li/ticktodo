@@ -18,7 +18,6 @@ import { relTime } from '../list/relTime'
 import { ToolIcon } from '../icons/ToolIcon'
 import { PlusIcon } from '../icons/PlusIcon'
 import { ImportIcon } from '../icons/ImportIcon'
-import { EnterIcon } from '../icons/EnterIcon'
 import { TrashIcon } from '../icons/TrashIcon'
 
 const cwdLabel = (p?: string): string => (p ? p.replace(/^\/Users\/[^/]+/, '~') : '')
@@ -372,8 +371,12 @@ export function TodoDetailPage({
 
       {/* 解绑二次确认：滑块拖到左端松手后弹出 */}
       {pendingUnbind && (
-        <div className="sheet-backdrop" onClick={() => setPendingUnbind(null)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-backdrop" onPointerDown={() => setPendingUnbind(null)}>
+          <div
+            className="sheet"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <div className="sheet-head">
               <span className="sheet-title">解绑这个会话？</span>
               <button
@@ -417,9 +420,9 @@ function usageText(usage: SessionUsage): string {
 }
 
 /**
- * SessionCard — 会话卡片 + 右侧 1/8 宽滑块槽。
+ * SessionCard — 会话卡片 + 右侧 1/8 宽方块滑块。
  *
- * 交互：单击滑块 = 接着做（拇指右滑回弹 + 卡片轻推）；按住向左拖到卡片最左侧 1/8
+ * 交互：单击方块 = 接着做（方块右滑回弹 + 卡片轻推）；按住方块向左拖到卡片最左侧 1/8
  * 区（拖动时显示终点与引导线），松手 → 二次确认弹窗 → 解绑。
  * 会话文件不在本机时禁止「接着做」，但仍可拖拽解绑。
  */
@@ -437,7 +440,7 @@ function SessionCard({
   onUnbindRequest: (session: TodoSessionView) => void
 }): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement>(null)
-  const railRef = useRef<HTMLDivElement>(null)
+  const blockRef = useRef<HTMLButtonElement>(null)
   const startRef = useRef<{ x: number; y: number; maxLeft: number } | null>(null)
   const lockedRef = useRef(false)
   const movedRef = useRef(false)
@@ -460,12 +463,12 @@ function SessionCard({
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>): void => {
     if (e.button !== 0) return
     const card = cardRef.current
-    const rail = railRef.current
-    if (!card || !rail) return
+    const block = blockRef.current
+    if (!card || !block) return
     const rect = card.getBoundingClientRect()
-    const railRect = rail.getBoundingClientRect()
-    // 终点 = 卡片最左侧 1/8 区的中心；maxLeft 是拇指从当前位置能拖到终点的位移
-    const startCenter = railRect.left + railRect.width / 2
+    const blockRect = block.getBoundingClientRect()
+    // 终点 = 卡片最左侧 1/8 区的中心；maxLeft 是 1/8 方块从当前位置能拖到终点的位移
+    const startCenter = blockRect.left + blockRect.width / 2
     const targetCenter = rect.left + rect.width / 8
     startRef.current = { x: e.clientX, y: e.clientY, maxLeft: targetCenter - startCenter }
     lockedRef.current = false
@@ -526,58 +529,68 @@ function SessionCard({
       ref={cardRef}
       className={`detail-session ${dragging ? 'is-dragging' : ''} ${pulse ? 'is-resuming' : ''}`}
     >
-      <div className="detail-session-tool" data-tool={s.toolId} aria-label={s.toolId}>
-        <ToolIcon toolId={s.toolId} size={16} />
-      </div>
-      <div className="detail-session-main">
-        {/* 第一行 = 该会话的第一条 user 消息（会话是什么事） */}
-        <div className="detail-session-title" title={firstText}>
-          {firstText}
+      <div className="detail-session-body">
+        <div className="detail-session-tool" data-tool={s.toolId} aria-label={s.toolId}>
+          <ToolIcon toolId={s.toolId} size={16} />
         </div>
-        {lastText && lastText !== firstText && (
-          <div className="detail-session-last" title={lastText}>
-            <span className="detail-session-last-label">上次</span>
-            {lastText}
+        <div className="detail-session-main">
+          {/* 第一行 = 该会话的第一条 user 消息（会话是什么事） */}
+          <div className="detail-session-title" title={firstText}>
+            {firstText}
           </div>
-        )}
-        <div className="detail-session-top">
-          <span>{s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'}</span>
-          {s.state === 'pending' && <span className="session-tag">待发送</span>}
-          {s.missing && <span className="session-tag">已不在本机</span>}
-          {usageEnabled && usage && <span className="session-usage">{usageText(usage)}</span>}
+          {lastText && lastText !== firstText && (
+            <div className="detail-session-last" title={lastText}>
+              <span className="detail-session-last-label">上次</span>
+              {lastText}
+            </div>
+          )}
+          <div className="detail-session-top">
+            <span>
+              {s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'}
+            </span>
+            {s.state === 'pending' && <span className="session-tag">待发送</span>}
+            {s.missing && <span className="session-tag">已不在本机</span>}
+            {usageEnabled && usage && <span className="session-usage">{usageText(usage)}</span>}
+          </div>
         </div>
       </div>
 
-      {/* 拖动时：终点区（卡片最左 1/8）+ 引导线 */}
+      {/* 拖动时：终点区（卡片最左 1/8）+ 引导线；方块滑到终点后覆盖它 */}
       {dragging && (
         <>
           <div className="detail-session-guide" aria-hidden="true" />
           <div className={`detail-session-target ${armed ? 'is-armed' : ''}`} aria-hidden="true">
             <TrashIcon size={14} />
-            <span>{armed ? '松手' : '解绑'}</span>
+            <span>解绑</span>
           </div>
         </>
       )}
 
-      {/* 右侧 1/8：滑块槽 */}
-      <div className="detail-session-rail" ref={railRef}>
-        <button
-          type="button"
-          className={`detail-session-thumb ${dragging ? 'is-dragging' : ''} ${
-            armed ? 'is-armed' : ''
-          } ${s.missing ? 'is-disabled' : ''}`}
-          style={dragging ? { transform: `translateX(${dx}px)` } : undefined}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={(e) => endDrag(e, false)}
-          onPointerCancel={(e) => endDrag(e, true)}
-          onClick={onClick}
-          aria-label={`接着做；按住向左拖到底可解绑「${firstText}」`}
-          title={s.missing ? '会话文件已不在本机；拖到左端解绑' : '点击接着做 · 按住向左拖到底解绑'}
-        >
-          <EnterIcon />
-        </button>
-      </div>
+      {/* 右侧 1/8：方块本身就是滑块（单击接着做 / 按住左拖解绑） */}
+      <button
+        ref={blockRef}
+        type="button"
+        className={`detail-session-block ${dragging ? 'is-dragging' : ''} ${
+          armed ? 'is-armed' : ''
+        } ${s.missing ? 'is-disabled' : ''}`}
+        style={dragging ? { transform: `translateX(${dx}px)` } : undefined}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => endDrag(e, false)}
+        onPointerCancel={(e) => endDrag(e, true)}
+        onClick={onClick}
+        aria-label={`接着做；按住向左拖到底可解绑「${firstText}」`}
+        title={s.missing ? '会话文件已不在本机；拖到左端解绑' : '点击接着做 · 按住向左拖到底解绑'}
+      >
+        {dragging ? (
+          <>
+            <TrashIcon size={14} />
+            <span className="detail-session-block-label">{armed ? '松手' : '解绑'}</span>
+          </>
+        ) : (
+          <span className="detail-session-grip" aria-hidden="true" />
+        )}
+      </button>
     </div>
   )
 }

@@ -3049,12 +3049,20 @@ a:focus-visible {
 .detail-session {
   position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 10px 12px;
+  align-items: stretch;
+  padding: 0;
   border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: var(--r-row);
   background: rgba(0, 0, 0, 0.035);
+}
+
+.detail-session-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 8px 10px 12px;
 }
 
 .detail-session-tool {
@@ -3177,29 +3185,24 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 
-/* 右侧 1/8：会话滑块槽 */
-.detail-session-rail {
+/* 右侧 1/8：方块本身就是滑块 */
+.detail-session-block {
   position: relative;
+  z-index: 3;
   flex: 0 0 12.5%;
   align-self: stretch;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-}
-
-.detail-session-thumb {
-  width: 24px;
-  height: 24px;
+  gap: 3px;
   padding: 0;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 50%;
-  background: linear-gradient(180deg, #2e3138 0%, #1a1c21 100%);
-  color: #f3f5f9;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.2),
-    0 3px 8px rgba(0, 0, 0, 0.2);
+  border: none;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0 var(--r-row) var(--r-row) 0;
+  background: linear-gradient(180deg, #3a3e46 0%, #1b1d22 60%, #101114 100%);
+  color: rgba(243, 245, 249, 0.9);
+  box-shadow: inset 1px 0 1px rgba(255, 255, 255, 0.14);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -3210,33 +3213,43 @@ a:focus-visible {
     color 120ms ease;
 }
 
-.detail-session-thumb svg {
-  display: block;
-  transition: transform 120ms ease;
+/* 空闲时的「抓手」：两道竖线，提示这一块可以拖 */
+.detail-session-grip {
+  width: 7px;
+  height: 16px;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-right: 1.5px solid rgba(255, 255, 255, 0.3);
 }
 
-.detail-session-thumb:hover {
-  background: linear-gradient(180deg, #383c44 0%, #202329 100%);
+.detail-session-block:hover {
+  background: linear-gradient(180deg, #464a53 0%, #23262c 60%, #15161a 100%);
 }
 
-.detail-session-thumb.is-disabled {
+.detail-session-block.is-disabled {
   opacity: 0.55;
   cursor: grab;
 }
 
-.detail-session-thumb.is-dragging {
+.detail-session-block.is-dragging {
+  border-radius: var(--r-row);
   cursor: grabbing;
   transition: none;
 }
 
-.detail-session-thumb.is-dragging svg {
-  transform: scaleX(-1);
-}
-
-.detail-session-thumb.is-armed {
-  border-color: rgba(255, 120, 120, 0.6);
+.detail-session-block.is-armed {
+  border-left-color: rgba(255, 120, 120, 0.5);
   background: linear-gradient(180deg, #5a1f1f 0%, #2c0d0d 100%);
   color: #ffd9d9;
+}
+
+.detail-session-block svg {
+  display: block;
+}
+
+.detail-session-block-label {
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 /* 拖动时的终点区（最左 1/8）与引导线 */
@@ -3281,19 +3294,18 @@ a:focus-visible {
   color: var(--danger-text);
 }
 
-/* 拖动中：弱化卡片正文，让终点和滑块更清楚 */
-.detail-session.is-dragging .detail-session-main,
-.detail-session.is-dragging .detail-session-tool {
+/* 拖动中：弱化卡片正文，让终点和方块更清楚 */
+.detail-session.is-dragging .detail-session-body {
   opacity: 0.35;
 }
 
-/* 单击接着做：拇指右滑 + 卡片轻推 */
+/* 单击接着做：方块右滑 + 卡片轻推 */
 .detail-session.is-resuming {
   animation: detail-session-nudge 220ms ease;
 }
 
-.detail-session.is-resuming .detail-session-thumb {
-  transform: translateX(5px);
+.detail-session.is-resuming .detail-session-block {
+  transform: translateX(3px);
 }
 
 @keyframes detail-session-nudge {
