@@ -3138,3 +3138,8 @@ a:focus-visible {
   top: auto;
   bottom: 16px;
 }
+
+/* 返回键与放大后的标题做光学对齐：按钮热区不变，字形中心上移约 2px */
+.detail-topbar .topbar-back {
+  padding-bottom: 4px;
+}
