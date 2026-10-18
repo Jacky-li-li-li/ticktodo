@@ -2798,27 +2798,48 @@ a:focus-visible {
   padding-top: 2px;
 }
 
-.detail-head .check {
+/* 标题前状态灯：进行中 = 绿色呼吸灯；已归档 = 静态灰点（这里不再放归档勾选） */
+.detail-status {
   flex-shrink: 0;
-  width: 17px;
-  height: 17px;
-  margin-top: 3px;
-  padding: 0;
-  border: 1.5px solid rgba(0, 0, 0, 0.3);
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
   border-radius: 50%;
-  background: transparent;
-  display: grid;
-  place-items: center;
+  background: #34c759;
+  box-shadow:
+    0 0 0 3px rgba(52, 199, 89, 0.16),
+    0 0 8px rgba(52, 199, 89, 0.55);
+  animation: detail-status-breathe 2.4s ease-in-out infinite;
 }
 
-.detail-head .check:not(:empty) {
-  border-radius: var(--r-check);
-  background: var(--success);
-  border-color: var(--success);
+.detail-status.done {
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: none;
+  animation: none;
 }
 
-.detail-head .check svg {
-  display: block;
+@keyframes detail-status-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+    box-shadow:
+      0 0 0 2px rgba(52, 199, 89, 0.1),
+      0 0 6px rgba(52, 199, 89, 0.4);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+    box-shadow:
+      0 0 0 4px rgba(52, 199, 89, 0.18),
+      0 0 10px rgba(52, 199, 89, 0.65);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-status {
+    animation: none;
+  }
 }
 
 .detail-heading {
@@ -3053,4 +3074,10 @@ a:focus-visible {
   font-size: 9px;
   line-height: 1.4;
   color: var(--t-weak);
+}
+
+/* 详情页没有捕获行：toast 改浮在面板底部，避免盖住标题与元信息 */
+.detail-page ~ .toast {
+  top: auto;
+  bottom: 16px;
 }

@@ -17,12 +17,6 @@ import type { SessionUsage } from '@tick/ai-core'
 import { relTime } from '../list/relTime'
 import { ToolIcon } from '../icons/ToolIcon'
 
-const Check = (): React.JSX.Element => (
-  <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-    <path d="M1.5 4.8L3.6 7L7.5 2.2" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
 const cwdLabel = (p?: string): string => (p ? p.replace(/^\/Users\/[^/]+/, '~') : '')
 
 export function TodoDetailPage({
@@ -170,13 +164,8 @@ export function TodoDetailPage({
 
       <div className="content detail-content">
         <div className="detail-head">
-          <button
-            className="check"
-            onClick={() => onSetStatus(done ? 'open' : 'done')}
-            aria-label={done ? `恢复「${todo.title}」` : `归档「${todo.title}」`}
-          >
-            {done && <Check />}
-          </button>
+          {/* 标题前不放入口勾选：进行中 = 绿色呼吸灯，已归档 = 静态灰点（归档/恢复在「其他」里） */}
+          <span className={`detail-status ${done ? 'done' : ''}`} aria-hidden="true" />
           <div className="detail-heading">
             {editing ? (
               <input
