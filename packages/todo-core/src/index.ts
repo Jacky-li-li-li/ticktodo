@@ -145,7 +145,11 @@ function releaseLock(lockPath: string, token: string): void {
   }
 }
 
+/** 同一进程内同一文件只备份一次：list 会被 UI 高频调用，重复 backup 会刷出一堆副本 */
+const corruptBackupDone = new Set<string>()
+
 function backupCorrupt(file: string): string | undefined {
+  if (corruptBackupDone.has(file)) return undefined
   try {
     const backup = `${file}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`
     fs.copyFileSync(file, backup)
@@ -154,6 +158,7 @@ function backupCorrupt(file: string): string | undefined {
     } catch {
       /* 忽略 */
     }
+    corruptBackupDone.add(file)
     return backup
   } catch {
     return undefined
@@ -168,6 +173,7 @@ function readTodosFile(file: string, policy: { backup: boolean; onCorrupt: Corru
     if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as TodosFile).todos)) {
       throw new Error('结构非法（缺少 todos 数组）')
     }
+    corruptBackupDone.delete(file)
     return { version: 1, todos: (parsed as TodosFile).todos }
   } catch (e) {
     const backup = policy.backup ? backupCorrupt(file) : undefined

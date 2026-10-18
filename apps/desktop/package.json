@@ -7,9 +7,10 @@
     "dev": "unset ELECTRON_RUN_AS_NODE && vite",
     "build": "node -e \"require('fs').rmSync('dist-electron',{recursive:true,force:true})\" && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "dist": "pnpm run build:mcp && npm run build && electron-builder --mac",
-    "dist:dir": "pnpm run build:mcp && npm run build && electron-builder --mac dir",
-    "build:mcp": "pnpm --filter @tick/mcp-server build"
+    "dist": "pnpm run build:mcp && pnpm run build:ext && npm run build && electron-builder --mac",
+    "dist:dir": "pnpm run build:mcp && pnpm run build:ext && npm run build && electron-builder --mac dir",
+    "build:mcp": "pnpm --filter @tick/mcp-server build",
+    "build:ext": "pnpm --filter @tick/tick-extension build"
   },
   "build": {
     "appId": "com.ticktodo.panel",
@@ -57,6 +58,10 @@
       {
         "from": "build/tick-mcp.sh",
         "to": "mcp/tick-mcp.sh"
+      },
+      {
+        "from": "../../packages/tick-extension/dist/index.js",
+        "to": "tick-extension/index.js"
       }
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}",

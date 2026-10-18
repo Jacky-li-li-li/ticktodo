@@ -5,6 +5,7 @@
  * 只做白名单字段合并，避免 renderer/旧版本写入未知字段把文件搞坏。
  */
 
+import fs from 'node:fs'
 import type { AppSettings, CustomProviderConfig, DefaultProjectSetting, LaunchDeliverSetting } from '@tick/shared'
 import { DEFAULT_SETTINGS } from '@tick/shared'
 import { atomicWriteJson, readJson } from './storage'
@@ -43,7 +44,10 @@ export class SettingsStore {
   private settings: AppSettings
 
   constructor(private file: string) {
-    this.settings = normalize(readJson<SettingsFile>(file)?.settings)
+    const raw = readJson<SettingsFile>(file)
+    // settings.json 损坏：先备份再按默认值继续（data/ 层的统一承诺）
+    if (raw === undefined && fs.existsSync(file)) backupCorruptSettings(file)
+    this.settings = normalize(raw?.settings)
   }
 
   get(): AppSettings {
@@ -67,6 +71,20 @@ export class SettingsStore {
 
   private save(): void {
     atomicWriteJson(this.file, { version: 1, settings: this.settings } satisfies SettingsFile)
+  }
+}
+
+function backupCorruptSettings(file: string): void {
+  try {
+    const backup = `${file}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`
+    fs.copyFileSync(file, backup)
+    try {
+      fs.chmodSync(backup, 0o600)
+    } catch {
+      /* 忽略 */
+    }
+  } catch {
+    /* 备份失败不阻塞启动 */
   }
 }
 
