@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ticktodo — AI 会话的索引层</title>
-<meta name="description" content="Tick：一个 macOS 置顶 Todo 工作台。线索是索引，AI 会话是被索引的对象。本地优先。">
+<meta name="description" content="Ticktodo：一个 macOS 置顶 Todo 工作台。线索是索引，AI 会话是被索引的对象。本地优先。">
 <meta name="color-scheme" content="light dark">
 <link rel="canonical" href="https://ticktodo.cc/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://ticktodo.cc/">
 <meta property="og:title" content="Ticktodo — AI 会话的索引层">
-<meta property="og:description" content="Tick：一个 macOS 置顶 Todo 工作台。线索是索引，AI 会话是被索引的对象。本地优先。">
+<meta property="og:description" content="Ticktodo：一个 macOS 置顶 Todo 工作台。线索是索引，AI 会话是被索引的对象。本地优先。">
 <meta property="og:image" content="https://ticktodo.cc/mascot.png">
 <meta name="twitter:card" content="summary">
 <link rel="icon" type="image/png" href="icon.png">
@@ -113,7 +113,7 @@
 <body>
 <div class="wrap">
   <nav>
-    <a class="brand" href="#top"><img src="icon.png" alt="">Tick</a>
+    <a class="brand" href="#top"><img src="icon.png" alt="">Ticktodo</a>
     <div class="nav-r">
       <a href="#what" data-i18n="nav_what">它是什么</a>
       <a href="#features" data-i18n="nav_feat">能做什么</a>
@@ -123,7 +123,7 @@
   </nav>
 
   <header class="hero" id="top">
-    <img class="mascot" src="mascot.png" alt="Tick 吉祥物：一颗别着图钉的云朵豆" width="240" height="240">
+    <img class="mascot" src="mascot.png" alt="Ticktodo 吉祥物：一颗别着图钉的云朵豆" width="240" height="240">
     <div class="eyebrow"><span class="dot"></span><span data-i18n="eyebrow">macOS · 本地优先 · 为 AI 会话而生</span></div>
     <h1 data-i18n="h1">AI 会话的索引层</h1>
     <p class="sub" data-i18n="sub">一个置顶在桌面一角的 Todo 工作台。<span class="nb">每条线索都能绑定一个 agent 会话——</span><span class="nb">线索是索引，会话是被索引的对象。</span></p>
@@ -176,7 +176,7 @@
       </div>
       <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v4"/><rect x="5" y="7" width="14" height="11" rx="4"/><circle cx="9.5" cy="12.5" r=".6"/><circle cx="14.5" cy="12.5" r=".6"/><path d="M9 21h6"/></svg></div>
-        <h3 data-i18n="f5t">agent 自己记 Todo</h3><p data-i18n="f5d">装上 tick 扩展后，agent 可以直接调用 <code>create_todo</code>，把待办写回 Tick。</p>
+        <h3 data-i18n="f5t">agent 自己记 Todo</h3><p data-i18n="f5d">装上 tick 扩展后，agent 可以直接调用 <code>create_todo</code>，把待办写回 Ticktodo。</p>
       </div>
       <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h9v7H8l-4 3z"/><path d="M13 9h7v7l-3-2h-4"/></svg></div>
@@ -191,7 +191,7 @@
     <p class="label" data-i18n="l_how">怎么用</p>
     <h2 data-i18n="h_how">三步，开始用线索管理会话。</h2>
     <div class="grid g3 steps">
-      <div class="card step"><h3 data-i18n="s1t">安装并常驻托盘</h3><p data-i18n="s1d">下载 macOS 版或用终端命令安装。Tick 会待在菜单栏，点一下就弹出面板。</p></div>
+      <div class="card step"><h3 data-i18n="s1t">安装并常驻托盘</h3><p data-i18n="s1d">下载 macOS 版或用终端命令安装。Ticktodo 会待在菜单栏，点一下就弹出面板。</p></div>
       <div class="card step"><h3 data-i18n="s2t">记下一条线索</h3><p data-i18n="s2d">在面板里写下 Todo，或者让装了 tick 扩展的 agent 直接替你 <code>create_todo</code>。</p></div>
       <div class="card step"><h3 data-i18n="s3t">投递并绑定会话</h3><p data-i18n="s3d">为这条 Todo 选好 cwd，一键投递到 pi。会话绑定在线索上，下次从这里接着来。</p></div>
     </div>
@@ -200,7 +200,7 @@
 
 <section class="block closing">
   <div class="wrap">
-    <img src="icon.png" alt="Tick 图标">
+    <img src="icon.png" alt="Ticktodo 图标">
     <h2 data-i18n="h_close">把它钉在桌面一角。</h2>
     <a class="btn" href="#download-placeholder" data-download><span data-i18n="dl">下载 macOS 版</span></a>
   </div>
@@ -208,7 +208,7 @@
 
 <footer>
   <div class="wrap">
-    <span>Tick · Ticktodo</span>
+    <span>Ticktodo</span>
     <span data-i18n="foot">为 macOS 打造 · 数据只存在你的电脑上</span>
   </div>
 </footer>
@@ -235,10 +235,10 @@
     f2t:'Simple Todo CRUD', f2d:'Completing a Todo only changes its status — nothing is deleted, so you can always look back.',
     f3t:'Bind an AI session', f3d:'Every Todo can be bound to a pi session, keeping the thread and its context together.',
     f4t:'Send to pi in one click', f4d:'Pick a working directory (cwd) and send the Todo into a pi session via clipboard or launch arguments.',
-    f5t:'Agents write Todos too', f5d:'With the tick extension, an agent can call <code>create_todo</code> to add Todos back into Tick.',
+    f5t:'Agents write Todos too', f5d:'With the tick extension, an agent can call <code>create_todo</code> to add Todos back into Ticktodo.',
     f6t:'Isolated conversations', f6d:'Chats in the panel are isolated from your CLI sessions — no crossed wires.',
     l_how:'How it works', h_how:'Three steps to manage sessions by thread.',
-    s1t:'Install, live in the tray', s1d:'Download the macOS app or install from Terminal. Tick sits in the menu bar; click to open the panel.',
+    s1t:'Install, live in the tray', s1d:'Download the macOS app or install from Terminal. Ticktodo sits in the menu bar; click to open the panel.',
     s2t:'Capture a thread', s2d:'Write a Todo in the panel, or let an agent with the tick extension <code>create_todo</code> for you.',
     s3t:'Send and bind', s3d:'Choose a cwd for the Todo and send it to pi. The session stays bound to the thread, ready to resume.',
     h_close:'Pin it to your desktop.', foot:'Made for macOS · Your data stays on your computer'
