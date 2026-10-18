@@ -6,11 +6,12 @@
  *  2) 补充上下文 body（双击进入编辑；失焦/Enter 保存、Shift+Enter 换行、Esc 放弃）
  *  3) 元信息：状态灯 / 来源 / 创建更新与最近拉起（悬停标题查看）
  *  4) 主操作：会话标题行右侧图标（新建会话 / 倒入历史会话；接着做只放在每个会话行里）
- *  5) 会话列表：每条会话第一行 = 第一条 user 消息（与最后一条不同时再显示「上次」）、工具图标、时间、状态、项目名与路径，
+ *  5) 会话列表：按项目（cwd）分组，组头显示项目名与路径；每条会话第一行 = 第一条 user 消息
+ *     （与最后一条不同时再显示「上次」）、工具图标、时间与状态，
  *     以及「接着做 / 解绑」；设置开启时显示单会话用量
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Todo, TodoPatch, TodoSessionView } from '@tick/shared'
 import type { SessionUsage } from '@tick/ai-core'
 import { relTime } from '../list/relTime'
@@ -19,6 +20,32 @@ import { PlusIcon } from '../icons/PlusIcon'
 import { ImportIcon } from '../icons/ImportIcon'
 
 const cwdLabel = (p?: string): string => (p ? p.replace(/^\/Users\/[^/]+/, '~') : '')
+
+interface SessionProjectGroup {
+  cwd: string
+  name: string
+  sessions: TodoSessionView[]
+  latest: number
+}
+
+/** 会话按项目（cwd）分组：组间按最近使用倒序，组内同样倒序 */
+function groupSessionsByProject(sessions: TodoSessionView[]): SessionProjectGroup[] {
+  const map = new Map<string, TodoSessionView[]>()
+  for (const s of sessions) {
+    const key = s.cwd || '(未知项目)'
+    const list = map.get(key)
+    if (list) list.push(s)
+    else map.set(key, [s])
+  }
+  return [...map.entries()]
+    .map(([cwd, list]) => ({
+      cwd,
+      name: cwd.split('/').filter(Boolean).pop() ?? cwd,
+      sessions: [...list].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0)),
+      latest: Math.max(...list.map((s) => s.lastUsedAt ?? 0)),
+    }))
+    .sort((a, b) => b.latest - a.latest)
+}
 
 /** 悬停标题时展示的绝对时间：今年省略年份，跨年带年 */
 const absTime = (iso?: string): string => {
@@ -177,6 +204,7 @@ export function TodoDetailPage({
   }
 
   const done = todo.status === 'done'
+  const projectGroups = useMemo(() => groupSessionsByProject(sessions), [sessions])
 
   return (
     <div className="panel-inner detail-page">
@@ -313,53 +341,66 @@ export function TodoDetailPage({
               还没有绑定会话。点右上角 ＋ 新建，或倒入一条历史会话。
             </div>
           ) : (
-            <div className="detail-sessions">
-              {sessions.map((s) => {
-                const firstText = (s.firstMessage ?? s.name ?? '未命名会话').trim()
-                const lastText = s.lastMessage?.trim()
-                return (
-                <div className="detail-session" key={s.sessionId}>
-                  <div className="detail-session-tool" data-tool={s.toolId} aria-label={s.toolId}>
-                    <ToolIcon toolId={s.toolId} size={16} />
+            <div className="detail-session-groups">
+              {projectGroups.map((group) => (
+                <div className="detail-project-group" key={group.cwd}>
+                  <div className="detail-project-head" title={group.cwd}>
+                    <span className="detail-project-name">{group.name}</span>
+                    <span className="detail-project-path">{cwdLabel(group.cwd)}</span>
                   </div>
-                  <div className="detail-session-main">
-                    {/* 第一行 = 该会话的第一条 user 消息（会话是什么事） */}
-                    <div className="detail-session-title" title={firstText}>
-                      {firstText}
-                    </div>
-                    {lastText && lastText !== firstText && (
-                      <div className="detail-session-last" title={lastText}>
-                        <span className="detail-session-last-label">上次</span>
-                        {lastText}
-                      </div>
-                    )}
-                    <div className="detail-session-top">
-                      <span>{s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'}</span>
-                      {s.state === 'pending' && <span className="session-tag">待发送</span>}
-                      {s.missing && <span className="session-tag">已不在本机</span>}
-                      {usageEnabled && usages[s.sessionId] && (
-                        <span className="session-usage">{usageText(usages[s.sessionId] as SessionUsage)}</span>
-                      )}
-                    </div>
-                    {/* 项目跟会话走：不同会话可能不在同一个项目里 */}
-                    <div className="detail-session-project" title={s.filePath}>
-                      <span className="detail-session-project-name">
-                        项目 {s.cwd.split('/').filter(Boolean).pop() ?? s.cwd}
-                      </span>
-                      <span className="detail-session-project-path">{cwdLabel(s.cwd)}</span>
-                    </div>
-                  </div>
-                  <div className="detail-session-actions">
-                    <button className="mini primary" disabled={s.missing} onClick={() => void resumeSession(s)}>
-                      接着做
-                    </button>
-                    <button className="mini" onClick={() => void unbind(s)}>
-                      解绑
-                    </button>
+                  <div className="detail-sessions">
+                    {group.sessions.map((s) => {
+                      const firstText = (s.firstMessage ?? s.name ?? '未命名会话').trim()
+                      const lastText = s.lastMessage?.trim()
+                      return (
+                        <div className="detail-session" key={s.sessionId}>
+                          <div className="detail-session-tool" data-tool={s.toolId} aria-label={s.toolId}>
+                            <ToolIcon toolId={s.toolId} size={16} />
+                          </div>
+                          <div className="detail-session-main">
+                            {/* 第一行 = 该会话的第一条 user 消息（会话是什么事） */}
+                            <div className="detail-session-title" title={firstText}>
+                              {firstText}
+                            </div>
+                            {lastText && lastText !== firstText && (
+                              <div className="detail-session-last" title={lastText}>
+                                <span className="detail-session-last-label">上次</span>
+                                {lastText}
+                              </div>
+                            )}
+                            <div className="detail-session-top">
+                              <span>
+                                {s.lastUsedAt
+                                  ? relTime(new Date(s.lastUsedAt).toISOString(), new Date())
+                                  : '—'}
+                              </span>
+                              {s.state === 'pending' && <span className="session-tag">待发送</span>}
+                              {s.missing && <span className="session-tag">已不在本机</span>}
+                              {usageEnabled && usages[s.sessionId] && (
+                                <span className="session-usage">
+                                  {usageText(usages[s.sessionId] as SessionUsage)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="detail-session-actions">
+                            <button
+                              className="mini primary"
+                              disabled={s.missing}
+                              onClick={() => void resumeSession(s)}
+                            >
+                              接着做
+                            </button>
+                            <button className="mini" onClick={() => void unbind(s)}>
+                              解绑
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-                )
-              })}
+              ))}
             </div>
           )}
         </section>

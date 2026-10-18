@@ -3138,26 +3138,40 @@ a:focus-visible {
   color: var(--t-weak);
 }
 
-/* 每个会话自己的项目（不同会话可能不在同一目录） */
-.detail-session-project {
+/* 会话按项目分组：项目头 + 组内卡片列表 */
+.detail-session-groups {
   display: flex;
-  align-items: baseline;
-  gap: 5px;
-  min-width: 0;
-  font-size: 9px;
-  color: var(--t-weak);
+  flex-direction: column;
+  gap: 12px;
 }
 
-.detail-session-project-name {
+.detail-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-project-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.detail-project-name {
   flex: none;
+  font-size: 10px;
   font-weight: 600;
   color: var(--t-secondary);
   white-space: nowrap;
 }
 
-.detail-session-project-path {
+.detail-project-path {
   min-width: 0;
   overflow: hidden;
+  font-size: 9px;
+  color: var(--t-weak);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
