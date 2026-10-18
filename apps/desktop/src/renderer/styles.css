@@ -1874,33 +1874,78 @@ button.sheet-row:hover {
   border-color: rgba(10, 132, 255, 0.5);
 }
 
+/* 用哪个工具：单选列表（一行一个工具；后续接更多工具时纵向扩展，超 4 行滚动） */
 .ns-tools {
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  flex-wrap: wrap;
+  max-height: 190px;
+  overflow-y: auto;
 }
 
-.ns-tools .pill {
-  display: inline-flex;
+.ns-tools::-webkit-scrollbar {
+  width: 0;
+}
+
+.ns-tool {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   flex: none;
-  padding: 0 14px; /* §2.4 胶囊左右 14 */
-  font-size: 11px;
-  font-weight: 600;
-  color: #fff;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-row);
+  background: rgba(255, 255, 255, 0.06);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-/* 工具品牌图标：14×14，不参与拉伸，与文字垂直居中 */
-.ns-tools .pill .tool-icon {
+.ns-tool:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ns-tool.on {
+  /* §3.4 选中态：Accent 24%→10% + 亮边 #9EC5FF 50% */
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.24), rgba(10, 132, 255, 0.1));
+  border-color: rgba(158, 197, 255, 0.5);
+}
+
+/* 工具品牌图标：16×16，不参与拉伸，垂直居中 */
+.ns-tool .tool-icon {
   display: block;
   flex: none;
 }
 
-.ns-tools .pill.on {
-  /* §3.4 Hover / 高亮态：Accent 34%→16% + 亮边 #9EC5FF 50% */
-  background: linear-gradient(180deg, rgba(10, 132, 255, 0.34), rgba(10, 132, 255, 0.16));
-  border-color: rgba(158, 197, 255, 0.5);
+.ns-tool-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* 右侧单选圆点（单选语义；选中时填 Accent） */
+.ns-tool-radio {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+}
+
+.ns-tool.on .ns-tool-radio {
+  border-color: rgba(158, 197, 255, 0.9);
+}
+
+.ns-tool.on .ns-tool-radio::after {
+  content: '';
+  position: absolute;
+  inset: 2.5px;
+  border-radius: 50%;
+  background: #0a84ff;
 }
 
 .ns-project {
@@ -2064,8 +2109,7 @@ button.sheet-row:hover {
 }
 
 .pill,
-.sheet-actions .primary,
-.ns-tools .pill {
+.sheet-actions .primary {
   color: #0b1a2a;
 }
 
@@ -2079,8 +2123,31 @@ button.sheet-row:hover {
   box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5);
 }
 
-.ns-tools .pill.on {
-  border-color: rgba(10, 132, 255, 0.55);
+/* 工具单选列表（浅底黑字） */
+.ns-tool {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.07);
+}
+
+.ns-tool:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.ns-tool.on {
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.14), rgba(10, 132, 255, 0.06));
+  border-color: rgba(10, 132, 255, 0.45);
+}
+
+.ns-tool-name {
+  color: #0b1a2a;
+}
+
+.ns-tool-radio {
+  border-color: rgba(0, 0, 0, 0.22);
+}
+
+.ns-tool.on .ns-tool-radio {
+  border-color: rgba(10, 132, 255, 0.9);
 }
 
 .thread-card {

@@ -5,7 +5,7 @@
  *   ← 新建会话
  *   线索名
  *   发送给 AI 的内容（可直接改）
- *   用哪个工具（本机检测到 N 个）· 胶囊由用户自己选
+ *   用哪个工具 · 单选列表（后续接更多工具时纵向扩展）
  *   项目 · <已推导>  改
  *   [复制文案并打开 pi]  ← 底部主按钮，Spacer 压到底
  *   文案先进剪贴板，你确认后再发 —— 不自动发送
@@ -188,20 +188,27 @@ export function AiPicker({
         <div className="ns-field">
           <span className="ns-label">用哪个工具</span>
           {installedTools.length > 0 ? (
-            <div className="ns-tools">
-              {installedTools.map((t) => (
-                <button
-                  key={t.toolId}
-                  className={`pill secondary ${tool === t.toolId ? 'on' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setTool(t.toolId)
-                  }}
-                >
-                  <ToolIcon toolId={t.toolId} />
-                  {t.name}
-                </button>
-              ))}
+            <div className="ns-tools" role="radiogroup" aria-label="用哪个工具">
+              {installedTools.map((t) => {
+                const on = tool === t.toolId
+                return (
+                  <button
+                    key={t.toolId}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    className={`ns-tool ${on ? 'on' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setTool(t.toolId)
+                    }}
+                  >
+                    <ToolIcon toolId={t.toolId} size={16} />
+                    <span className="ns-tool-name">{t.name}</span>
+                    <span className="ns-tool-radio" aria-hidden="true" />
+                  </button>
+                )
+              })}
             </div>
           ) : (
             <div className="tool-card" onClick={(e) => e.stopPropagation()}>
