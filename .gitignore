@@ -6,3 +6,6 @@ out/
 .DS_Store
 .tmp/
 release
+
+# local icon WIP
+.icon-wip/
