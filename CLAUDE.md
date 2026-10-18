@@ -18,6 +18,7 @@ pnpm install                              # 首次；.npmrc 固定 node-linker=h
 pnpm dev                                  # 根脚本：先 build tick-extension，再起 Electron（vite dev 5173）
 pnpm typecheck                            # 全仓 tsc --noEmit
 pnpm selftest:prefill                     # 预填/多工具边界 selftest（esbuild 临时打包 TS 断言，不启动 Electron）
+pnpm mcp:check                            # MCP server 回归（真实 stdio 客户端；Tick 未运行时回扫/只读/限流）
 pnpm build                                # 全仓构建（desktop = tsc --noEmit + vite build）
 pnpm --filter @tick/desktop dev           # 只起桌面 app（不重建 extension）
 pnpm --filter @tick/tick-extension build  # esbuild 单文件 → packages/tick-extension/dist/index.js
@@ -62,6 +63,10 @@ packages/ai/*     三个适配器（只吐证据，不做归并/缓存/UI）
 - `@tick/ai-workbuddy`：WorkBuddy 国内版适配器（`workbuddy`），同时是**两个发行版共用的只读读取内核**：`paths.ts`（App bundle / 数据根 / cwd 编码 / jsonl 定位）、`sqlite.ts`（`workbuddy.db` 只读 + WAL 复制兜底 + schema 探测）、`transcript.ts`（jsonl 流式解析 + `<user_query>` 抽取）、`base-adapter.ts`（detect / list / discover / describe / resume / launch）、`adapter.ts`（国内版身份常量）。
 - `@tick/ai-workbuddy-ai`：WorkBuddy AI 国际版适配器（`workbuddy-ai`），只声明自己的身份常量（App bundle / bundle id / 数据根 / scheme / 已验证版本 / playground 策略），读取内核复用上一个包。两个发行版是**两个独立工具**：两个 toolId、两份缓存、互不共用配置（国内版吃 `WORKBUDDY_CONFIG_DIR`，国际版不吃）。
 - `@tick/tick-extension`：pi 扩展 `create_todo` / `list_todos`。领域逻辑只有 `src/todos-file.ts` 一份；`src/index.ts`（coding-agent `registerTool`）与 `src/durable.ts`（pi-durable `defineTool`）是两套不通用 API 的薄适配。esbuild 打包成单文件，因为 pi 用 jiti 在无 node_modules 的目录里执行它；`dist/` 不进 git，首次需 build。
+- `@tick/todo-core`：`todos.json` 的**唯一写实现**（锁/原子写/损坏备份/fail-closed/幂等/绑定冲突）。Main 的 `TodoStore` 与 pi extension 都只是它的薄适配；改锁语义只改这里。
+- `@tick/session-locators`：只读 locator（`pi` / `workbuddy` / `workbuddy-ai`），只回答「扫哪个目录、命中文件里的 sessionId 是什么」，不 import Electron。
+- `@tick/probe-scan`：MCP 句柄（`tk_`）的 probe 写入/过期/回扫；命中后写 verified 绑定。MCP server 与（P1）Tick main 共用。
+- `@tick/mcp-server`：stdio MCP server（3 个 v1 工具 + resources；`dist/tick-mcp.mjs` 单文件，打包进 app 的 `Resources/mcp/`）。
 - `@tick/ui`：玻璃材质与设计令牌的唯一来源；desktop 的 `styles.css` 只保留布局/业务 class。材质、按钮和焦点环规范见 `packages/ui/README.md`。
 - `@tick/storage`：预留空包，不要往里加逻辑。
 
@@ -91,7 +96,7 @@ packages/ai/*     三个适配器（只吐证据，不做归并/缓存/UI）
 
 ## 必须保持的不变量
 
-1. **锁文件名两边一致**：`apps/.../services/storage.ts` 与 `packages/tick-extension/src/todos-file.ts` 都用 `<todos.json>.lock`。历史上两边锁名不同导致并发 240 次写丢 117 条。
+1. **锁只有一份**：`packages/todo-core/src/index.ts` 是 `todos.json` 的唯一锁/原子写实现（`<todos.json>.lock`、`<pid>:<uuid>`、5s 陈旧锁）。Main 的 `TodoStore` 与 pi extension 都只是它的薄适配。历史上两边锁名不同导致并发 240 次写丢 117 条，不要再在别处实现第二套。
 2. **会话元数据权威源在工具侧**。新增字段先扩 `AiToolAdapter` / `SessionInfo`，不要在 Tick 里建会话镜像表。
 3. **`verify()` 必须绕缓存直读，且 `size === 0` 不算产生**。目录 mtime 粒度会造成 racy 窗口；本机有大量 0 字节僵尸会话。
 4. **pi 只能用终端拉起**：它在非 TTY 下会静默降级成 headless print。不要改回 `spawn(pi, { stdio: 'ignore' })`。argv 一律数组；终端脚本用 POSIX 单引号转义。
@@ -131,5 +136,5 @@ packages/ai/*     三个适配器（只吐证据，不做归并/缓存/UI）
 - 适配器已有三个实装：`pi`、`workbuddy`（WorkBuddy 国内版）、`workbuddy-ai`（WorkBuddy AI 国际版）。main 侧 `SessionService` / `LaunchService` / `ProjectIndexService` / `ExportService` 已收敛到 `AiToolAdapter[]` 并按 `toolId` 路由；`ProjectIndexService` 只调各 adapter 的 `discoverProjects()`（不再持有 pi 专属的 `sessionRoots()`，也删掉了文件级增量缓存）。两个 WorkBuddy 适配器通过真实数据只读冒烟：国内版 6 条有效会话（DB 10 行，4 行被软删除/云端/后台自动化过滤），国际版 4 条（其中 2 条 playground 会话 `resumable=false`）；集成断言 26/26 PASS（含未安装时静默禁用的 4 项降级断言）。
 - 新建会话语义统一为 `capabilities.newSessionMode`（`launch` / `prefill` / `none`），但**不统一 session id 生成方式**：pi 走 `launch`（Tick 预生成 UUID + `--session-id`，可 pending 绑定/verify）；默认 `deliver='prefill'`：文案写 `cache/launch/<sessionId>.prefill.json`（0600），终端脚本用 `TICK_LAUNCH_FILE`/`TICK_LAUNCH_ACK` 传给 tick-extension，扩展在 `session_start` 调 `ctx.ui.setEditorText()` 预填 pi 输入框、读后即删并写 ack；主进程等 ack（3s），失败/超时降级剪贴板并给 `notice`，**不自动发送**；勾选「直接发送」才走 argv。`ToolStatus.usable=false`（如 pi <1.3.0）必须挡住 launch/prefill 与 UI；桌面工具的版本级门控由 `newSessionAvailability()` 输出 `newSessionAvailable/newSessionReason`；新建会话页列出**本机已安装**的所有工具，不可用的行禁用并显示 reason。WorkBuddy（国内版 / 国际版）走 `prefill`（由 `openNewSessionPage()` 打开 `workbuddy[ -ai]://task?action=start&prompt=…&cwd=…`，把文案与项目预填进 GUI 新建任务页；不自动发送、不预生成/绑定 sessionId，发送后仍用「倒入历史会话」绑定）。WorkBuddy 的 task 协议是 App 内部实现、无官方公开规范（国内版 5.8.3 / 国际版 5.8.4 均实测；`taskVerifiedVersions` 未命中的新版本仍默认关闭），超长文案按 URL 长度截断并返回 `truncated`；prompt/cwd 会进入深链接 URL（可能出现在 LaunchServices/App 日志，Tick 自身不记录）。
 - `docs/prd-session-timeline.md` 的 P0-1..P0-6（最后一条 user 消息展示、跨工具时间线）**仍未落地**：`SessionInfo` 还没有归一化的 `status`/`state` 字段（时间线依赖它），`SessionDigest` 合同也尚未实现。适配器侧已具备 `lastMessage` / `resumable` / `discoverProjects`，时间线应在 core 合同扩展 + `SessionService` 上做。
-- **MCP 对外能力**：设计提案 `docs/prd-mcp.md` + 可运行 spike `scripts/mcp-spike/`（协议断言 19/19、并发 5/5、pi 1.3.0 与 Claude Code 2.1.302 真机接入；两者都走 legacy 2025-11-25，都不提供 session id）。Jacky 已定：允许 Tick 未运行时直写并由 MCP server 自回扫完成绑定、接受「只记不跳」、允许只读扫描本机会话文件做 handle 匹配、实现以官方 build-server 文档为准；认证客户端跟随项目现有工具（pi / workbuddy / workbuddy-ai），`list_todos` 默认不带 body，v1 主分发用 app 内置 shim。工具合同已完整设计（`docs/mcp-tools-spec.md`：3 个 v1 工具 + 3 个 P1 预设计、错误码、扫描算法、测试矩阵）。产品代码尚未改动。
+- **MCP 对外能力**：设计提案 `docs/prd-mcp.md` + 可运行 spike `scripts/mcp-spike/`（协议断言 19/19、并发 5/5、pi 1.3.0 与 Claude Code 2.1.302 真机接入；两者都走 legacy 2025-11-25，都不提供 session id）。Jacky 已定：允许 Tick 未运行时直写并由 MCP server 自回扫完成绑定、接受「只记不跳」、允许只读扫描本机会话文件做 handle 匹配、实现以官方 build-server 文档为准；认证客户端跟随项目现有工具（pi / workbuddy / workbuddy-ai），`list_todos` 默认不带 body，v1 主分发用 app 内置 shim。工具合同已完整设计（`docs/mcp-tools-spec.md`：3 个 v1 工具 + 3 个 P1 预设计、错误码、扫描算法、测试矩阵）。**P0 已落地**：`@tick/todo-core`（唯一写实现，Main/extension 改为薄适配）、`@tick/session-locators`、`@tick/probe-scan`、`@tick/mcp-server`；`node scripts/mcp-check.mjs` 88 PASS/0 FAIL（含 Tick 未运行时 pi/WorkBuddy 回扫、只读、限流、stdin EOF、resources）；app 内置 shim `Resources/mcp/tick-mcp.sh` + `electronFuses.runAsNode=true` 已从打包 app 实测握手。**P1 未做**：Tier 1 bridge、`get_todo`/`complete_todo`/`list_sessions`、UI「Agent 连接」与来源角标、npm/MCPB 分发。
 - 提交信息沿用中文 `feat(scope): ...` / `fix(scope): ...` 风格；代码注释保持中文并解释「为什么」而非复述「做了什么」。

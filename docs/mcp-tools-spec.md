@@ -2,13 +2,25 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| 状态 | 规范草案 v1（设计完成，待实现；与 `docs/prd-mcp.md` 配套） |
+| 状态 | 规范 v1（P0 已落地；P1 未实现；与 `docs/prd-mcp.md` 配套） |
 | 日期 | 2026-10-19 |
 | 依据 | [MCP 2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28)、[官方 Build an MCP server](https://modelcontextprotocol.io/docs/2026-07-28/develop/build-server)、`docs/prd-mcp.md`（架构/决策）、`scripts/mcp-spike/`（协议与并发实测） |
 | 范围 | Server 元信息、6 个工具（v1 上线 3 个 + P1 预设计 3 个）、resources、错误模型、幂等/去重、限流、句柄回扫、数据契约、测试矩阵 |
 | 认证客户端 | `pi` / `workbuddy` / `workbuddy-ai`（决策 7）；其他客户端协议兼容但不承诺 |
 
 > 本文是**规范性**的：实现与测试以本文为准；`docs/prd-mcp.md` 解释「为什么」。两者冲突时先改本文，再同步 PRD。
+
+### 实现状态（2026-10-19，as-built）
+
+| 项 | 状态 |
+| --- | --- |
+| `@tick/todo-core` | 已落地：`todos.json` 唯一写实现（锁/原子写/损坏备份/fail-closed/幂等/绑定冲突），Main `TodoStore` 与 pi extension 已改为薄适配 |
+| `@tick/session-locators` | 已落地：`pi` / `workbuddy` / `workbuddy-ai` 三个只读 locator（`roots()` / `readSession()` / `resumeSpec()`），复用 `@tick/ai-*` 的路径解析 |
+| `@tick/probe-scan` | 已落地：`tk_` handle、probe 读写/过期、字节级回扫、命中后写 verified 绑定；写路径 fail-closed |
+| `@tick/mcp-server` | 已落地：stdio + `@modelcontextprotocol/server@2.3.1`（默认双代协议）、3 个 v1 工具、rate limit、审计、resources、stdin EOF 最终回扫 |
+| 回归 | `node scripts/mcp-check.mjs`：**88 PASS / 0 FAIL**（含 Tick 未运行时 pi/WorkBuddy 回扫、只读、限流、stdin EOF） |
+| 打包 | `apps/desktop` extraResources 内置 `mcp/tick-mcp.sh` + `mcp/tick-mcp.mjs`，`electronFuses.runAsNode=true`；已从 `Tick.app` 实测 shim 握手成功 |
+| P1（未做） | Tier 1 bridge / `get_todo` / `complete_todo` / `list_sessions` / UI「Agent 连接」与来源角标 / npm·Registry 分发 |
 
 ---
 

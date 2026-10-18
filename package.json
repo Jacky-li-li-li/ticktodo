@@ -7,7 +7,9 @@
     "dev": "pnpm --filter @tick/tick-extension build && pnpm --filter @tick/desktop dev",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
-    "selftest:prefill": "node scripts/selftest-prefill.mjs"
+    "selftest:prefill": "node scripts/selftest-prefill.mjs",
+    "mcp:build": "pnpm --filter @tick/mcp-server build",
+    "mcp:check": "node scripts/mcp-check.mjs"
   },
   "engines": {
     "node": ">=22.19.0"

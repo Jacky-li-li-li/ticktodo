@@ -1298,3 +1298,35 @@ console.error('[tick-mcp] running on stdio')
 | `list_todos` body | 默认不带；P1 加 `get_todo` 按需取 |
 | 主分发形态 | v1 app 内置 shim；P2 评估 MCPB；npm 作为开发者通道 |
 | modern 特性 | 最小实现 + `list_todos` 的 `ttlMs`；订阅/MRTR/tasks 不进 v1 |
+
+---
+
+## 14. P0 落地记录（2026-10-19，as-built）
+
+> 设计 → 实现时最重要的变化：为了让「Tick 没开也能建 todo + 完成绑定」这条决策 1 真正成立，先把写路径抽成独立包，再让 MCP server 与 Tick 共用同一份实现。下面按包记录，详细合同仍以 `docs/mcp-tools-spec.md` 为准。
+
+### 14.1 代码结构
+
+| 包 | 职责 | 关键点 |
+| --- | --- | --- |
+| `packages/todo-core` (`@tick/todo-core`) | `todos.json` 唯一写实现 | `<todos.json>.lock` + `<pid>:<uuid>` + 5s 陈旧锁 + tmp/fsync/rename；`onCorrupt:'throw'` 供 MCP fail-closed；`create` 的幂等顺序 request_id → session → 标题窗口；`addBinding` 冲突返回而非覆盖 |
+| `packages/session-locators` (`@tick/session-locators`) | 只读会话定位 | `pi` / `workbuddy` / `workbuddy-ai`；复用 `@tick/ai-*` 的路径与 WorkBuddy 读取内核；不 import Electron |
+| `packages/probe-scan` (`@tick/probe-scan`) | 句柄回扫 | 128-bit `tk_` handle、probe 24h TTL、按 `toolId` 只扫对应 locator（隐私边界）、mtime 时间窗、字节级分块匹配、命中后写 `verified` 绑定并删 probe |
+| `packages/mcp-server` (`@tick/mcp-server`) | stdio MCP server | `@modelcontextprotocol/server@2.3.1` 默认双代；3 个 v1 工具 + resources；写/读限流；审计 `cache/mcp-audit.log`；stdin EOF 前 ≤2s 最终回扫；esbuild 单文件 `dist/tick-mcp.mjs` |
+
+### 14.2 与设计的差异 / 尚未做的
+
+- **Tier 1 bridge 未做**：P0 只有 Tier 0 直写 + 自回扫；`degraded:true, degradedReason:"bridge_unavailable"` 恒为真，属于预期，不是失败。tick 运行时的 5s 补扫、UI 来源角标、手动补绑在 P1。
+- **P1 工具未做**：`get_todo` / `complete_todo` / `list_sessions` 仍只有合同，没有注册。
+- **resources 已实现**：`tick://todos` 与模板 `tick://todos/{todoId}`；未做订阅通知。
+- **分发**：只做 app 内置 shim；npm / MCPB / Registry 均未发布（仍按 §12.3 默认）。
+- **打包验证**：`apps/desktop` 的 `extraResources` 已含 `mcp/tick-mcp.sh` + `mcp/tick-mcp.mjs`，`electronFuses.runAsNode=true`；从 `Tick.app/Contents/Resources/mcp/tick-mcp.sh` 实测 `initialize`/`tools/list` 成功。完整 dmg 签名受本机 iCloud Desktop 的 codesign 限制（见 CLAUDE.md 环境约束），未在本轮完成。
+- **审计**：`cache/mcp-audit.log`（0600、append、≤1MB 轮转）已实现，字段不含 title/body/路径。
+- **认证客户端**：实际按决策 7 收窄为 `pi` / `workbuddy` / `workbuddy-ai`；Claude Code / Codex 协议兼容但没有 locator，绑定会停在 unbound（只记 `mcpOrigin`）。
+
+### 14.3 验证
+
+- `pnpm typecheck`：全仓通过。
+- `node scripts/mcp-check.mjs`：**88 PASS / 0 FAIL**（真实 stdio 客户端；覆盖 pi/WorkBuddy 回扫、Tick 未运行、只读、限流、幂等、stdin EOF、resources）。
+- `pnpm --filter @tick/tick-extension build`：通过（`@tick/todo-core` 已被打进 extension 单文件）。
+- 打包 app 内 shim：`initialize` + `tools/list` 成功（见 14.2）。

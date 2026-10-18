@@ -47,6 +47,7 @@ fi
 pnpm install --frozen-lockfile
 pnpm -r typecheck
 pnpm --filter @tick/tick-extension build
+pnpm --filter @tick/mcp-server build
 OUT="apps/desktop/release"
 rm -rf "$OUT"
 EB_ARGS=()

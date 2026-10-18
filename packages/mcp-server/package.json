@@ -1,0 +1,26 @@
+{
+  "name": "@tick/mcp-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/tick-mcp.mjs",
+  "types": "src/index.ts",
+  "bin": { "tick-mcp": "dist/tick-mcp.mjs" },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/tick-mcp.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
+    "@tick/probe-scan": "workspace:*",
+    "@tick/session-locators": "workspace:*",
+    "@tick/shared": "workspace:*",
+    "@tick/todo-core": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}

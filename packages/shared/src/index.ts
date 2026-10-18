@@ -43,6 +43,8 @@ export interface SessionBinding {
    * 会话被删掉后仍能用它告诉用户"原始会话原来在哪"。
    */
   filePath?: string
+  /** `mcp` = 由外部 agent 经 MCP 报上来的绑定（Tick 自己拉起/绑定的不带此字段） */
+  origin?: 'mcp'
 }
 
 /** 上次用哪个工具 + 哪个目录 —— 用户意图，一体记忆（拆开会在切工具时选错） */
@@ -66,10 +68,22 @@ export interface Todo {
   /** 默认 resume 的那个（指向 bindings 中的一项） */
   primarySessionId?: CliSessionId
   lastLaunch?: LastLaunch
-  /** 来源（M2 create_todo）：panel=面板聊天里做的 / pi=CLI 会话里做的 / 缺省=手写 */
-  source?: 'panel' | 'pi'
+  /** 来源：panel=面板聊天 / pi=CLI 会话 / mcp=外部 agent 经 MCP / 缺省=手写 */
+  source?: 'panel' | 'pi' | 'mcp'
   /** 幂等键：同 key 重复提交返回既有 todo（配合 pi-durable requestId / 重复 tool call） */
   requestId?: string
+  /**
+   * 仅 MCP 来源：会话定位失败时的「来源记录」。
+   * 为什么需要：定位不到会话时不能伪造 sessionId 写 binding；但「这条线索来自哪个 agent/目录」仍是
+   * 对用户有价值的信息，且是之后人工补绑的线索。它只做展示，不参与 resume 路由。
+   */
+  mcpOrigin?: {
+    toolId: string
+    clientInfo?: string
+    cwd?: string
+    at: string
+    transcriptPath?: string
+  }
 }
 
 export interface TodoCreateInput {

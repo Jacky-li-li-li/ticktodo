@@ -7,8 +7,9 @@
     "dev": "unset ELECTRON_RUN_AS_NODE && vite",
     "build": "node -e \"require('fs').rmSync('dist-electron',{recursive:true,force:true})\" && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "dist": "npm run build && electron-builder --mac",
-    "dist:dir": "npm run build && electron-builder --mac dir"
+    "dist": "pnpm run build:mcp && npm run build && electron-builder --mac",
+    "dist:dir": "pnpm run build:mcp && npm run build && electron-builder --mac dir",
+    "build:mcp": "pnpm --filter @tick/mcp-server build"
   },
   "build": {
     "appId": "com.ticktodo.panel",
@@ -48,6 +49,14 @@
       {
         "from": "build/trayTemplate@2x.png",
         "to": "trayTemplate@2x.png"
+      },
+      {
+        "from": "../../packages/mcp-server/dist/tick-mcp.mjs",
+        "to": "mcp/tick-mcp.mjs"
+      },
+      {
+        "from": "build/tick-mcp.sh",
+        "to": "mcp/tick-mcp.sh"
       }
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}",
@@ -57,7 +66,10 @@
         "owner": "Jacky-li-li-li",
         "repo": "ticktodo"
       }
-    ]
+    ],
+    "electronFuses": {
+      "runAsNode": true
+    }
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.3.0",
@@ -69,6 +81,7 @@
     "@tick/ai-workbuddy-ai": "workspace:*",
     "@tick/shared": "workspace:*",
     "@tick/tick-extension": "workspace:*",
+    "@tick/todo-core": "workspace:*",
     "@tick/ui": "workspace:*",
     "openai": "7.19.0",
     "react-markdown": "10.1.0",

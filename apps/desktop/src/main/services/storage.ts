@@ -13,7 +13,6 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
 
 export interface TickDirs {
   root: string
@@ -78,71 +77,10 @@ export function ensureDirs(dirs: TickDirs): void {
   }
 }
 
-// ---------- 原子写 + 文件锁 ----------
-// todos.json 会被 CLI（extension，M2）与面板并发写（PRD F5）。
-// 锁 = 同目录 O_EXCL 独占文件；陈旧锁（>5s）视为持有者已死，强夺。
-//
-// ⚠️ 锁文件名必须与 packages/tick-extension/src/todos-file.ts 完全一致（`<file>.lock`）：
-// 两个运行时各写各的锁 = 没有互斥，会静默丢写（实测 240 次写丢 117 条）。
-// 锁内容 = `<pid>:<uuid>` token，release 只删自己持有的锁，避免被强夺后误删别人的锁。
-
-export function lockPathFor(file: string): string {
-  return `${file}.lock`
-}
-
-export class FileLock {
-  private file: string
-  private token = ''
-
-  constructor(file: string) {
-    this.file = file
-  }
-
-  acquire(): boolean {
-    const lock = lockPathFor(this.file)
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const token = `${process.pid}:${randomUUID()}`
-      try {
-        fs.writeFileSync(lock, token, { flag: 'wx', mode: 0o600 })
-        this.token = token
-        return true
-      } catch (e: unknown) {
-        const err = e as NodeJS.ErrnoException
-        if (err.code !== 'EEXIST') throw err
-        try {
-          // 陈旧锁检测：>5s 强夺
-          const age = Date.now() - fs.statSync(lock).mtimeMs
-          if (age > 5_000) {
-            fs.rmSync(lock, { force: true })
-            continue
-          }
-        } catch {
-          continue
-        }
-        spin(10 + attempt * 2)
-      }
-    }
-    return false
-  }
-
-  release(): void {
-    const lock = lockPathFor(this.file)
-    try {
-      // 只删自己持有的锁：被 >5s 强夺后不能再误删下一个持有者的锁
-      if (fs.readFileSync(lock, 'utf8') !== this.token) return
-      fs.rmSync(lock, { force: true })
-    } catch {
-      /* 忽略 */
-    }
-  }
-}
-
-function spin(ms: number): void {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    /* 短 busy-wait：避免 setTimer 把下一次写让给其它进程的交错窗口 */
-  }
-}
+// ---------- 原子写 ----------
+// Rust 版的 todos.json 锁已收敛到 `@tick/todo-core`（Main/extension/MCP 共用一份）。
+// 这里只保留通用 JSON 原子写，供 settings / credentials / 导出等单写者文件使用；
+// 需要互斥的新文件请用 todo-core 的锁语义或在调用方串行化，不要在这里复活第二套锁。
 
 /** 原子写 JSON： tmp 同目录 + fsync + rename（同 FS rename 原子） */
 export function atomicWriteJson(file: string, value: unknown): void {
