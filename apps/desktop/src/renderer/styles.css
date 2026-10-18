@@ -20,6 +20,16 @@
   --panel-base: rgba(18, 20, 31, 0.2); /* 用户偏好：比 UI-SPEC §3.1 的 45% 更透；设计稿值保留在规范里 */
   --board-bg: #0c0d12;
 
+  /* 金属黑按钮（用户定：按钮用金属黑，不用蓝色）——上亮下暗渐变 + 顶部高光 + 底部投影 */
+  --metal-hi: #3f434c;
+  --metal-mid: #1c1f25;
+  --metal-lo: #0a0b0e;
+  --metal-line: rgba(255, 255, 255, 0.22);
+  --metal-text: #f3f5f9;
+  --metal-text-dim: rgba(243, 245, 249, 0.6);
+  --metal-sheen: rgba(255, 255, 255, 0.36);
+  --metal-shadow: rgba(0, 0, 0, 0.34);
+
   /* 黑透明度文字层级（用户偏好：浅色玻璃 + 黑字；层级档位沿用 §2.1） */
   --t-title: rgba(0, 0, 0, 0.9);
   --t-row: rgba(0, 0, 0, 0.85);
@@ -410,7 +420,7 @@ html.using-pointer a:focus-visible {
   margin-left: auto;
   background: none;
   border: none;
-  color: var(--accent-text);
+  color: #f3f5f9;
   font-size: 11px;
   font-weight: 600;
 }
@@ -1808,7 +1818,7 @@ button.sheet-row:hover {
 .sessions-pop-footer .link {
   border: none;
   background: transparent;
-  color: var(--accent-text);
+  color: var(--t-body);
   font-size: 10px;
   font-weight: 600;
 }
@@ -1985,7 +1995,7 @@ button.sheet-row:hover {
   flex-shrink: 0;
   font-size: 10px;
   font-weight: 600;
-  color: var(--accent-text);
+  color: var(--t-secondary);
 }
 
 .ns-project-list {
@@ -2453,7 +2463,7 @@ button.sheet-row:hover {
 }
 
 .toast .undo {
-  color: var(--accent-text);
+  color: #0b1a2a;
 }
 
 /* ---------- 扩展屏：设置 / Provider / 启动兜底 ---------- */
@@ -2497,4 +2507,120 @@ button.sheet-row:hover {
 
 .session-dot.hollow {
   border-color: rgba(10, 95, 191, 0.75);
+}
+
+/* ==========================================================================
+   按钮配色：金属黑（用户定，2026-10-18）
+   --------------------------------------------------------------------------
+   替代原来的蓝色主按钮 / 蓝色选中态：主按钮与动作按钮用「上亮下暗」金属渐变
+   + 顶部高光 + 底部投影；列表选中行、筛选 chip、顶栏开关用扁平一档的金属黑。
+   只改颜色与阴影，不改尺寸、圆角、间距与布局；危险语义（删除）仍用红色文字。
+   回退方案：删除本段并还原 --metal-* 即可回到蓝色主按钮。
+   ========================================================================== */
+
+/* ---------- 主按钮：继续 / 接着做 / 复制文案并打开 pi / 设置保存 / 导出 ---------- */
+.pill.primary,
+.sheet-actions .primary,
+.thread-row .action:not(.secondary),
+.mini.primary,
+.tool-card-retry {
+  color: var(--metal-text);
+  border-color: var(--metal-line);
+  background: linear-gradient(180deg, var(--metal-hi) 0%, var(--metal-mid) 54%, var(--metal-lo) 100%);
+  box-shadow:
+    inset 0 1px 1px var(--metal-sheen),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.55),
+    0 6px 16px var(--metal-shadow);
+}
+
+.tool-card-retry {
+  border: 1px solid var(--metal-line);
+}
+
+.pill.primary:hover:not(:disabled),
+.sheet-actions .primary:hover:not(:disabled),
+.thread-row .action:hover:not(.secondary),
+.mini.primary:hover:not(:disabled),
+.tool-card-retry:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4a4e58 0%, #23262c 54%, #101115 100%);
+}
+
+.pill.primary:active:not(:disabled),
+.sheet-actions .primary:active:not(:disabled),
+.thread-row .action:active:not(.secondary),
+.mini.primary:active:not(:disabled),
+.tool-card-retry:active:not(:disabled) {
+  background: linear-gradient(180deg, #1d2026 0%, #131519 54%, #08090b 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- 选中态：工具行 / 项目行 / 筛选 chip / 顶栏开关 ---------- */
+.ns-tool.on {
+  background: linear-gradient(180deg, #3a3e46 0%, #191b20 58%, #0c0d10 100%);
+  border-color: rgba(255, 255, 255, 0.26);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.26),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.22);
+}
+
+.ns-tool.on:hover {
+  background: linear-gradient(180deg, #444852 0%, #1e2026 58%, #0f1013 100%);
+}
+
+.ns-tool.on .ns-tool-name {
+  color: var(--metal-text);
+}
+
+.ns-tool.on .ns-tool-radio {
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.ns-tool.on .ns-tool-radio::after {
+  background: #f3f5f9;
+}
+
+.project-item.current {
+  background: linear-gradient(180deg, #34373e 0%, #15171b 100%);
+}
+
+.project-item.current:hover {
+  background: linear-gradient(180deg, #3d414a 0%, #191b20 100%);
+}
+
+.project-item.current .name {
+  color: var(--metal-text);
+}
+
+.project-item.current .path {
+  color: var(--metal-text-dim);
+}
+
+.chip.on {
+  color: var(--metal-text);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, #34373e 0%, #141619 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+}
+
+.topbar-icon.is-on {
+  color: var(--metal-text);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, #3a3d45 0%, #111216 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.24);
+}
+
+.topbar-icon.is-on:hover {
+  color: #fff;
+  background: linear-gradient(180deg, #464a54 0%, #17181c 100%);
+}
+
+/* 输入框聚焦：同样去蓝色，改中性深边（键盘焦点环仍用 Accent，保留无障碍可见性） */
+.ns-prompt:focus,
+.sheet-input:focus,
+.sheet-textarea:focus,
+.provider-field .text-input:focus {
+  border-color: rgba(0, 0, 0, 0.45);
 }
