@@ -19,6 +19,18 @@ import { ToolIcon } from '../icons/ToolIcon'
 
 const cwdLabel = (p?: string): string => (p ? p.replace(/^\/Users\/[^/]+/, '~') : '')
 
+/** 悬停标题时展示的绝对时间：今年省略年份，跨年带年 */
+const absTime = (iso?: string): string => {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  const now = new Date()
+  const md = `${d.getMonth() + 1}月${d.getDate()}日`
+  const date = d.getFullYear() === now.getFullYear() ? md : `${d.getFullYear()}年 ${md}`
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return `${date} ${hm}`
+}
+
 export function TodoDetailPage({
   todo,
   onBack,
@@ -48,6 +60,7 @@ export function TodoDetailPage({
   const [title, setTitle] = useState(todo.title)
   const [body, setBody] = useState(todo.body ?? '')
   const [editing, setEditing] = useState(false)
+  const [hoverTimes, setHoverTimes] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sessions, setSessions] = useState<TodoSessionView[]>([])
@@ -110,8 +123,6 @@ export function TodoDetailPage({
   }, [usageEnabled, sessions])
 
   const primary = sessions.find((s) => s.primary) ?? sessions[0]
-  const projectPath = primary?.cwd ?? todo.lastLaunch?.projectPath
-  const projectName = projectPath?.split('/').filter(Boolean).pop()
 
   const resumeSession = async (session: TodoSessionView): Promise<void> => {
     if (session.missing) return
@@ -167,44 +178,62 @@ export function TodoDetailPage({
           {/* 标题前不放入口勾选：进行中 = 绿色呼吸灯，已归档 = 静态灰点（归档/恢复在「其他」里） */}
           <span className={`detail-status ${done ? 'done' : ''}`} aria-hidden="true" />
           <div className="detail-heading">
-            {editing ? (
-              <input
-                className="sheet-input detail-title-input"
-                value={title}
-                placeholder="标题（必填）"
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) void save()
-                  if (e.key === 'Escape') setEditing(false)
-                }}
-                autoFocus
-              />
-            ) : (
-              <h1
-                className={`detail-title ${done ? 'done' : ''}`}
-                title="双击修改标题与描述"
-                onDoubleClick={() => setEditing(true)}
-              >
-                {todo.title}
-              </h1>
-            )}
-            <div className="detail-meta">
-              {/* 进行中不再出文字（靠标题前呼吸灯表达）；已归档保留文字标记 */}
-              {done && <span className="detail-chip">已归档</span>}
-              {todo.source && (
-                <span>来源 {todo.source === 'panel' ? '面板对话' : 'CLI'}</span>
+            <div
+              className="detail-title-wrap"
+              onMouseEnter={() => setHoverTimes(true)}
+              onMouseLeave={() => setHoverTimes(false)}
+            >
+              {editing ? (
+                <input
+                  className="sheet-input detail-title-input"
+                  value={title}
+                  placeholder="标题（必填）"
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) void save()
+                    if (e.key === 'Escape') setEditing(false)
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <h1
+                  className={`detail-title ${done ? 'done' : ''}`}
+                  title="双击修改标题与描述"
+                  onDoubleClick={() => setEditing(true)}
+                >
+                  {todo.title}
+                </h1>
               )}
-              <span>创建 {relTime(todo.createdAt, new Date())}</span>
-              <span>更新 {relTime(todo.updatedAt, new Date())}</span>
-              {todo.lastLaunch?.launchedAt && (
-                <span>最近拉起 {relTime(todo.lastLaunch.launchedAt, new Date())}</span>
-              )}
-              {projectPath && (
-                <span className="detail-cwd" title={projectPath}>
-                  项目 {projectName}（{cwdLabel(projectPath)}）
-                </span>
+
+              {/* 悬停标题 → 创建 / 更新 / 最近拉起（绝对时间） */}
+              {hoverTimes && !editing && (
+                <div className="detail-times" role="tooltip">
+                  <div className="detail-times-row">
+                    <span>创建</span>
+                    <span>{absTime(todo.createdAt)}</span>
+                  </div>
+                  <div className="detail-times-row">
+                    <span>更新</span>
+                    <span>{absTime(todo.updatedAt)}</span>
+                  </div>
+                  {todo.lastLaunch?.launchedAt && (
+                    <div className="detail-times-row">
+                      <span>最近拉起</span>
+                      <span>{absTime(todo.lastLaunch.launchedAt)}</span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+
+            {(done || todo.source) && (
+              <div className="detail-meta">
+                {done && <span className="detail-chip">已归档</span>}
+                {todo.source && (
+                  <span>来源 {todo.source === 'panel' ? '面板对话' : 'CLI'}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -294,8 +323,12 @@ export function TodoDetailPage({
                       )}
                     </div>
                     <div className="detail-session-msg">{s.lastMessage ?? s.name ?? s.firstMessage ?? '—'}</div>
-                    <div className="detail-session-cwd" title={s.filePath}>
-                      {cwdLabel(s.cwd)}
+                    {/* 项目跟会话走：不同会话可能不在同一个项目里 */}
+                    <div className="detail-session-project" title={s.filePath}>
+                      <span className="detail-session-project-name">
+                        项目 {s.cwd.split('/').filter(Boolean).pop() ?? s.cwd}
+                      </span>
+                      <span className="detail-session-project-path">{cwdLabel(s.cwd)}</span>
                     </div>
                   </div>
                   <div className="detail-session-actions">

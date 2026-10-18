@@ -2887,11 +2887,50 @@ a:focus-visible {
   font-weight: 600;
 }
 
-.detail-cwd {
-  max-width: 100%;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+/* 标题悬停：创建 / 更新 / 最近拉起（绝对时间） */
+.detail-title-wrap {
+  position: relative;
+}
+
+.detail-times {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 154px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #2e3138 0%, #16181c 100%);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  animation: detail-times-in 120ms ease-out;
+}
+
+.detail-times-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 9.5px;
+  color: rgba(243, 245, 249, 0.92);
+}
+
+.detail-times-row span:first-child {
+  color: rgba(243, 245, 249, 0.55);
+}
+
+@keyframes detail-times-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .detail-body {
@@ -3042,10 +3081,26 @@ a:focus-visible {
   -webkit-box-orient: vertical;
 }
 
-.detail-session-cwd {
-  overflow: hidden;
+/* 每个会话自己的项目（不同会话可能不在同一目录） */
+.detail-session-project {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
   font-size: 9px;
   color: var(--t-weak);
+}
+
+.detail-session-project-name {
+  flex: none;
+  font-weight: 600;
+  color: var(--t-secondary);
+  white-space: nowrap;
+}
+
+.detail-session-project-path {
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
