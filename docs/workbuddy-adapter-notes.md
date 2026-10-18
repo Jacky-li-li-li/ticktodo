@@ -184,7 +184,7 @@
 - **`workbuddy-ai://chat/00000000-0000-0000-0000-000000000000`（不存在）**：被分发，渲染进程路由切到 `/conversation/<该id>`（activePanelView=conversation）。一次观测约 1 秒后回落 `/`（首页）；另一次在被下一条 home 覆盖前停留了数秒。结论：行为不稳定（空会话页或回落首页），`open` 恒 exit 0，无法得知成败，故调用前必须由 DB 校验 id 存在。
 - **`chat/<真实id>`：未验证**（无会话）。
 - **`workbuddy-ai://` 未被忽略**（此前静态检索无字面量的担忧排除）。System Events 的进程名为 `Electron`，与国内版重名，区分须用 bundle id。
-- 结论：`home` 通过；真实会话定位未验证 → “回到会话”对国际版**仍默认关闭**，待有会话时补测。
+- 结论：`home` 通过；真实会话定位未验证 → “回到会话”对国际版仍默认关闭（已被 §10.9 取代）。
 - 另：app 内以 `WORKBUDDY_CONFIG_DIR` 含 `workbuddy-ai` 判断 overseas/cn（仅逆向字符串）。
 
 ### 10.6 官网文档（workbuddy.ai，只读）
@@ -225,5 +225,28 @@
 |---|---|---|
 | 热启动，先停在 home / 先切到 Finder | 5 | 4 次稳定定位 `/conversation/<id>`（前台 `com.workbuddy.workbuddy-ai`）；1 次（首次）约 100ms 后 `resetRouterToHome` 回落首页 |
 | 冷启动（先退出应用） | 2 | 2 次均：主进程 “stored until WindowManager ready”→分发→路由短暂到会话页→`resetRouterToHome` 回落首页 |
-- 结论：热启动大多可定位，冷启动稳定失败，`open` 恒 exit 0 → **国际版“回到会话”仍默认关闭**，置灰并显示会话信息；不降级到 `workbuddy://`。国内版冷/热/最小化均成功，此为差异。
+- 结论：热启动大多可定位，冷启动稳定失败，`open` 恒 exit 0 → **（已被 §10.9 取代：对普通会话冷/热/最小化全部成功，改为默认开启；playground 会话仍置灰）** 不降级到 `workbuddy://`。
 - 仍待查：冷启动回落首页的原因（疑似渲染端会话列表未就绪时被重置）、热启动偶发回落的触发条件、最小化、已删除 id。
+
+### 10.9 第三轮实测：普通会话深链接矩阵（2026-10-18 18:49–19:25 UTC+8，5.8.4，屏幕已解锁 IOConsoleLocked=No）
+
+> 只读 DB（复制 db/-wal/-shm 到临时目录再查）+ 深链接/退出重启应用；未发消息、未改配置。**不含会话标题/id/截图路径**。此时库里有 2 个会话：1 个 `is_playground=1`，1 个 `is_playground=0`（普通，`status=completed`，`deleted_at=NULL`，`transport=local`，`source_mode=mode=craft`）。渲染日志 `conversationsLength=1`（应用侧只列出普通会话，playground 不计入）。
+
+**方法**：每次先退出应用；再预置“上次会话”为另一个会话（冷启动一次后退出），避免把“应用自动恢复上次会话”误判成深链接成功（对照：纯 `open -a` 不发链接 3/3 恢复到预置会话，不是目标）。判据：渲染日志 `cloudProjection` 路由最终为 `/conversation/<目标>` 且观察 ≥10 秒内无再变化；`[DeepLink]` 主进程日志；`lsappinfo` 前台 bundle id。
+
+| 策略 | 次数 | 成功 | 说明 |
+|---|---|---|---|
+| 基线：冷启动 `open` 一次 | 6（另有 6 次因中途锁屏/前台被占而在解锁后重跑，以重跑为准） | 6/6 | 约 0.2s 内先恢复预置会话、随即切到目标，稳定 |
+| A：`open` 后 2s 补发 | 3 | 3/3 | 补发为幂等，无副作用 |
+| A：4s 补发 | 3 | 3/3 | 同上 |
+| A：8s 补发 | 3 | 3/3 | 同上 |
+| B：`open -a` 等 `Registered: deeplink` 再 `open` | 3 | 3/3 | 就绪信号约 0.5s 内出现 |
+| B：固定等 3s | 3 | 3/3 | |
+| B：固定等 6s | 3 | 3/3 | |
+| C：监测 `resetRouterToHome` 并补发 | 3 | 3/3 | 12s 内**回落 0 次**，无需补发 |
+| 热启动（应用已在首页运行后 `open`） | 3 | 3/3 | |
+| 最小化后 `open` | 1 | 1/1 | |
+
+全部：`resetRouterToHome=0`，前台 bundle id `com.workbuddy.workbuddy-ai`。**结论**：对普通会话，单次 `open` 即稳定，补发/延迟均无增益；§10.8 的冷启动回落很可能与“目标是 playground 会话”有关（假设，未对 playground 复测以免改动状态；仅另测到对 playground 会话的 `open` 也能切到其路由，但与恢复行为混淆，不作结论）。
+
+**普通会话字段核对**（不含正文/标题/id）：`status=completed`；`deleted_at=NULL`（未软删除；索引条件里的 `-1` 是云端会话用法，本地会话未见）；`is_playground=0`；jsonl 中 `isMeta`/`isCompacted` 字段均不出现（缺省），出现 `function_call`/`function_call_result`（各 12，result 的 `status=completed`），assistant `message` 4 条 `status=completed`。`active/error/软删除/isMeta=true` 仍未验证。

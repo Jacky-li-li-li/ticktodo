@@ -52,7 +52,7 @@
 - P0-2 **进展时间线**：todo 详情按会话最后事件时间倒序，跨工具混排，每项显示：工具图标、最后事件时间、状态、最后一条 user 消息（折叠）、操作（回到会话）。
 - P0-3 **会话状态归一**：`active / idle / done / missing`（定义见 §4；完成状态读各工具会话记录自带字段）。
 - P0-7 **第二个接入工具：WorkBuddy 适配器**（桌面形态，需求见 §9；依据与风险见 §10）。
-- P0-8 **第三个接入工具：WorkBuddy AI（国际版）适配器**（独立于国内版，需求见 §9B；依据见 §10 表 B）。已在有真实会话的机器上补测（2026-10-18 18:05–18:10 UTC+8，5.8.4）：数据格式与国内版同内核、包装细节有差异；深链接热启动基本可定位（5 次中 4 次），**冷启动 2/2 回落首页**，故“回到会话”**仍默认关闭**（§9B.6、§9B.9）。
+- P0-8 **第三个接入工具：WorkBuddy AI（国际版）适配器**（独立于国内版，需求见 §9B；依据见 §10 表 B）。已在有真实会话的机器上补测（2026-10-18 18:05–18:10 UTC+8，5.8.4）：数据格式与国内版同内核、包装细节有差异；首轮深链接对**唯一的 playground 会话**冷启动 2/2 回落首页；第三轮（19:00 前后，对**普通会话** is_playground=0）冷启动单次 `open` **6/6** 稳定定位、热启动/最小化也成功，故“回到会话”**改为默认开启**（§9B.6、§9B.9）。
 - P0-4 **一键回到会话**：pi 沿用现有 resume；desktop 工具（WorkBuddy：`workbuddy://`；WorkBuddy AI：`workbuddy-ai://`，两者独立）用**深链接**拉起应用并定位到会话（§9.6）；`missing`（文件不在）时置灰并显示原路径。
 - P0-5 **缓存与增量**：按 `(filePath, mtime, size)` 缓存，仅变化时重新读取，不阻塞详情打开。
 - P0-6 **todo 列表行**：显示最近一个会话的最后一条 user 消息（单行截断，替代当前纯 `lastMessage`）。
@@ -257,7 +257,7 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 目标：与 §9 并列的**独立** `AiToolAdapter`（desktop 形态），输出 `SessionLastUserEvidence`。对象：WorkBuddy AI（workbuddy.ai，`/Applications/WorkBuddy AI.app`，bundle `com.workbuddy.workbuddy-ai`，5.8.4，scheme `workbuddy-ai`，数据目录 `~/.workbuddy-ai`）。实测记录见 `docs/workbuddy-adapter-notes.md` §10。
 
-> ✅ **实测边界（2026-10-18 18:05–18:10 UTC+8，5.8.4，本机已有 1 个真实本地会话，屏幕已解锁）**：首轮（无会话）的“全部未验证”已被本轮实测替换——jsonl 位置与格式、`status`、`deleted_at`、最后 user 消息规则已在 1 个样本上核对；**样本量仅 1 个会话（仅 1 轮问答，无工具调用、无 isMeta/isCompacted 消息），异常分支仍标未验证**。深链接真实会话定位：热启动多数成功、冷启动失败（见 §9B.6）。国内版结论只作对照，不当作国际版事实；适配器按“探测到即用、探测不到则降级”实现。
+> ✅ **实测边界（2026-10-18 18:05–18:10 UTC+8，5.8.4，本机已有 1 个真实本地会话，屏幕已解锁）**：首轮（无会话）的“全部未验证”已被本轮实测替换——jsonl 位置与格式、`status`、`deleted_at`、最后 user 消息规则已在 1 个样本上核对；**样本量仅 1 个会话（仅 1 轮问答，无工具调用、无 isMeta/isCompacted 消息），异常分支仍标未验证**。深链接真实会话定位：首轮（会话为 playground）冷启动失败；第三轮（普通会话）冷/热/最小化全部成功（见 §9B.6、notes §10.9）。国内版结论只作对照，不当作国际版事实；适配器按“探测到即用、探测不到则降级”实现。
 
 ### 9B.1 数据源
 
@@ -288,12 +288,12 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 - 命令：`open "workbuddy-ai://chat/<encodeURIComponent(id)>"`、`open "workbuddy-ai://home"`（`home` 已实测可用；`chat/<id>` 路由已实测会分发到会话页，但**真实会话尚未实测**，见下）。
 - 命令：`open "workbuddy-ai://chat/<encodeURIComponent(id)>"`、`open "workbuddy-ai://home"`。`open` 恒 exit 0，成败只能靠日志/路由判断。
-- 实测（2026-10-18 18:05–18:10 UTC+8，5.8.4，屏幕已解锁；详见 notes §10.8）：对**真实会话 id**，判据为渲染进程日志 `[DeepLink]`、`cloudProjection` 路由差异（`pathname`/`activePanelView`/`activeConvId`）、`resetRouterToHome`，以及 `lsappinfo` 前台 bundle id。
-  - **热启动**（应用已运行，先停在 `home`，或先切到 Finder 再调用）：5 次中 **4 次**路由稳定落到 `/conversation/<id>`（`activePanelView=conversation`，前台 bundle id `com.workbuddy.workbuddy-ai`，未再回落）；**1 次**（本轮首次调用）先切到会话页、约 100ms 内被 `resetRouterToHome` 回落首页。
-  - **冷启动**（应用未运行）：**2 次均失败**——主进程先 “stored until WindowManager ready”，窗口就绪后分发，路由短暂切到 `/conversation/<id>`，随即 `resetRouterToHome` 回落首页（最终停在首页）。
+- 实测一（18:05–18:10 UTC+8，notes §10.8；当时库里**唯一**会话是 `is_playground=1`）：热启动 4/5，冷启动 0/2（路由短暂切到会话页后被 `resetRouterToHome` 回落首页）。
+- 实测二（18:49–19:25 UTC+8，5.8.4，屏幕已解锁，notes §10.9；目标为 **`is_playground=0` 的普通会话**）：每次先冷启动，并预置“上次会话”为另一个会话以区分“应用自动恢复”与“深链接定位”（对照：不发链接时应用恢复到预置会话 3/3）。判据：渲染日志 `cloudProjection` 路由最终落到 `/conversation/<目标 id>` 且 10 秒内稳定、`[DeepLink]` 日志、`lsappinfo` 前台 bundle id 为 `com.workbuddy.workbuddy-ai`。
+  - 基线（冷启动，`open` 一次）**6/6**；A) `open` 后 2/4/8 秒补发同链接各 **3/3**；B) `open -a` 后等 `Registered: deeplink` 信号再发 **3/3**、固定等 3 秒 **3/3**、6 秒 **3/3**；C) 监测 `resetRouterToHome` 回落并补发：**回落 0 次**（3/3 直接成功，无需补发）；热启动 **3/3**；最小化后 **1/1**。全部 `resetRouterToHome=0`，前台均为目标应用。冷启动深链接约 0.2–0.5s 内即落到目标会话（主进程暂存，窗口就绪后分发），无需延迟或重发。
+  - 与实测一的差异归因（**假设，未单独证伪**）：playground 会话会被回落首页；普通会话不会。因此“回到会话”仅对非 playground 会话开启。
   - System Events 窗口标题恒为 `WorkBuddy AI`，**不随会话变化，不能用作定位判据**；其进程名 `Electron` 与国内版重名，区分须用 bundle id。
-  - 与国内版差异：国内版冷/热/最小化均定位成功；国际版冷启动稳定回落、热启动偶发回落。
-- **开关策略：国际版“回到会话”仍默认关闭**（冷启动 0/2、热启动 4/5，不满足“定位成功”）。关闭时按钮置灰并显示会话信息；**不降级为调用 `workbuddy://`**（会拉起国内版，属错误工具）。可作为后续选项：仅在应用已运行时开启，或拉起后延迟再发一次深链接——均需另行实测，本期不做。
+- **开关策略：国际版“回到会话”默认开启**（普通会话：冷启动 6/6、热启动 3/3、最小化 1/1）。策略：对 `is_playground!=1` 且 `deleted_at IS NULL` 的会话，**单次** `open "workbuddy-ai://chat/<encodeURIComponent(id)>"`，冷/热/最小化通用，**不需要**延迟、就绪信号或补发。可选加固（非必需）：不增加补发；若日后版本出现回落，再引入“等待 `Registered: deeplink` 后再发”。**降级**：失败时应用停在首页——不报错、不重试；`is_playground=1` 的会话按钮置灰（已知回落首页）。**不降级为调用 `workbuddy://`**（会拉起国内版，属错误工具）。样本限制：同一台机器、5.8.4、1 个普通会话；换版本需复测。
 - 若后续开启：调用前先校验 id 存在于 DB 且未软删除；不存在 id 不调用（不存在 id 的路由也会切到空会话页或回落首页）。
 
 ### 9B.7 版本探测与降级
@@ -360,16 +360,16 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 | --- | --- | --- | --- |
 | B1 | 应用与 bundle id：`WorkBuddy AI.app`、`com.workbuddy.workbuddy-ai`，版本 5.8.4，可执行名 `Electron` | 仅本机逆向+实测（非公开契约） | Info.plist 只读；版本号与 [I] Changelog 5.8.4 条目一致 |
 | B2 | URL scheme `workbuddy-ai` 已注册 | 仅本机逆向+实测（非公开契约） | Info.plist 声明（实测）；官方 [I] 无 deeplink 说明 |
-| B3 | 深链接 `workbuddy-ai://home` / `chat/<id>` 的拉起与定位 | 仅本机逆向+实测（非公开契约）；真实会话定位**不稳定** | 2026-10-18 实测：scheme 未被忽略；`home` 稳定；真实会话 `chat/<id>`：热启动 4/5 定位成功、1/5 回落首页，**冷启动 2/2 回落首页**；窗口标题不随会话变化；官方 [I] 无 deeplink 说明。结论：“回到会话”国际版默认关闭 |
+| B3 | 深链接 `workbuddy-ai://home` / `chat/<id>` 的拉起与定位 | 仅本机逆向+实测（非公开契约）；普通会话定位稳定（playground 会话回落首页） | 2026-10-18 实测：scheme 未被忽略；`home` 稳定；首轮（会话为 playground）热启动 4/5、冷启动 0/2；第三轮（**普通会话**）冷启动单次 `open` 6/6、补发/就绪信号策略各 3/3、热启动 3/3、最小化 1/1，无回落；窗口标题不随会话变化；官方 [I] 无 deeplink 说明。结论：国际版“回到会话”对普通会话默认开启，playground 会话置灰 |
 | B4 | 数据目录 `~/.workbuddy-ai` 与 `workbuddy.db`（WAL 模式） | 仅本机逆向+实测（非公开契约） | 目录与库存在；有会话后实测为 WAL，**immutable=1 读不到 -wal 内的新会话（0 行）**；官方 [I] 无存储说明 |
 | B5 | `sessions` 表结构（40 列，核心列与国内版一致，含 `status` 默认 `Pending`、`deleted_at`、`transport`、`unread`） | 仅本机逆向+实测（非公开契约） | 只读 `PRAGMA table_info` + 迁移脚本；官方无 |
-| B6 | 实际 `status` 取值 / `deleted_at` 语义 | 仅本机逆向+实测（非公开契约）；`active/error`、软删除**未验证** | 1 个样本：`status=completed`、未删除 `deleted_at=NULL`；官方无 |
-| B7 | 消息流 `projects/<cwd>/<id>.jsonl` 及 type/role、`user_query` 包装、`startsNewUserRequest` | 仅本机逆向+实测（非公开契约）；`isMeta`/`isCompacted` **未验证** | 1 个样本：路径、`type=message`/`role=user`、`<user_query>`、`startsNewUserRequest=true` 与国内版一致；无外层 `<system-reminder>`（差异）；`isMeta`/`isCompacted` 未出现 |
+| B6 | 实际 `status` 取值 / `deleted_at` 语义 | 仅本机逆向+实测（非公开契约）；`active/error`、软删除**未验证** | 2 个样本（1 playground + 1 普通）：均 `status=completed`、未删除 `deleted_at=NULL`；普通会话 `is_playground=0`；官方无 |
+| B7 | 消息流 `projects/<cwd>/<id>.jsonl` 及 type/role、`user_query` 包装、`startsNewUserRequest` | 仅本机逆向+实测（非公开契约）；普通会话 jsonl 中 `isMeta`/`isCompacted` 字段**均不出现**（=缺省，含 12 次工具调用的会话也无），为 true 的情形仍**未验证** | 1 个样本：路径、`type=message`/`role=user`、`<user_query>`、`startsNewUserRequest=true` 与国内版一致；无外层 `<system-reminder>`（差异）；`isMeta`/`isCompacted` 未出现 |
 | B8 | 完成判定（`status` + jsonl 末尾） | 仅本机逆向+实测（非公开契约）；单样本 | 1 个样本：`status=completed` 且末尾 `message/assistant/status=completed`，二者一致；进行中/出错未验证 |
 | B9 | 根目录环境变量 `WORKBUDDY_CONFIG_DIR`（app 内部据其是否含 `workbuddy-ai` 判断版本） | 仅本机逆向+实测（仅 app.asar 字符串，行为未验证） | 第三方 [F] 对国际版无佐证 |
 | B10 | 官方文档 | 官方仅提及功能无规范（仅产品用法） | [I] Changelog 5.8.4 提到“scheduled task … result navigation”，**无 deeplink/scheme、存储格式、hooks 说明**；hooks 对国际版无任何依据，本期不依赖 |
 
-**等级统计（表 B，共 10 项）**：官方文档明确 **0**；官方仅提及功能无规范 **1**（B10，且仅为产品用法）；第三方实现佐证 **0**；仅本机逆向+实测 **9**（B1–B9；其中 B3 深链接定位不稳定，B6/B7/B8 仅 1 个样本，异常分支未验证）；未验证 **0**（残余未验证子项见 §9B.9）。
+**等级统计（表 B，共 10 项）**：官方文档明确 **0**；官方仅提及功能无规范 **1**（B10，且仅为产品用法）；第三方实现佐证 **0**；仅本机逆向+实测 **9**（B1–B9；其中 B3 深链接对普通会话稳定、单机单样本，B6/B7/B8 仅 1 个样本，异常分支未验证）；未验证 **0**（残余未验证子项见 §9B.9）。
 
 表 B 的等级不计入表 A 的统计，两表独立。
 
