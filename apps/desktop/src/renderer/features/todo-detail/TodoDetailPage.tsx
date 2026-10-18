@@ -5,7 +5,7 @@
  *  1) 顶栏标题（双击只编辑标题；Enter/失焦保存、Esc 放弃）
  *  2) 补充上下文 body（双击进入编辑；失焦/Enter 保存、Shift+Enter 换行、Esc 放弃）
  *  3) 元信息：状态灯 / 来源 / 创建更新与最近拉起（悬停标题查看）
- *  4) 主操作：新建会话 / 认领历史会话（接着做只放在每个会话行里）
+ *  4) 主操作：会话标题行右侧图标（新建会话 / 倒入历史会话；接着做只放在每个会话行里）
  *  5) 会话列表：每条会话的工具、时间、状态、最后一条 user 消息、项目名与路径，
  *     以及「接着做 / 解绑」；设置开启时显示单会话用量
  */
@@ -15,6 +15,8 @@ import type { Todo, TodoPatch, TodoSessionView } from '@tick/shared'
 import type { SessionUsage } from '@tick/ai-core'
 import { relTime } from '../list/relTime'
 import { ToolIcon } from '../icons/ToolIcon'
+import { PlusIcon } from '../icons/PlusIcon'
+import { ImportIcon } from '../icons/ImportIcon'
 
 const cwdLabel = (p?: string): string => (p ? p.replace(/^\/Users\/[^/]+/, '~') : '')
 
@@ -49,7 +51,7 @@ export function TodoDetailPage({
   onSessionsChanged: () => void
   onToast: (text: string) => void
   usageEnabled: boolean
-  /** 浮层（如认领历史会话）挂在本页内，保证 sheet 的绝对定位仍相对面板 */
+  /** 浮层（如倒入历史会话）挂在本页内，保证 sheet 的绝对定位仍相对面板 */
   children?: React.ReactNode
 }): React.JSX.Element {
   const [title, setTitle] = useState(todo.title)
@@ -280,31 +282,35 @@ export function TodoDetailPage({
           </button>
         )}
 
-        {/* 主操作 */}
-        {/* 主操作：接着做只放在每个会话行里，这里只新建/认领 */}
-        <div className="detail-actions-primary">
-          <button
-            className={`pill ${sessions.length > 0 ? 'secondary' : 'primary'}`}
-            onClick={onNewSession}
-          >
-            新建会话
-          </button>
-          <button className="pill secondary" onClick={onClaimSessions}>
-            认领
-          </button>
-        </div>
-
         {/* 会话 */}
         <section className="detail-section">
           <div className="detail-section-head">
             <span className="detail-section-title">
               会话<span className="detail-count">{sessions.length}</span>
             </span>
+            <div className="detail-section-actions">
+              <button
+                className="detail-icon-btn"
+                onClick={onNewSession}
+                title="新建会话"
+                aria-label="新建会话"
+              >
+                <PlusIcon />
+              </button>
+              <button
+                className="detail-icon-btn"
+                onClick={onClaimSessions}
+                title="倒入历史会话"
+                aria-label="倒入历史会话"
+              >
+                <ImportIcon />
+              </button>
+            </div>
           </div>
 
           {sessions.length === 0 ? (
             <div className="detail-empty">
-              还没有绑定会话。点上面的「新建会话」，或从历史会话里认领一条。
+              还没有绑定会话。点右上角 ＋ 新建，或倒入一条历史会话。
             </div>
           ) : (
             <div className="detail-sessions">

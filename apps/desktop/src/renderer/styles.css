@@ -2966,17 +2966,6 @@ a:focus-visible {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.detail-actions-primary {
-  display: flex;
-  gap: 8px;
-}
-
-.detail-actions-primary .pill {
-  flex: 1;
-  min-width: 0;
-  padding: 0 10px;
-}
-
 .detail-section {
   display: flex;
   flex-direction: column;
@@ -2987,6 +2976,37 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* 会话标题行右侧的图标按钮：新建会话 / 倒入历史会话 */
+.detail-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-icon-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #2e3138 0%, #1a1c21 100%);
+  color: #f3f5f9;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    0 3px 8px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.detail-icon-btn:hover {
+  background: linear-gradient(180deg, #383c44 0%, #202329 100%);
+}
+
+.detail-icon-btn svg {
+  display: block;
 }
 
 .detail-section-title {

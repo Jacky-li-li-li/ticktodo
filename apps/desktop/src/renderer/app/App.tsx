@@ -7,7 +7,7 @@
  *  - 点勾选 → 立即归档（无确认框）→ toast 3s「已归档「X」· 撤销」
  *  - 点行 / 右侧箭头图标 → 进入线索详情页（首页不再内联展开）
  *  - 双击标题 → 原地改标题（Enter/失焦保存，Esc 取消）
- *  - ⋯ 菜单：归档页 / 认领历史会话 / 导出 / 设置
+ *  - ⋯ 菜单：归档页 / 倒入历史会话 / 导出 / 设置
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
@@ -259,7 +259,7 @@ export default function App(): React.JSX.Element {
                   setMenuOpen(false)
                 }}
               >
-                认领历史会话
+                倒入历史会话
               </button>
               <button
                 className="menu-item"
@@ -322,7 +322,7 @@ export default function App(): React.JSX.Element {
                 <div className="empty-title">想到什么就丢进来</div>
                 <div className="empty-hint">一行字就够 —— 线索是索引，AI 会话是你随时可以接着做的地方</div>
                 <button className="empty-action" onClick={() => setSessionPicker({ todo: null })}>
-                  从历史会话认领一条 →
+                  从历史会话倒入一条 →
                 </button>
               </div>
             ) : open.length === 0 ? (

@@ -110,7 +110,7 @@ export function SessionPicker({
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet session-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
-          <span className="sheet-title">认领历史会话</span>
+          <span className="sheet-title">倒入历史会话</span>
           <button className="sheet-close" onClick={onClose} aria-label="关闭">
             ✕
           </button>
@@ -133,7 +133,7 @@ export function SessionPicker({
         {error && <div className="session-empty">扫描失败：{error}</div>}
         {sessions !== null && filtered.length === 0 && (
           <div className="session-empty">
-            没有可认领的会话{recentOnly ? '（试试「全部时间」）' : ''}
+            没有可倒入的会话{recentOnly ? '（试试「全部时间」）' : ''}
           </div>
         )}
 
