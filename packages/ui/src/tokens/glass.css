@@ -8,20 +8,20 @@
 
 :root {
   /* ---------- 玻璃专用 ---------- */
-  --glass-bg: rgba(255, 255, 255, 0.17);
-  --glass-bg-light: rgba(255, 255, 255, 0.17);
-  --glass-blur: 64px;
-  --glass-saturate: 1.85;
-  --glass-border: rgba(255, 255, 255, 0.28);
-  --glass-highlight: inset 0 1px 2px rgba(255, 255, 255, 0.32);
-  --glass-shadow: 0 28px 72px rgba(3, 5, 13, 0.22);
-  --glass-overlay: rgba(255, 255, 255, 0.14);
-  --glass-pill-bg: rgba(255, 255, 255, 0.32);
+  --glass-bg: rgba(255, 255, 255, 0.09);
+  --glass-bg-light: rgba(255, 255, 255, 0.09);
+  --glass-blur: 72px;
+  --glass-saturate: 2;
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.22);
+  --glass-shadow: 0 24px 64px rgba(3, 5, 13, 0.16);
+  --glass-overlay: rgba(255, 255, 255, 0.08);
+  --glass-pill-bg: rgba(255, 255, 255, 0.22);
   --glass-top-sheen: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.10) 0%,
-    rgba(255, 255, 255, 0.03) 28%,
-    rgba(255, 255, 255, 0) 58%
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 26%,
+    rgba(255, 255, 255, 0) 55%
   );
 
   /* ---------- 色板（兼容 desktop 旧名） ---------- */
