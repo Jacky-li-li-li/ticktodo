@@ -1129,7 +1129,7 @@ import { newHandle, writeProbe, scheduleScan } from '@tick/probe-scan'
 import { bridge } from './bridge'                  // 可选；连不上就降级
 
 const buildServer = () => {
-  const server = new McpServer({ name: 'tick', version: '0.2.0' })
+  const server = new McpServer({ name: 'tick', version: '0.2.1' })
 
   server.registerTool(
     'create_todo',

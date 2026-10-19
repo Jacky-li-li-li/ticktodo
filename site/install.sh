@@ -9,7 +9,7 @@
 #   scripts/install.sh                    # 同上，装最新 Release
 #   scripts/install.sh path/to/Tick.app   # 直接安装本地 .app（本地构建，不联网）
 #   scripts/install.sh path/to/Tick.dmg   # 直接安装本地 dmg（不校验）
-# 环境变量：TICK_VERSION=0.2.0 指定版本（默认取 releases/latest）
+# 环境变量：TICK_VERSION=0.2.1 指定版本（默认取 releases/latest）
 #
 # 流程（release-playbook §6.2）：取版本 → 下载 dmg → 校验 sha256 → hdiutil attach
 #   → 退出旧实例并替换 → hdiutil detach → trap 清理临时目录。
