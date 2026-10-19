@@ -1,11 +1,13 @@
 {
   "name": "@tick/mcp-server",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "dist/tick-mcp.mjs",
   "types": "src/index.ts",
-  "bin": { "tick-mcp": "dist/tick-mcp.mjs" },
+  "bin": {
+    "tick-mcp": "dist/tick-mcp.mjs"
+  },
   "scripts": {
     "build": "node build.mjs",
     "start": "node dist/tick-mcp.mjs",
