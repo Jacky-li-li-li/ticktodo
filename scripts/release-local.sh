@@ -9,9 +9,11 @@
 #
 # 签名 + 公证（自己在 shell 里 export，别写进文件 / 别发给任何人）：
 #   Developer ID 证书从登录钥匙串自动取（mac.identity 已钉为 "Developer ID Application"）
-#   公证二选一：
+#   公证三选一：
 #     export APPLE_ID=...  APPLE_APP_SPECIFIC_PASSWORD=...  APPLE_TEAM_ID=...
 #     export APPLE_API_KEY=/path/AuthKey_XXXX.p8 APPLE_API_KEY_ID=... APPLE_API_ISSUER=...
+#     export APPLE_KEYCHAIN_PROFILE=tick-notary   # 先用 notarytool store-credentials 存进钥匙串
+#     （electron-builder 原生支持 APPLE_KEYCHAIN_PROFILE；私密密码不需要进 shell history）
 #
 # playbook §8：① 别在 iCloud 同步的 ~/Desktop 里构建（codesign 报 detritus）→ 用
 #   git worktree add ~/tick-build <ref> 的副本；本脚本检测到在 Desktop/iCloud 下会拒绝。
@@ -58,8 +60,8 @@ if [ -n "${UNSIGNED:-}" ]; then
   EB_ARGS+=("-c.mac.identity=null" "-c.mac.notarize=false")
 else
   security find-identity -v -p codesigning | grep -q "Developer ID Application" || die "钥匙串里没有 Developer ID Application 身份"
-  if [ -z "${APPLE_API_KEY:-}" ] && { [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; }; then
-    die "公证凭据未设置：请自己 export APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID（或 APPLE_API_KEY 三件套）"
+  if [ -z "${APPLE_KEYCHAIN_PROFILE:-}" ] && [ -z "${APPLE_API_KEY:-}" ] && { [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; }; then
+    die "公证凭据未设置：请存 notarytool 钥匙串 profile（export APPLE_KEYCHAIN_PROFILE=…），或 export APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID（或 APPLE_API_KEY 三件套）"
   fi
 fi
 pnpm --filter @tick/desktop build
