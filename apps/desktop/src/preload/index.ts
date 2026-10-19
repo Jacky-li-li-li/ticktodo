@@ -30,6 +30,7 @@ import {
   ChatIpc,
   ExportIpc,
   LaunchIpc,
+  McpIpc,
   ProjectsIpc,
   ProviderIpc,
   SessionsIpc,
@@ -161,6 +162,10 @@ const api = {
     /** 桌面工具：打开 GUI 新建页并预填；不自动发送、不绑定 */
     openNewSessionPage: (req: PrefillNewSessionRequest): Promise<PrefillNewSessionOutcome> =>
       ipcRenderer.invoke(LaunchIpc.prefillNewSession, req),
+  },
+  mcp: {
+    info: () => ipcRenderer.invoke(McpIpc.info),
+    copy: (text: string): Promise<void> => ipcRenderer.invoke(McpIpc.copy, text),
   },
   window: {
     hide: (): void => ipcRenderer.send(WindowIpc.hide),

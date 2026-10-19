@@ -112,6 +112,14 @@ Past sessions on this Mac are listed by project. Pick one to **create a todo** o
 
 The built-in chat can reuse pi's credentials or use any OpenAI-compatible endpoint (custom provider). The model can also call `create_todo` / `list_todos`, so you can capture follow-ups while you chat.
 
+### Use MCP from external agents
+
+Once Ticktodo is installed, open **⋯ → Settings → Agent connection (MCP)** and copy the ready-made config for pi, Claude Code, or a generic JSON client. After configuring it once, external agents can create todos, list todos, and link the current conversation to a todo — **Ticktodo does not need to be running**. The MCP server writes directly to your own `~/.ticktodo`.
+
+- Certified and tested: `pi`, WorkBuddy (both editions) for session linking; Claude Code is protocol-compatible.
+- All matching happens locally; conversation bodies are never uploaded. You can switch to read-only or disable automatic linking in the same panel.
+- Without an installed build, the panel falls back to the repository entry `packages/mcp-server/dist/tick-mcp.mjs`.
+
 ### Automatic project discovery
 
 Ticktodo reads the first-line header of each tool's session file to get the real cwd, canonicalizes the path, then rolls it up to the git root. Different subdirectories of the same repository do not explode into multiple projects.

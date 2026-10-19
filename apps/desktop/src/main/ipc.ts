@@ -3,7 +3,7 @@
  * 通道常量来自 @tick/shared（main/preload/renderer 引用同一份，防漂移）。
  */
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import type {
   AppSettings,
   ChatState,
@@ -27,6 +27,7 @@ import {
   ChatIpc,
   ExportIpc,
   LaunchIpc,
+  McpIpc,
   ProjectsIpc,
   ProviderIpc,
   SessionsIpc,
@@ -51,6 +52,7 @@ import type { SettingsStore } from './services/settings-store'
 import type { ProviderConfigService } from './services/provider-config'
 import type { SessionService } from './services/sessions'
 import type { ExportService } from './services/export'
+import type { McpConnectionService } from './services/mcp-connection'
 
 export interface IpcWindows {
   panel: () => BrowserWindow | null
@@ -70,6 +72,7 @@ export interface IpcServices {
   providerConfig: ProviderConfigService
   /** 凭据来源切换后重建面板对话（durable 历史不受影响） */
   reloadChat: () => Promise<void>
+  mcp: McpConnectionService
 }
 
 export function registerIpc(
@@ -101,6 +104,12 @@ export function registerIpc(
   })
   ipcMain.handle(SettingsIpc.openDataDir, async (): Promise<void> => {
     await shell.openPath(services.dataDir)
+  })
+
+  // ---------- MCP「Agent 连接」 ----------
+  ipcMain.handle(McpIpc.info, () => services.mcp.get())
+  ipcMain.handle(McpIpc.copy, (_e, text: string): void => {
+    clipboard.writeText(String(text))
   })
 
   // ---------- 项目索引（M1） ----------

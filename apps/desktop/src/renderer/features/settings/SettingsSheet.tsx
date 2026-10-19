@@ -8,6 +8,7 @@
 import React from 'react'
 import type { AppSettings } from '@tick/shared'
 import { ProviderSettings } from './ProviderSettings'
+import { McpSettings } from './McpSettings'
 
 export function SettingsSheet({
   settings,
@@ -102,6 +103,8 @@ export function SettingsSheet({
 
         <div className="sheet-section-title">面板对话 Provider</div>
         <ProviderSettings config={settings.customProvider ?? null} onToast={onToast} />
+
+        <McpSettings settings={settings} onChange={onChange} onToast={onToast} />
 
         <div className="sheet-section-title">数据与快捷键</div>
         <button

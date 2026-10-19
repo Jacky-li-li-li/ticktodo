@@ -248,6 +248,27 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mcpScan: true,
 }
 
+/** MCP「Agent 连接」设置页（普通用户复制配置，不自动改客户端配置） */
+export interface McpConnectionInfo {
+  available: boolean
+  /** app = 安装包内置 shim；dev = 仓库构建产物；missing = 还不可用 */
+  mode: 'app' | 'dev' | 'missing'
+  command?: string
+  args?: string[]
+  /** 展示用的一行命令（已做 shell 转义） */
+  displayCommand?: string
+  piCommand?: string
+  claudeCommand?: string
+  /** Cursor / Claude Desktop 等通用的 mcpServers JSON */
+  jsonConfig?: string
+  note?: string
+}
+
+export const McpIpc = {
+  info: 'mcp:info',
+  copy: 'mcp:copy',
+} as const
+
 export const SettingsIpc = {
   get: 'settings:get',
   update: 'settings:update',

@@ -1313,10 +1313,11 @@ console.error('[tick-mcp] running on stdio')
 | `packages/session-locators` (`@tick/session-locators`) | 只读会话定位 | `pi` / `workbuddy` / `workbuddy-ai`；复用 `@tick/ai-*` 的路径与 WorkBuddy 读取内核；不 import Electron |
 | `packages/probe-scan` (`@tick/probe-scan`) | 句柄回扫 | 128-bit `tk_` handle、probe 24h TTL、按 `toolId` 只扫对应 locator（隐私边界）、mtime 时间窗、字节级分块匹配、命中后写 `verified` 绑定并删 probe |
 | `packages/mcp-server` (`@tick/mcp-server`) | stdio MCP server | `@modelcontextprotocol/server@2.3.1` 默认双代；3 个 v1 工具 + resources；写/读限流；审计 `cache/mcp-audit.log`；stdin EOF 前 ≤2s 最终回扫；esbuild 单文件 `dist/tick-mcp.mjs` |
+| `apps/desktop` 设置页 | 普通用户「Agent 连接（MCP）」 | 主进程 `McpConnectionService` 算安装包 shim / 开发入口；设置页显示状态、复制 pi/Claude/通用 JSON、只读与扫描开关；不自动写客户端配置 |
 
 ### 14.2 与设计的差异 / 尚未做的
 
-- **Tier 1 bridge 未做**：P0 只有 Tier 0 直写 + 自回扫；`degraded:true, degradedReason:"bridge_unavailable"` 恒为真，属于预期，不是失败。tick 运行时的 5s 补扫、UI 来源角标、手动补绑在 P1。
+- **Tier 1 bridge 未做**：P0 只有 Tier 0 直写 + 自回扫；`degraded:true, degradedReason:"bridge_unavailable"` 恒为真，属于预期，不是失败。tick 运行时的 5s 补扫、来源角标、手动补绑在 P1；**设置页「Agent 连接（MCP）」已落地**（复制配置 / 只读 / 扫描开关），普通用户可自助接入。
 - **P1 工具未做**：`get_todo` / `complete_todo` / `list_sessions` 仍只有合同，没有注册。
 - **resources 已实现**：`tick://todos` 与模板 `tick://todos/{todoId}`；未做订阅通知。
 - **分发**：只做 app 内置 shim；npm / MCPB / Registry 均未发布（仍按 §12.3 默认）。
@@ -1333,5 +1334,6 @@ console.error('[tick-mcp] running on stdio')
 - 真 `pi 1.3.0`：临时 `PI_CODING_AGENT_DIR` 下 `pi mcp add tick -- node dist/tick-mcp.mjs` → `pi mcp list --json` 显示 `state:"connected"`、3 个工具、resources=true。
 - 真实 locator 只读冒烟：`pi` / `workbuddy` / `workbuddy-ai` 各命中一条真实会话，`sessionId`/`cwd` 正确（未改用户数据）。
 - `@tick/todo-core` 并发：8 进程 × 20 条 = 160 条全保留、无残留 `.lock`。
+- 打包 app（无签名验证）：设置页实测显示 Agent 连接、pi/Claude/JSON 复制、只读切换、剪贴板写入；`pi mcp add` 指向 app 内置 shim 后 `state:"connected"`、3 tools。
 - `pnpm --filter @tick/tick-extension build`：通过（`@tick/todo-core` 已被打进 extension 单文件）。
 - 打包 app 内 shim：`initialize` + `tools/list` 成功（见 14.2）。

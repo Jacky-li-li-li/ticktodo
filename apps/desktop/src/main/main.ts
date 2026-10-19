@@ -25,6 +25,7 @@ import { CredentialVault } from './services/credential-vault'
 import { ProviderConfigService } from './services/provider-config'
 import { SessionService } from './services/sessions'
 import { ExportService } from './services/export'
+import { McpConnectionService } from './services/mcp-connection'
 import { cleanupLaunchCache, createTerminalLauncher } from './services/terminal-launch'
 import { TodoStore } from './store'
 import {
@@ -162,6 +163,11 @@ app.whenReady().then(() => {
   })
   const sessionService = new SessionService(adapters, store)
   const exportService = new ExportService(adapters, store, () => settingsStore.get(), dirs.exports)
+  const mcpConnection = new McpConnectionService({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    repoRoot: path.resolve(__dirname, '../../..'),
+  })
   const launchService = new LaunchService(adapters, store, {
     settings: () => settingsStore.get(),
     resolveAlias: (p) => projectIndex.aliasOf(p),
@@ -213,6 +219,7 @@ app.whenReady().then(() => {
       dataDir: dirs.root,
       providerConfig,
       reloadChat,
+      mcp: mcpConnection,
     },
     adapters,
   )

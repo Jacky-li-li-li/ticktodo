@@ -112,6 +112,14 @@ bash scripts/install.sh path/to/Tick.app
 
 内建 Chat 可以复用 pi 的凭据，也可以配置任意 OpenAI 兼容 endpoint（自配 provider）。模型还能调用 `create_todo` / `list_todos`，边聊边把要跟进的内容记进 Ticktodo。
 
+### 从外部 Agent 使用 MCP
+
+装好 Ticktodo 后，打开「⋯ → 设置 → Agent 连接（MCP）」，可以一键复制 pi / Claude Code / 通用 JSON 的配置。配置一次后，外部 agent 就能创建线索、查询线索、把当前对话关联到线索；**Ticktodo 不需要常驻运行**，MCP server 会直接写你自己的 `~/.ticktodo`。
+
+- 认证并实测：`pi`、WorkBuddy 国内版 / WorkBuddy AI（会话绑定）；Claude Code 协议兼容。
+- 所有匹配都在本机完成，不上传会话正文；设置里可以切「只读」或关闭自动关联。
+- 开发模式或没有安装包时，可以用仓库里的 `packages/mcp-server/dist/tick-mcp.mjs`，设置页会显示当前可用的入口。
+
 ### 项目自动发现
 
 扫描各工具会话文件的首行 header，取出真实 cwd；路径做 canonical 归一，再按 git 根上卷。同一个仓库的不同子目录不会炸成多个项目。
