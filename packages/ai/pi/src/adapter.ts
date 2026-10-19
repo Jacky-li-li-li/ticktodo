@@ -46,9 +46,8 @@ import {
   type SessionMeta,
   type SessionRoot,
 } from './paths'
+import { findCliExecutable } from './probe-exe'
 import { computeUsageFromFile, inheritedEntriesOf } from './usage'
-
-export const MIN_PI_VERSION = '1.3.0'
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 /** 与 tick-extension 的读取上限保持一致；超限直接降级 clipboard，避免「写了但被删」 */
@@ -65,16 +64,6 @@ const PREFILL_REASON_TEXT: Record<string, string> = {
   'set-editor-failed': 'pi 输入框写入失败',
   'read-failed': '读取预填文件失败',
   unknown: '未知原因',
-}
-
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number)
-  const pb = b.split('.').map(Number)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
-    if (d !== 0) return d
-  }
-  return 0
 }
 
 /** 交给 main 进程在终端里打开的命令（ai 包不依赖 Electron / Terminal） */
@@ -113,9 +102,7 @@ export interface PiAdapterDeps {
 
 interface DetectResult {
   installed: boolean
-  version?: string
   reason?: string
-  usable?: boolean
 }
 
 export class PiAdapter implements AiToolAdapter {
@@ -141,7 +128,6 @@ export class PiAdapter implements AiToolAdapter {
 
   private deps: PiAdapterDeps
   private resolvedExe: string | null = null
-  private resolvedVersion: string | null = null
   /** 用量缓存：key=file，value 带 (mtime,size)，文件变了才重算 */
   private usageCache = new Map<string, { mtimeMs: number; size: number; usage: SessionUsage }>()
   /** name/first/last 元数据缓存：会话正文可能很大，文件没变就不重复流式扫 */
@@ -153,36 +139,15 @@ export class PiAdapter implements AiToolAdapter {
 
   // ---------- 就绪探测 ----------
 
+  /**
+   * 只判「装没装」：可执行文件能定位到就算 installed。
+   * 2026-10-19 起不再跑 `pi --version`、也不比较版本：版本差异交给真实调用去暴露，
+   * 避免 UI 在工具选择处先把旧版本硬拦掉。
+   */
   async detect(): Promise<DetectResult> {
     const exe = await this.resolveExe()
     if (!exe) return { installed: false, reason: '未检测到 pi 可执行文件' }
-    try {
-      const version = await this.readVersion(exe)
-      if (compareVersions(version, MIN_PI_VERSION) < 0) {
-        // 旧 pi 没有本版本依赖的 session_start/setEditorText：installed 仍为 true 便于展示，
-        // 但 usable=false 必须让 launch/prefill/UI 一起挡住，否则默认 prefill 会静默丢文案。
-        return {
-          installed: true,
-          usable: false,
-          version,
-          reason: `pi ${version} 低于要求的 ${MIN_PI_VERSION}，请升级`,
-        }
-      }
-      return { installed: true, version }
-    } catch (e) {
-      return { installed: false, reason: `pi 版本探测失败：${String((e as Error).message ?? e)}` }
-    }
-  }
-
-  private async readVersion(exe: string): Promise<string> {
-    if (this.resolvedVersion) return this.resolvedVersion
-    const { execFile } = await import('node:child_process')
-    const { promisify } = await import('node:util')
-    const { stdout } = await promisify(execFile)(exe, ['--version'])
-    const version = stdout.trim().split(/\s+/).pop() ?? ''
-    if (!version) throw new Error('pi --version 无输出')
-    this.resolvedVersion = version
-    return version
+    return { installed: true }
   }
 
   private async resolveExe(): Promise<string | null> {
@@ -192,26 +157,11 @@ export class PiAdapter implements AiToolAdapter {
       this.resolvedExe = exe
       return exe
     }
-    const custom = process.env.TICK_PI_PATH
-    const candidates = [
-      ...(custom ? [custom] : []),
-      `${homedir()}/.npm-global/bin/pi`,
-      '/usr/local/bin/pi',
-      '/opt/homebrew/bin/pi',
-      'pi', // PATH 兜底（dev 终端启动的进程通常带全 PATH）
-    ]
-    for (const candidate of candidates) {
-      if (candidate.includes('/') && !existsSync(candidate)) continue
-      try {
-        const version = await this.readVersion(candidate)
-        this.resolvedExe = candidate
-        void version
-        return candidate
-      } catch {
-        continue
-      }
-    }
-    return null
+    // GUI（Finder）启动的 .app 拿不到用户 shell 的 PATH，硬编码几个前缀会漏安装位置：
+    // 交给 probe-exe 先查常见前缀、再退回登录 shell 的 PATH（详见该文件头注释）。
+    const exe = await findCliExecutable('pi')
+    this.resolvedExe = exe
+    return exe
   }
 
   // ---------- 会话目录 ----------

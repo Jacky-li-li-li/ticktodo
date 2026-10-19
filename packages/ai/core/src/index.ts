@@ -189,17 +189,13 @@ export interface CarryCapability {
 
 export interface AiToolAdapter {
   id: string
-  /** 就绪探测：pi 用可执行文件 + `pi auth check`；失败=引导空态双出口（Q14） */
+  /**
+   * 就绪探测：只判「装没装」（可执行文件 / App bundle + bundle id）；失败=引导空态双出口（Q14）。
+   * 2026-10-19 起不再探测/校验工具版本：装了就按可用处理，版本差异由调用失败如实暴露。
+   */
   detect(): Promise<{
     installed: boolean
-    /** 例：pi 1.2.0 < 1.3.0 → 提示升级 */
-    version?: string
     reason?: string
-    /**
-     * 缺省 = installed。false = 已安装但当前不可用（如低于最低版本）：
-     * launch/prefill/UI 都必须按 usable 过滤，不能只看 installed。
-     */
-    usable?: boolean
   }>
   capabilities: {
     needsCwd: boolean
@@ -233,11 +229,6 @@ export interface AiToolAdapter {
    * 不保证会话 id，也不在 Tick 侧建绑定；发送与否由用户在工具里决定。
    */
   openNewSessionPage?(ctx: NewSessionPageContext): Promise<NewSessionPageResult>
-  /**
-   * 可选：报告「当前版本/环境」下新建会话是否真的可用（例如 WorkBuddy task 深链接只对实测版本开放）。
-   * UI 用它把不可用工具从列表里隐藏；缺省由 installed/usable/newSessionMode 推导。
-   */
-  newSessionAvailability?(): Promise<{ available: boolean; reason?: string }>
   launch(ctx: LaunchContext): Promise<LaunchResult>
   resume(sessionId: CliSessionId, ctx: LaunchContext): Promise<LaunchResult>
   carry?: CarryCapability

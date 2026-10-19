@@ -553,7 +553,7 @@ PanelAgentSession { /* 落在 ~/.ticktodo/sessions/panel-chat，与 CliSessionId
 | 阶段  | 交付                                                            |
 | --- | ------------------------------------------------------------- |
 | M0  | 仓库脚手架 + 置顶空壳 + Todo CRUD（数据根 `~/.ticktodo`）；**开发前把 pi 升到 1.3.0**（本机 1.2.0） |
-| M1  | ProjectIndex + PiAdapter（argv 投递 / `--session-id` / `--name` / 版本校验） |
+| M1  | ProjectIndex + PiAdapter（argv 投递 / `--session-id` / `--name`；版本校验已于 2026-10-19 移除，detect 只判 installed） |
 | M2  | `create_todo` extension（CLI + 面板共用）+ 面板 Chat（**pi-durable@1.3.0，pin 版本**） |
 | M3  | 多会话绑定 UI + **S5 反向建索引** + 快捷键、位置记忆 + 用量统计（单会话维度，默认关，口径已验证）+ **面板自配 provider**（凭据来源 2，可滑到 M4） |
 | M4  | 打通出包（electron-builder + install.sh 草案）+ **F8 导出（JSON + Markdown）** |

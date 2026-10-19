@@ -189,15 +189,15 @@ export class LaunchService {
     if (adapter.capabilities.newSessionMode !== 'launch') {
       return { ok: false, delivered: req.deliver, reason: DESKTOP_TOOL_REASON }
     }
-    // 未安装/版本不满足时不要假装成功（Q14 双出口空态）；detect 自身异常也要兜成原因
+    // 未安装时不要假装成功（Q14 双出口空态）；detect 自身异常也要兜成原因。
+    // 不再判断版本（2026-10-19 移除）：装了就让调用发生，版本差异由真实失败如实暴露。
     const detected = await adapter
       .detect()
-      .catch((e): { installed: boolean; usable?: boolean; reason: string } => ({
+      .catch((e): { installed: boolean; reason: string } => ({
         installed: false,
-        usable: false,
         reason: (e as Error).message,
       }))
-    if (!detected.installed || detected.usable === false) {
+    if (!detected.installed) {
       return {
         ok: false,
         delivered: req.deliver,
@@ -308,7 +308,7 @@ export class LaunchService {
       }
     }
     const detected = await adapter.detect().catch(() => undefined)
-    if (detected && (!detected.installed || detected.usable === false)) {
+    if (detected && !detected.installed) {
       return { ok: false, reason: detected.reason ?? `${toolDisplayName(adapter.id)} 当前不可用` }
     }
 
@@ -382,7 +382,7 @@ export class LaunchService {
           sessionId: req.sessionId,
           delivered: 'none',
           reason:
-            detected && (!detected.installed || detected.usable === false)
+            detected && !detected.installed
               ? (detected.reason ?? `${toolDisplayName(adapter.id)} 当前不可用`)
               : `在 ${toolDisplayName(adapter.id)} 里找不到这条会话（可能已删除，或应用还没写入本地记录）`,
         }

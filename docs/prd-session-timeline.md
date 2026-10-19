@@ -254,9 +254,9 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 
 - jsonl 遇到**未知 `type` 一律忽略**（已知：session-meta、message、function_call、function_call_result、reasoning、file-history-snapshot、ai-title、custom-title、topic、turn-metrics、summary）。
 - 安装探测：macOS 上以 App bundle（`/Applications` 或 `~/Applications` 下的 `WorkBuddy.app`，`CFBundleIdentifier = com.tencent.workbuddy.mac`）是否存在判断 `installed`；**数据目录存在不算已安装**——卸载后 `~/.workbuddy` 会残留，其他工具也会往其中写配置（[M] 实测同一结论）。
-- 版本探测：读 App `Info.plist` 版本（5.8.x）与 `.workbuddy-sqlite-migrations` 最新迁移名；`sessions` 表用 `PRAGMA table_info` 检查所需列是否存在。
+- 安装探测只判 `installed`；2026-10-19 起不再读 App `Info.plist` 版本号，也不做版本门控。`sessions` 表仍用 `PRAGMA table_info` 检查所需列是否存在。
 - 字段缺失/schema 不识别 → 降级：该能力返回空（最后 user 消息为空 → 保底文案；状态为 `idle`），**不报错、不影响其他会话，且只要 id 可得仍能经深链接定位**；日志记录一次探测失败原因。
-- 已知版本范围外（探测到未验证的大版本）时在设置页提示「WorkBuddy 版本未验证」。
+- 版本探测已移除（2026-10-19）：不再按「已验证版本范围」提示或禁用，版本差异由真实读取/深链接失败如实暴露。
 
 ## 9B. WorkBuddy AI（国际版）适配器需求（`workbuddy-ai`，本期 P0，第三个适配器）
 
@@ -306,8 +306,8 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 ### 9B.7 版本探测与降级
 
 - 安装探测：macOS 上以 `WorkBuddy AI.app`（bundle `com.workbuddy.workbuddy-ai`，`/Applications` 或 `~/Applications`）是否存在判断 `installed`；数据目录存在不算已安装（[M] 同判据）。
-- 读 App `Info.plist` 版本（5.8.4）与 `.workbuddy-sqlite-migrations` 最新迁移名（本机为 0017）；`sessions` 表 `PRAGMA table_info` 检查所需列。
-- 已验证范围仅 5.8.4；其它版本提示「WorkBuddy AI 版本未验证」。
+- 读 App `Info.plist` 版本号的动作已移除（2026-10-19）；`sessions` 表 `PRAGMA table_info` 检查所需列。
+- 版本门控已移除（2026-10-19）：不再提示/禁用「WorkBuddy AI 版本未验证」。
 - 任何探测失败：该能力返回空，不报错、不影响其它工具，状态 `idle`；工具未安装（无对应 App bundle；数据目录存在但无 App 视为未安装）时适配器静默禁用。
 
 ### 9B.8 与国内版的并存

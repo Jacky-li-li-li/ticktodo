@@ -1,14 +1,20 @@
 /**
  * 预填/多工具关键边界断言（无测试框架；由 scripts/selftest-prefill.mjs 打包执行）。
- * 覆盖：pi 版本门槛、prefill ack/超时/超限降级、扩展 ack、启动清理、terminal env 转义、
- *       TodoStore 按 (toolId, sessionId) 精确绑定、LaunchService 的 usable/降级/resume fail-closed。
+ * 覆盖：pi 只按 installed 判断（无版本门控）、GUI 环境下的可执行文件定位、
+ *       prefill ack/超时/超限降级、扩展 ack、启动清理、terminal env 转义、
+ *       TodoStore 按 (toolId, sessionId) 精确绑定、LaunchService 的 installed/降级/resume fail-closed。
  * 不依赖本机安装 pi/WorkBuddy，也不碰真实数据。
  */
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { PiAdapter } from '../packages/ai/pi/src/index.ts'
+import {
+  PiAdapter,
+  commonBinDirs,
+  findCliExecutable,
+  isExecutableFile,
+} from '../packages/ai/pi/src/index.ts'
 import tickExtension from '../packages/tick-extension/src/index.ts'
 import { cleanupLaunchCache, renderTerminalScript } from '../apps/desktop/src/main/services/terminal-launch.ts'
 import { TodoStore } from '../apps/desktop/src/main/store.ts'
@@ -31,13 +37,94 @@ function check(name: string, fn: () => void | Promise<void>): Promise<void> {
 const dir = mkdtempSync(path.join(os.tmpdir(), 'tick-selftest-case-'))
 const sid = '11111111-2222-4333-8444-555555555555'
 
-// ---- pi 版本门槛 ----
-await check('old pi is installed but unusable', async () => {
+// ---- pi 就绪判定：只认可执行文件，不探测版本 ----
+await check('pi installed without version gating', async () => {
   const fake = path.join(dir, 'old-pi.sh')
   writeFileSync(fake, '#!/bin/sh\necho "1.2.0"\n', { mode: 0o700 })
   const d = await new PiAdapter({ resolveExe: async () => fake, sessionRoots: () => [] }).detect()
   assert.equal(d.installed, true)
-  assert.equal(d.usable, false)
+  // 版本字段与 usable 已移除：旧版本不再被提前拦掉
+  assert.equal('usable' in d, false)
+  assert.equal('version' in d, false)
+})
+
+// ---- GUI（Finder / launchd）环境下的 pi 定位 ----
+// 这些断言就是 2026-10-19「装了 pi 但检测不到」的回归防线：
+// 打包 app 只继承最小 PATH，靠静态前缀 / 登录 shell PATH 兜底，不能再依赖 `pi --version`。
+
+const probeHome = path.join(dir, 'probe-home')
+const probeInPrefix = path.join(probeHome, '.local', 'bin', 'pi')
+const minimalPath = '/usr/bin:/bin:/usr/sbin:/sbin' // launchd 给 GUI 的默认 PATH
+
+await check('probe: 常见安装前缀覆盖 npm 全局 / ~/.local/bin / Homebrew', () => {
+  const dirs = commonBinDirs('/Users/someone')
+  for (const expected of [
+    '/Users/someone/.npm-global/bin',
+    '/Users/someone/.local/bin',
+    '/Users/someone/Library/pnpm',
+    '/Users/someone/.bun/bin',
+    '/Users/someone/.volta/bin',
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+  ]) {
+    assert.ok(dirs.includes(expected), `缺少候选目录 ${expected}`)
+  }
+})
+
+await check('probe: 最小 PATH 下仍能按常见前缀找到 pi', async () => {
+  const exe = await findCliExecutable('pi', {
+    env: { PATH: minimalPath },
+    home: probeHome,
+    isExecutable: (f) => f === probeInPrefix,
+    loginShellPath: async () => null,
+  })
+  assert.equal(exe, probeInPrefix)
+})
+
+await check('probe: 前缀都没有时退回登录 shell 的 PATH（nvm / 自定义 prefix）', async () => {
+  const shellBin = path.join(dir, 'shell-bin')
+  const shellPi = path.join(shellBin, 'pi')
+  const exe = await findCliExecutable('pi', {
+    env: { PATH: minimalPath },
+    home: probeHome,
+    isExecutable: (f) => f === shellPi,
+    loginShellPath: async () => `${shellBin}:/usr/bin:/bin`,
+  })
+  assert.equal(exe, shellPi)
+})
+
+await check('probe: TICK_PI_PATH 覆盖优先', async () => {
+  const custom = path.join(dir, 'custom-pi')
+  const exe = await findCliExecutable('pi', {
+    env: { PATH: minimalPath, TICK_PI_PATH: custom },
+    home: probeHome,
+    isExecutable: (f) => f === custom || f === probeInPrefix,
+    loginShellPath: async () => null,
+  })
+  assert.equal(exe, custom)
+})
+
+await check('probe: 找不到时返回 null，不把不存在的路径当已安装', async () => {
+  const exe = await findCliExecutable('pi', {
+    env: { PATH: minimalPath },
+    home: path.join(dir, 'empty-home'),
+    isExecutable: () => false,
+    loginShellPath: async () => null,
+  })
+  assert.equal(exe, null)
+})
+
+await check('probe: 只认可执行普通文件（0644 / 目录 / 断链都不算）', () => {
+  const plain = path.join(dir, 'pi-plain')
+  writeFileSync(plain, 'not a program\n')
+  chmodSync(plain, 0o644)
+  assert.equal(isExecutableFile(plain), false)
+  const runnable = path.join(dir, 'pi-runnable')
+  writeFileSync(runnable, '#!/bin/sh\n')
+  chmodSync(runnable, 0o755)
+  assert.equal(isExecutableFile(runnable), true)
+  assert.equal(isExecutableFile(dir), false)
+  assert.equal(isExecutableFile(path.join(dir, 'pi-missing')), false)
 })
 
 // ---- prefill ack / 超时 / 超限 ----
@@ -173,27 +260,27 @@ await check('binding lookup/removal is tool-aware', () => {
 })
 
 // ---- LaunchService gates ----
-await check('LaunchService blocks usable=false and keeps notice', async () => {
+await check('LaunchService blocks uninstalled tool and keeps notice', async () => {
   const store = new TodoStore(path.join(dir, 'launch-todos.json'))
   store.ensureFile()
   const todo = store.create({ title: 't' })
   const caps = { needsCwd: true, resumeSession: true, deliverPrompt: ['prefill', 'argv', 'clipboard'], setSessionName: true, discoverProjects: false, describeSessions: false, usage: false, newSessionMode: 'launch' as const }
   let launched = false
-  const oldAdapter = {
+  const missingAdapter = {
     id: 'pi', capabilities: caps,
-    detect: async () => ({ installed: true, usable: false, reason: 'too old' }),
+    detect: async () => ({ installed: false, reason: 'not installed' }),
     launch: async () => { launched = true; throw new Error('must not') },
     resume: async () => { throw new Error('no') },
   }
-  const svc = new LaunchService([oldAdapter as never], store, { settings: () => DEFAULT_SETTINGS })
+  const svc = new LaunchService([missingAdapter as never], store, { settings: () => DEFAULT_SETTINGS })
   const r = await svc.launch({ todoId: todo.id, deliver: 'prefill' })
   assert.equal(r.ok, false)
-  assert.ok(r.reason?.includes('too old'))
+  assert.ok(r.reason?.includes('not installed'))
   assert.equal(launched, false)
 
   const goodAdapter = {
     id: 'pi', capabilities: caps,
-    detect: async () => ({ installed: true, usable: true }),
+    detect: async () => ({ installed: true }),
     launch: async () => ({ toolId: 'pi', sessionId: newCliSessionId(sid), cwd: dir, delivered: 'clipboard' as const, verified: false, notice: 'fallback' }),
     resume: async () => { throw new Error('no') },
   }

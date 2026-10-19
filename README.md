@@ -70,7 +70,7 @@ The script downloads the latest release, verifies `SHA256SUMS.txt`, installs to 
 bash scripts/install.sh path/to/Tick.app
 ```
 
-**Requirements**: macOS. Aggregating and continuing `pi` sessions requires `pi >= 1.3.0` (use `TICK_PI_PATH` to point to the executable); on first launch Ticktodo installs its `tick-extension` into `~/.pi/agent/extensions/tick/` so pi can prefill new sessions and expose `create_todo`/`list_todos`. Aggregating WorkBuddy sessions requires the corresponding desktop app (**WorkBuddy** or **WorkBuddy AI**) — they are apps, not CLIs; their new-session prefill is only enabled for versions verified locally.
+**Requirements**: macOS. Aggregating and continuing `pi` sessions requires an installed `pi` (use `TICK_PI_PATH` to point to the executable); on first launch Ticktodo installs its `tick-extension` into `~/.pi/agent/extensions/tick/` so pi can prefill new sessions and expose `create_todo`/`list_todos`. Aggregating WorkBuddy sessions requires the corresponding desktop app (**WorkBuddy** or **WorkBuddy AI**) — they are apps, not CLIs; new-session prefill is available whenever the app is installed (no version gating).
 
 After installation, Ticktodo lives in the menu bar and does not appear in the Dock.
 
@@ -137,7 +137,7 @@ Lives in the menu bar. The panel is pinned by default, or can auto-hide when it 
 
 | Tool | Status | Discovery | Continue | Notes |
 |---|---|---|---|---|
-| **pi** | ✅ Supported | ✅ | Terminal TUI | Requires `pi >= 1.3.0` |
+| **pi** | ✅ Supported | ✅ | Terminal TUI | Requires an installed `pi` |
 | WorkBuddy (China) | ✅ Supported | ✅ | Deep link | Read-only index of the app's local database / session files; requires the WorkBuddy desktop app. Can open a prefilled new-task page; sending/binding still happen in the app |
 | WorkBuddy AI (International) | ✅ Supported | ✅ | Deep link | Separate adapter (own identity, same read-only storage core); requires the WorkBuddy AI desktop app. Can open a prefilled new-task page; sending/binding still happen in the app |
 | Claude Code / Cursor | Later | — | — | Claude Code uses local JSONL; Cursor format TBD |

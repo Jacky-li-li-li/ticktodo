@@ -70,7 +70,7 @@ curl -fsSL https://ticktodo.cc/install.sh | sh
 bash scripts/install.sh path/to/Tick.app
 ```
 
-**系统要求**：macOS。聚合与「接着做」`pi` 会话需要 `pi >= 1.3.0`（也可用 `TICK_PI_PATH` 指定可执行文件）；首次启动会把 `tick-extension` 装到 `~/.pi/agent/extensions/tick/`，用于新会话预填与 `create_todo`/`list_todos`。聚合 WorkBuddy 会话需要装对应的桌面应用（**WorkBuddy** 或 **WorkBuddy AI**）——它们是桌面应用，不是 CLI；新建页预填只对本地实测验证过的版本开放。
+**系统要求**：macOS。聚合与「接着做」`pi` 会话需要本机装有 `pi`（也可用 `TICK_PI_PATH` 指定可执行文件）；首次启动会把 `tick-extension` 装到 `~/.pi/agent/extensions/tick/`，用于新会话预填与 `create_todo`/`list_todos`。聚合 WorkBuddy 会话需要装对应的桌面应用（**WorkBuddy** 或 **WorkBuddy AI**）——它们是桌面应用，不是 CLI；装了应用即可使用新建页预填（不再按版本门控）。
 
 安装后 Ticktodo 常驻菜单栏，不占 Dock。
 
@@ -137,7 +137,7 @@ bash scripts/install.sh path/to/Tick.app
 
 | 工具 | 状态 | 会话发现 | 接着做 | 说明 |
 |---|---|---|---|---|
-| **pi** | ✅ 已支持 | ✅ | 终端 TUI | 需要 `pi >= 1.3.0` |
+| **pi** | ✅ 已支持 | ✅ | 终端 TUI | 需要本机装有 `pi` |
 | WorkBuddy（国内版） | ✅ 已支持 | ✅ | 深链接 | 只读其本地数据库 / 会话文件；需要 WorkBuddy 桌面应用。可打开预填好的新建任务页；发送/绑定仍在应用里完成 |
 | WorkBuddy AI（国际版） | ✅ 已支持 | ✅ | 深链接 | 独立适配器（独立身份、同一只读读取内核）；需要 WorkBuddy AI 桌面应用。可打开预填好的新建任务页；发送/绑定仍在应用里完成 |
 | Claude Code / Cursor | 后续 | — | — | Claude Code 同为本地 JSONL；Cursor 格式待查 |

@@ -31,9 +31,7 @@ export const WORKBUDDY_AI_IDENTITY: WorkbuddyIdentity = {
   scheme: 'workbuddy-ai',
   defaultRootName: '.workbuddy-ai',
   // 国际版没有根目录环境变量覆盖：两个 build 以各自 App bundle + 数据根区分
-  verifiedVersions: ['5.8.4'],
-  // 仅 5.8.4 实测过 task 新建页（goHome + prefill，不发送）；升级后需重新验证
-  taskVerifiedVersions: ['5.8.4'],
+  // 仅 5.8.4 实测过 task 新建页（goHome + prefill，不发送）；不再按版本门控，升级后行为差异由深链接失败如实暴露
   // playground 深链接冷启动回落归因未证伪 → 保守置灰
   playgroundUnresumable: true,
   launchErrorText:

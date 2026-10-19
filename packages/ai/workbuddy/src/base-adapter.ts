@@ -2,7 +2,7 @@
  * base-adapter — 两个 WorkBuddy 发行版共享的适配器实现骨架。
  *
  * 分工（rules §1）：**存储内核共用**（同一套 sessions 表与 jsonl 格式），
- * **身份各自独立**（App bundle / bundle id / 数据根 / scheme / 已验证版本 / playground 策略）。
+ * **身份各自独立**（App bundle / bundle id / 数据根 / scheme / playground 策略）。
  * 所以这里只写「怎么读、怎么回到会话」，具体身份由子类通过 `WorkbuddyIdentity` 注入；
  * 两个发行版仍是两个独立适配器、两个 toolId、两份缓存，不互相复用配置。
  *
@@ -68,11 +68,10 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
   readonly id: string
 
   /**
-   * 桌面工具：不能由 Tick 预生成/发送会话。
-   * 只有 task 新建页深链接实测过（taskVerifiedVersions 非空）才暴露 prefill；
-   * 否则 newSessionMode='none'，UI 不显示「新建页」入口（仍可 resume/倒入）。
+   * 桌面工具：不能由 Tick 预生成/发送会话；只能打开 GUI 新建页做 prefill。
+   * 2026-10-19 起不再按版本门控（`taskVerifiedVersions` 已移除）：装了就开放「新建页」入口。
    */
-  private readonly baseCapabilities: Omit<AiToolAdapter['capabilities'], 'newSessionMode'> = {
+  readonly capabilities: AiToolAdapter['capabilities'] = {
     needsCwd: false,
     resumeSession: true,
     deliverPrompt: [] as DeliverMode[],
@@ -80,13 +79,7 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
     discoverProjects: true,
     describeSessions: true,
     usage: false,
-  }
-
-  get capabilities(): AiToolAdapter['capabilities'] {
-    return {
-      ...this.baseCapabilities,
-      newSessionMode: this.identity.taskVerifiedVersions.length > 0 ? 'prefill' : 'none',
-    }
+    newSessionMode: 'prefill',
   }
 
   protected readonly identity: WorkbuddyIdentity
@@ -125,7 +118,7 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
   /**
    * 安装判定只看 App bundle + Info.plist 的 CFBundleIdentifier（数据目录存在不算已安装：
    * 卸载残留、其他工具写配置都会留下目录，PRD §9.9 / §9B.7）。
-   * 版本超出已验证范围 → 仍 installed=true，只给「版本未验证」提示。
+   * 不再读版本号：2026-10-19 起移除版本探测，版本差异由真实调用失败如实暴露。
    */
   private async probeInstallation(): Promise<WorkbuddyDetectResult> {
     const candidates = appBundleCandidates(this.identity, this.deps)
@@ -141,21 +134,7 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
         if (bundleId === undefined) this.warnOnce('plist', 'Info.plist 无法读取 CFBundleIdentifier')
         continue
       }
-      const version = await readPlistString(plist, 'CFBundleShortVersionString')
-      if (!version) {
-        return {
-          installed: true,
-          reason: `${this.identity.displayName} 版本未验证（读不到 CFBundleShortVersionString）`,
-        }
-      }
-      if (!this.identity.verifiedVersions.includes(version)) {
-        return {
-          installed: true,
-          version,
-          reason: `${this.identity.displayName} ${version} 版本未验证（本机验证过 ${this.identity.verifiedVersions.join(' / ')}）`,
-        }
-      }
-      return { installed: true, version }
+      return { installed: true }
     }
 
     return {
@@ -295,14 +274,6 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
     if (!detected.installed) {
       return { ok: false, reason: `${this.identity.displayName} 未安装，无法打开新建页` }
     }
-    // task 是内部未公开协议：只对真机验证过的版本启用（settings/identity 单一门控）
-    if (!detected.version || !this.identity.taskVerifiedVersions.includes(detected.version)) {
-      const verified = this.identity.taskVerifiedVersions.join(' / ') || '无'
-      return {
-        ok: false,
-        reason: `${this.identity.displayName} ${detected.version ?? '版本未知'} 的新建页深链接未验证（已验证版本：${verified}），暂不支持；请先在应用里新建后倒入`,
-      }
-    }
     const openUrl = this.deps.openUrl
     if (!openUrl) return { ok: false, reason: '未注入 openUrl（main 进程需装配 shell.openExternal）' }
 
@@ -347,24 +318,6 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
       return { ok: false, reason: `打开 ${this.identity.displayName} 新建页失败：${errorText(e)}` }
     }
     return { ok: true, truncated }
-  }
-
-  /** 版本门控：task 深链接只对 taskVerifiedVersions 里的版本开放；UI 用这个把不可用工具隐藏 */
-  async newSessionAvailability(): Promise<{ available: boolean; reason?: string }> {
-    const detected = await this.detect()
-    if (!detected.installed) {
-      return { available: false, reason: detected.reason ?? `${this.identity.displayName} 未安装` }
-    }
-    if (this.identity.taskVerifiedVersions.length === 0) {
-      return { available: false, reason: `${this.identity.displayName} 的新建页深链接尚未验证` }
-    }
-    if (!detected.version || !this.identity.taskVerifiedVersions.includes(detected.version)) {
-      return {
-        available: false,
-        reason: `${this.identity.displayName} ${detected.version ?? '版本未知'} 的新建页深链接未验证（已验证：${this.identity.taskVerifiedVersions.join(' / ')}）`,
-      }
-    }
-    return { available: true }
   }
 
   /** 桌面工具没有任何「从 Tick 预生成并发送」的入口：直接抛错（rules §2、PRD §9） */

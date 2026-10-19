@@ -334,23 +334,12 @@ export interface ToolStatus {
   toolId: string
   /** 展示名（主进程统一映射，不要在各组件里硬编码分支） */
   name: string
+  /** 只判「装没装」：2026-10-19 起不再探测/校验工具版本 */
   installed: boolean
-  version?: string
+  /** installed=false 时的可读原因（未安装 / 探测失败） */
   reason?: string
-  /**
-   * false = 已安装但当前不可用（如 pi 版本低于最低要求）。
-   * 新建会话/预填必须同时看 installed + usable；只 installed 会把旧版本当成可用。
-   */
-  usable: boolean
   /** 新建会话能力：launch = Tick 预生成 id 并绑定；prefill = 只打开 GUI 新建页预填；none = 不支持 */
   newSessionMode: NewSessionMode
-  /**
-   * 当前这台机器上这条「新建会话」路径是否真的可用（版本/扩展/gate 都算）。
-   * 注意：UI 仍会列出「本机已安装」的工具；false 时该行禁用并显示 reason，
-   * 不能因为暂时不可新建就把已安装工具从列表里删掉。
-   */
-  newSessionAvailable: boolean
-  newSessionReason?: string
   /** true = 支持回到已有会话（CLI 终端 resume 或桌面深链接） */
   resumeSession: boolean
 }

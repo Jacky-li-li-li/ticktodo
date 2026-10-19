@@ -18,18 +18,16 @@
 - **同一工具的不同发行版 = 两个独立适配器**：各自的数据根目录、App bundle、缓存键、依据等级、`toolId`；不通过切换环境变量/根目录复用同一个适配器（例：国内版 `workbuddy` 与国际版 `workbuddy-ai`）。
 - 会话 id 用工具侧原始 id，经 `newCliSessionId` 交给 core；`(toolId, sessionId)` 必须全局唯一，命名空间就靠这个二元组——**不要给 sessionId 加 `toolId:` 前缀**（共享层只做品牌转换；as-built 与 PRD 均已按此收敛）。
 - 图标在 `apps/desktop/src/renderer/features/icons/ToolIcon.tsx` 的 `ICONS` 登记；未登记只显示文字，不要猜图标。已登记：`pi`、`workbuddy`、`workbuddy-ai`（两个 WorkBuddy 的官方 mark 相同，国际版图标在官方 mark 上叠 Tick 自加的右下角地球徽标用于区分，不能对外当官方 logo 使用）。
-- 工具未安装 / 版本未验证的展示走 `detect()`，不要在 UI 里猜。
+- 工具是否安装的展示走 `detect()`，不要在 UI 里猜；2026-10-19 起不做版本校验（装了就按可用处理）。
 
 ## 2. 合同最小集（`packages/ai/core/src/index.ts` 的 `AiToolAdapter`）
 
 | 方法 / 字段 | 必填 | 语义与硬要求 |
 | --- | --- | --- |
 | `id` | MUST | 见 §1；与 `Todo.bindings[].toolId`、图标、依据表一致 |
-| `detect()` | MUST | 返回 `installed/version/reason/usable`；`usable=false` 表示已安装但当前不可用（如版本过低）；不能靠数据目录判断已安装（卸载残留、其他工具会写入数据目录） |
+| `detect()` | MUST | 返回 `installed/reason`；只判「装没装」——不能靠数据目录判断已安装（卸载残留、其他工具会写入数据目录）；2026-10-19 起不探测/校验版本号。**CLI 工具还必须能在 GUI 最小 PATH 下定位可执行文件**：Finder 启动的 .app 只有 `/usr/bin:/bin:/usr/sbin:/sbin`，靠硬编码几个前缀会漏装（npm 自定义 prefix / nvm / fnm / volta / bun / `~/.local/bin`）。参考 `@tick/ai-pi` 的 `probe-exe.ts`：常见前缀 → 进程 PATH → 登录 shell PATH 兜底（带超时），不要用「跑 `--version`」来证明安装 |
 | `capabilities` | MUST | 与实现一一对应；任一位为 `true` 就必须实现对应方法，为 `false` 时 UI 不会调用 |
 | `capabilities.newSessionMode` | MUST | 三选一（**不统一各工具的 session id 生成方式**）：`launch` = Tick 预生成 id 并拉起（CLI，`launch()` + 绑定/verify）；`prefill` = 只打开 GUI 新建页并预填文案/工作目录（桌面，`openNewSessionPage()`，不自动发送/不绑定）；`none` = 不支持从 Tick 新建。UI 用同一「新建会话」入口，按该模式分流 |
-| `detect().usable` | MUST | `false` = 已安装但当前不可用（如 pi < 1.3.0）。launch/prefill/UI MUST 同时看 installed + usable；只判 installed 会让旧版本静默失效 |
-| `newSessionAvailability()` | 可选 | 版本/环境级的新建会话门控（如 WorkBuddy task 深链接只对实测版本开放）。`tools:status` 输出 `newSessionAvailable`/`newSessionReason`；UI MUST 保留「本机已安装」的工具，`false` 时禁用该行并显示 reason，不能隐藏已安装工具 |
 | `launch(ctx)` | MUST | 用 `ctx.sessionId` 预生成 id，不得自行生成；桌面工具没有 CLI 启动时直接抛错 |
 | `resume(id, ctx)` | MUST | CLI 用工具自己的 resume 参数；桌面工具走深链（见 §6） |
 | `listSessionInfos()` | 列表 UI 必需 | 返回 `SessionSummary[]`，`filePath` 供导出/定位；`exists` 必须是文件系统事实 |
@@ -68,7 +66,7 @@
 - 安装探测以 App bundle / 可执行文件为准；**数据目录存在不算已安装**。
 - 未安装时适配器**静默禁用**：`detect()` 不通过就不得让该工具的会话/项目进入列表（`listSessionInfos` / `discoverProjects` 返回空、`describeSession` 返回 `undefined`），也不能凭残留数据目录判断「在用」。
 - 根目录按工具自己的规则解析（App 内 `product.json`、各自独立目录、用户配置 > 环境变量 > 默认）；**MUST NOT 用环境变量猜版本或猜 build**（两个 build 各自独立路径/ bundle 区分）。
-- 版本探测：版本号 + 迁移目录/schema（如 `PRAGMA table_info`）；超出已验证范围要给「未验证」提示。
+- 安装探测只判 `installed`（App bundle / 可执行文件）；**不再探测/校验版本号**（2026-10-19），版本差异由真实调用失败如实暴露；schema 探测（如 `PRAGMA table_info`）保留，缺列降级为空。
 - 数据库只读打开（`mode=ro`）；WAL 场景打开失败再复制 db + `-wal` + `-shm` 到临时目录，**副本用完立即删除**；**MUST NOT 用 `immutable=1`**（会忽略 -wal）；SQL 注意 NULL 三值逻辑（用 `COALESCE` / `IS NULL`）。
 - WorkBuddy 系（`workbuddy` / `workbuddy-ai`）的具体实现要求：用 `node:sqlite` 的 `new DatabaseSync(file, { readOnly: true })` 打开 `<root>/workbuddy.db`，**打开后立刻试读一次**（WAL 库缺 `-shm` / 目录不可写时构造成功、首次访问才报错），失败才复制 `db` + `-wal` + `-shm` 到 `mkdtemp` 临时目录并以普通方式打开副本；`node:sqlite` 在 Electron 44.8 / Node 24.22 实测可用，运行时缺失（更老的 Electron/Node）必须降级为空而不是崩。打开后用 `PRAGMA table_info(sessions)` 探测必需列，缺列即视为 schema 不识别、整体降级为空。
 - jsonl：按行流式读；容忍末行半行；超长行跳过；未知 `type` 一律忽略；**时间戳单位写进代码注释与 notes**（ms/s）；cwd 以工具侧字段为准，**目录名不反解**。
@@ -89,10 +87,10 @@
 - CLI 交互式：**MUST** 在终端里拉起（非 TTY 会静默降级）；argv 一律数组，**MUST NOT** shell 拼接；终端脚本由 main 侧做 POSIX 单引号转义。
 - 桌面工具：用深链接；调用前 **MUST** 校验 id 在工具 DB 里存在且未被软删除（不存在/已删除的 id 不调用；已实测会回落首页或空会话页且无返回码）。`resume()` 前 `detect()` 未通过、id 查不到、或该类型会话已被判定为不可定位（如 WorkBuddy AI 的 `is_playground=1`）时，MUST 直接抛错并给可读原因。
 - 桌面工具的 `launch(ctx)` MUST 直接抛错（「桌面应用不能从 Tick 新建会话」），不要返回假的 `LaunchResult`。
-- 桌面工具若声明 `capabilities.newSessionMode='prefill'`，`openNewSessionPage(ctx)` MUST 只做「打开 GUI 新建页 + 预填文案/工作目录」：**不自动发送、不预生成/绑定 sessionId**；`cwd` 必须是存在的绝对路径；深链接超过安全长度时要截断（按码点，不能劈开 emoji）并如实返回 `truncated`；未公开协议 MUST 只对实测版本开放（`taskVerifiedVersions` 类门控），未验证版本默认关闭。
+- 桌面工具若声明 `capabilities.newSessionMode='prefill'`，`openNewSessionPage(ctx)` MUST 只做「打开 GUI 新建页 + 预填文案/工作目录」：**不自动发送、不预生成/绑定 sessionId**；`cwd` 必须是存在的绝对路径；深链接超过安全长度时要截断（按码点，不能劈开 emoji）并如实返回 `truncated`；未公开协议不再按版本门控（2026-10-19 移除），但实测版本要写进 notes。
 - 若 prefill 依赖工具侧扩展（如 pi 的 `session_start` + `setEditorText`），MUST 有消费回执（ack/文件消失）并在超时/失败时降级到剪贴板 + 可见 `notice`；**不得**在未确认时提示「已预填」。
 - 深链接 `open` 恒 exit 0，**MUST NOT** 依赖返回值判断成败；失败不重试、不阻塞、给提示；**MUST NOT** 降级到另一个工具的 scheme（例如国际版失败后改调国内版 `workbuddy://` 属错误工具）。
-- 未在目标机器实测通过的深链接开关默认关闭；实测结论要写「样本数 + 版本范围」。
+- 深链接属未公开协议时，实测结论要写「样本数 + 版本范围」；不再因版本不在白名单而关闭入口（2026-10-19 起不做版本门控）。
 - resume：CLI 按工具自己的 resume 参数（pi 为 `--session <会话文件绝对路径>` + 会话 header 的 cwd）；桌面按深链接。
 
 ## 7. 失败与降级
@@ -119,19 +117,19 @@
 - `pnpm typecheck` **MUST** 通过（仓库唯一自动化检查；当前没有 test runner）。
 - 需要验证纯逻辑/夹具时，用一次性 `.mjs` 或 Node 脚本；夹具必须脱敏，**不得提交真实用户数据**。
 - PR 描述里逐条勾验收清单：
-  - [ ] `detect()`：已安装 / 未安装 / 版本未验证 三态
+  - [ ] `detect()`：已安装 / 未安装 两态（不探测版本）
   - [ ] 列表：空态、单会话、多会话、文件丢失 → `missing`
   - [ ] 最后 user 消息：真实消息、合成消息、压缩摘要、无消息保底
   - [ ] 完成状态：`completed` / `active` / `error` / 未知 → 映射正确
   - [ ] 回到会话：冷启动 / 热启动 / 失败路径；id 不存在时不调用
   - [ ] `newSessionMode` 三态：已安装且 `launch`（可新建并绑定）/ 已安装且 `prefill`（只以「打开新建页」形式出现，发送后倒入绑定）/ `none` 或未安装（置灰 + 原因）；桌面工具调 `launch()` 必须抛错
-  - [ ] `prefill` 路径：已安装桌面工具能从 Tick 打开 GUI 新建页并预填 `prompt` + `cwd`；发送前不产生会话/绑定；缺少文案/非法 cwd/未安装/深链接过长要有明确 reason 或 `truncated`；未公开协议按版本实测
+  - [ ] `prefill` 路径：已安装桌面工具能从 Tick 打开 GUI 新建页并预填 `prompt` + `cwd`；发送前不产生会话/绑定；缺少文案/非法 cwd/未安装/深链接过长要有明确 reason 或 `truncated`
   - [ ] 只读校验：接入前后工具数据目录内容不变（应用自身写日志/DB 除外）
   - [ ] 性能：单会话冷读 ≤ 2s、首帧不阻塞
   - [ ] 文档：笔记 + PRD 依据表 + `docs/rules/README.md` 登记
 
 ## 11. 维护
 
-- 适配器必须记录**已验证的版本范围**；工具升级后按笔记复测并更新（含 schema 探测结果）。
+- 适配器要在 notes 记录**实测过的版本范围**（仅作记录，不做门控）；工具升级后按笔记复测并更新（含 schema 探测结果）。
 - schema/格式探测失败要降级而不是崩；本文件与合同能力同步变更（同 PR）。
 - 新增「工具无关」的通用能力时，先确认它不属于 `ai/core` 纯函数职责，再单独评审。

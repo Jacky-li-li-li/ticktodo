@@ -25,9 +25,8 @@ export const WORKBUDDY_IDENTITY: WorkbuddyIdentity = {
   defaultRootName: '.workbuddy',
   // 只作用于国内版的根目录覆盖；国际版不吃这个变量（不靠它判断版本）
   envRootVar: 'WORKBUDDY_CONFIG_DIR',
-  verifiedVersions: ['5.8.3'],
   // 2026-10-19 真机复测：5.8.3 的 task 深链接会 goHome + 预填输入框，不发送/不建会话
-  taskVerifiedVersions: ['5.8.3'],
+  // （不再按版本门控：装了就开放 prefill，升级后的行为差异由深链接失败如实暴露）
   // 国内版 playground 的深链接行为没有实测结论，不因此置灰
   playgroundUnresumable: false,
   launchErrorText:

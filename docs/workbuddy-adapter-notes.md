@@ -342,7 +342,6 @@
 | scheme | `workbuddy` | `workbuddy-ai` |
 | 默认数据根 | `~/.workbuddy` | `~/.workbuddy-ai` |
 | 根目录环境变量 | `WORKBUDDY_CONFIG_DIR` | 无（不吃国内版的变量） |
-| verifiedVersions | `['5.8.3']` | `['5.8.4']` |
 | playgroundUnresumable | `false`（无实测结论，不置灰） | `true`（保守产品决定，见 §9B.6） |
 
 两版是两个独立适配器：两个 `toolId`、两份 detect 缓存与 jsonl 缓存，互不共用配置（§1）。
@@ -358,7 +357,7 @@
 
 ### 11.4 合同映射
 
-- `detect()`：只看 App bundle + `Info.plist` 的 `CFBundleIdentifier`（**数据目录存在不算已安装**）；`CFBundleShortVersionString` 超出 `verifiedVersions` → `installed: true` + 「版本未验证」；detect 结果缓存 30s（IPC 会反复问）。
+- `detect()`：只看 App bundle + `Info.plist` 的 `CFBundleIdentifier`（**数据目录存在不算已安装**）；不读 `CFBundleShortVersionString`、不校验版本（2026-10-19 移除版本探测）；detect 结果缓存 30s（IPC 会反复问）。
 - 未安装 = 静默禁用（PRD §9.9 / §9B.7）：`detect()` 不通过时 `listSessionInfos()` / `discoverProjects()` 直接返回 `[]`、`describeSession()` 返回 `undefined`——卸载残留的数据目录（`~/.workbuddy*`）不会被当成「这个工具还在用」，也不会出现在「倒入历史会话」/项目索引里。
 - `listSessionInfos()`：**只读 DB 一条查询，不扫 jsonl**；`cwd` 用 `resolveTranscript` 的兜底值，`createdAt` 取 `created_at`（缺失回退 `updated_at`），`lastUsedAt` 取 `last_activity_at`（缺失回退 `updated_at`），`filePath` / `exists` / `size` 来自 `stat` 事实，按 `lastUsedAt` 降序。
 - `discoverProjects()`：只吐原始证据（`path` / `sessionCount` / `lastUsedAt` / `exists`）；非绝对路径的 cwd 先经 `<id>.meta.json` 兜底，仍不绝对就跳过。**不做** canonical 归一、git 根上卷、跨工具合并（归并是 `ai/core` 的 `mergeProjects`）。
@@ -395,7 +394,7 @@
 - **安全长度**：整条 URL 超过 ~6000 时部分平台（Windows 命令行）可能唤不起来；本实现在编码后的 URL 长度 > 6000 时截断 prompt（末尾加 `…`）并返回 `truncated=true`，不假装原文已完整预填。
 - **身份与权限**：不读 WorkBuddy 的任何配置/凭据；`openUrl` 由 main 注入 `shell.openExternal`；App 未安装 / 非绝对 cwd / 空文案均返回可读 reason，不调用深链。
 - **未公开规范**：该协议不是官方文档契约，版本升级可能变化；已在 5.8.4 实测（国际版），5.8.3（国内版）代码路径相同但客户端当前启动异常，待其恢复后复测。不要把它当稳定 API 对外承诺。
-- **门控（2026-10-19 补）**：`WorkbuddyIdentity.taskVerifiedVersions` 是唯一开关；国内版 `['5.8.3']`、国际版 `['5.8.4']` 均为 `prefill`；未命中的版本 `newSessionAvailable=false`（UI 仍列出该已安装工具，但禁用并显示 reason），直接调 `openNewSessionPage` 也返回「未验证，暂不支持」。升级版本后必须重新真机验证再放行。
+- **门控（2026-10-19 移除）**：不再按版本门控——`WorkbuddyIdentity` 的 `verifiedVersions` / `taskVerifiedVersions` 已删除，装了就开放 `prefill`；改由 `openNewSessionPage` 的实测事实（5.8.3 / 5.8.4）作记录，版本升级后的行为差异由深链接失败如实暴露，不再提前禁用/隐藏入口。
 - **回执/失败**：该深链接没有 App 侧回执；`openUrl` resolve 只代表交给 LaunchServices，不代表 App 真的打开新建页。Tick 的成功文案只写「已打开/已发出」，不承诺一定预填成功。
 - **数据边界**：prompt 与 cwd 会作为 query 进入自定义 scheme URL，可能被 LaunchServices/目标 App 日志记录；Tick 自己不把 URL 写日志。若正文敏感，用户应只预填标题或先在 App 内输入。
 

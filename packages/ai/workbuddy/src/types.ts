@@ -3,8 +3,8 @@
  *
  * 两个发行版（国内版 `workbuddy` / 国际版 `workbuddy-ai`）共用同一套存储内核
  * （`workbuddy.db` 的 sessions 表 + `projects/<编码 cwd>/<id>.jsonl`），但**身份各自独立**：
- * App bundle、bundle id、数据根、URL scheme、已验证版本、playground 策略都由
- * `WorkbuddyIdentity` 给出，绝不靠环境变量猜版本（rules §1 / PRD §9.8、§9B.1）。
+ * App bundle、bundle id、数据根、URL scheme、playground 策略都由 `WorkbuddyIdentity` 给出，
+ * 绝不靠环境变量猜版本（rules §1 / PRD §9.8、§9B.1）。2026-10-19 起不再探测/校验版本。
  */
 
 /**
@@ -31,13 +31,6 @@ export interface WorkbuddyIdentity {
    * 国际版不吃国内版的 env（两个 build 各管各的目录，PRD §9.8 / §9B.1）。
    */
   envRootVar?: string
-  /** 本机实测通过的版本（超出 → installed=true + 「版本未验证」） */
-  verifiedVersions: readonly string[]
-  /**
-   * `task` 新建页深链接实测通过的版本。空数组 = 尚未验证 → openNewSessionPage 默认拒绝。
-   * 该协议是 App 内部未公开实现，不能只凭「已安装」就默认启用。
-   */
-  taskVerifiedVersions: readonly string[]
   /**
    * `is_playground=1` 的会话是否保守置灰（不可 resume）。
    * 国际版为 true：playground 深链接冷启动回落归因未证伪（PRD §9B.6 保守决定）；
@@ -96,10 +89,9 @@ export interface WorkbuddySessionRow {
   isBackgroundAutomation: boolean
 }
 
-/** detect() 的返回（对齐 AiToolAdapter 合同） */
+/** detect() 的返回（对齐 AiToolAdapter 合同：只判装没装） */
 export interface WorkbuddyDetectResult {
   installed: boolean
-  version?: string
   reason?: string
 }
 

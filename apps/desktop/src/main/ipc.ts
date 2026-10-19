@@ -210,41 +210,24 @@ export function registerIpc(
   )
 
   // ---------- 工具就绪（Q14 双出口空态判据） ----------
+  // 只判「装没装」；不再探测/校验版本（2026-10-19 移除），版本差异交给真实调用失败暴露。
   ipcMain.handle(ToolsIpc.status, async (): Promise<ToolStatus[]> => {
     return Promise.all(
       adapters.map(async (a): Promise<ToolStatus> => {
-        // detect 失败不能把整块 status 打成 IPC 异常：就绪探测不到 = 「不可用 + 原因」，
+        // detect 失败不能把整块 status 打成 IPC 异常：就绪探测不到 = 「未安装 + 原因」，
         // 一个工具挂掉时其他工具的状态仍要能显示（失败降级）
-        let detected: { installed: boolean; version?: string; usable?: boolean; reason?: string }
+        let detected: { installed: boolean; reason?: string }
         try {
           detected = await a.detect()
         } catch (e) {
-          detected = { installed: false, usable: false, reason: `就绪探测失败：${(e as Error).message}` }
-        }
-        const usable = detected.usable ?? detected.installed
-        const mode = a.capabilities.newSessionMode
-        let newSessionAvailable = detected.installed && usable && mode !== 'none'
-        let newSessionReason: string | undefined
-        if (newSessionAvailable && a.newSessionAvailability) {
-          const availability = await a
-            .newSessionAvailability()
-            .catch((e): { available: boolean; reason: string } => ({
-              available: false,
-              reason: `新建会话能力探测失败：${(e as Error).message}`,
-            }))
-          newSessionAvailable = availability.available
-          newSessionReason = availability.reason
+          detected = { installed: false, reason: `就绪探测失败：${(e as Error).message}` }
         }
         return {
           toolId: a.id,
           // 展示名统一映射（shared 单一来源），不把 id 当名字用
           name: toolDisplayName(a.id),
           ...detected,
-          // 缺省 usable = installed：adapter 没显式声明时按「装了就能用」处理
-          usable,
-          newSessionMode: mode,
-          newSessionAvailable,
-          ...(newSessionReason ? { newSessionReason } : {}),
+          newSessionMode: a.capabilities.newSessionMode,
           resumeSession: a.capabilities.resumeSession,
         }
       }),

@@ -9,7 +9,7 @@
  *   adapter.ts     ：国内版身份（WorkbuddyAdapter）
  *
  * 国际版 `@tick/ai-workbuddy-ai` 复用本包的读取内核与 `WorkbuddyIdentity` 类型，
- * 但身份（bundle / 根目录 / scheme / 已验证版本 / playground 策略）各自实现。
+ * 但身份（bundle / 根目录 / scheme / playground 策略）各自实现。
  *
  * 只读纪律（rules §4、PRD §9.7）：只读 `workbuddy.db`（+ -wal/-shm）与
  * `projects/<编码 cwd>/<id>.jsonl`；不读 keyblob / device-id / security/ / settings.json /

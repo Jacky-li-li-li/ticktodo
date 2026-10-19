@@ -108,7 +108,7 @@ const api = {
     },
   },
   tools: {
-    /** 每项含 detect() 结果（installed/version/reason）——adapter 能力字段从合同取 */
+    /** 每项含 detect() 结果（只判 installed/reason）——adapter 能力字段从合同取 */
     status: (): Promise<ToolStatus[]> => ipcRenderer.invoke(ToolsIpc.status),
   },
   export: {

@@ -34,12 +34,10 @@ interface Resolved {
  *  - `launch`：写文案 → 在终端里新建会话（Tick 预生成 id 并绑定）；
  *  - `prefill`：打开它的 GUI 新建页并预填，不自动发送/不绑定。
  * 两者都没有时只显示中性提示卡。
+ * 只按 installed 判断（2026-10-19 起不再做版本校验）。
  */
 const isSelectable = (t: ToolStatus): boolean =>
-  t.installed &&
-  t.usable !== false &&
-  t.newSessionAvailable !== false &&
-  (t.newSessionMode === 'launch' || t.newSessionMode === 'prefill')
+  t.installed && (t.newSessionMode === 'launch' || t.newSessionMode === 'prefill')
 /** 只能打开 GUI 新建页的桌面工具（WorkBuddy 系） */
 const isPrefillOnly = (t: ToolStatus): boolean => t.newSessionMode === 'prefill'
 /** 默认优先 pi（现有主路径），否则第一个可新建工具 */
@@ -85,8 +83,8 @@ export function AiPicker({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   /**
-   * 列表严格等于「本机已安装的工具」：已安装但版本/能力不满足的也保留，只是禁用并给原因，
-   * 不能因为暂时不可新建就把它从本机工具列表里删掉。
+   * 列表严格等于「本机已安装的工具」：已安装但没有新建通路的（newSessionMode='none'）也保留，
+   * 只是禁用并给原因，不能因为它不支持新建就把它从本机工具列表里删掉。
    */
   const installedTools = (tools ?? []).filter((t) => t.installed)
   /** 其中当前真的能执行「新建」的子集（默认选中/主按钮只从这里面挑） */
@@ -99,9 +97,7 @@ export function AiPicker({
   /** 空态里说明「本机扫到了什么」：只数真正安装的，未安装的 adapter 不算 detected */
   const detectedNames = installedTools.map((t) => t.name)
   const reasonOf = (t: ToolStatus): string =>
-    t.newSessionReason ??
-    t.reason ??
-    (t.newSessionMode === 'none' ? '仅支持倒入历史会话' : '当前不可用')
+    t.reason ?? (t.newSessionMode === 'none' ? '仅支持倒入历史会话' : '当前不可新建')
   /** 当前选中工具的展示名：优先用 main 给的 status.name，其次走 shared 的兜底映射；没有则留空 */
   const toolName =
     selectedTool?.name ?? (tool ? toolDisplayName(tool) : '')

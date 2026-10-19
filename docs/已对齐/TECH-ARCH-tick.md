@@ -514,7 +514,7 @@ flowchart TB
 - 不把面板 session id 当成 CLI session id
 - **session 格式版本要容错**：官方 `version` 现为 3（v1 线性 / v2 树 / v3 `custom` 改名），
   pi 加载时自动迁移 → 我们读文件时不能假设恒为 3，未知字段必须忽略而非报错
-- **开发前升级 pi 到 1.3.0**（本机 1.2.0），并在 `detect()` 里校验版本
+- **pi 装好即可**：2026-10-19 起 `detect()` 只判 installed，不再校验版本（原「开发前升级 pi 到 1.3.0 并在 detect() 校验版本」的要求已作废）
 - **凭据双来源（PRD F5 修订）**：默认来源 = pi 本体
   （`ExtensionContext.modelRegistry` 解析 key，就绪性走 `pi auth check`）；
   M3+ 自配来源 = 内置 pi-ai 直连上游（OpenAI 兼容 endpoint，各类网关/代理由此接入），
