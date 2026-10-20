@@ -19,18 +19,51 @@ importers:
       '@fontsource/inter':
         specifier: ^5.3.0
         version: 5.3.0
+      '@tick/ai-claude':
+        specifier: workspace:*
+        version: link:../../packages/ai/claude
+      '@tick/ai-claude-desktop':
+        specifier: workspace:*
+        version: link:../../packages/ai/claude-desktop
+      '@tick/ai-cline':
+        specifier: workspace:*
+        version: link:../../packages/ai/cline
+      '@tick/ai-codex':
+        specifier: workspace:*
+        version: link:../../packages/ai/codex
       '@tick/ai-core':
         specifier: workspace:*
         version: link:../../packages/ai/core
+      '@tick/ai-dsh':
+        specifier: workspace:*
+        version: link:../../packages/ai/dsh
+      '@tick/ai-grok':
+        specifier: workspace:*
+        version: link:../../packages/ai/grok
+      '@tick/ai-kimi':
+        specifier: workspace:*
+        version: link:../../packages/ai/kimi
+      '@tick/ai-omp':
+        specifier: workspace:*
+        version: link:../../packages/ai/omp
+      '@tick/ai-opencode':
+        specifier: workspace:*
+        version: link:../../packages/ai/opencode
       '@tick/ai-pi':
         specifier: workspace:*
         version: link:../../packages/ai/pi
+      '@tick/ai-qoder':
+        specifier: workspace:*
+        version: link:../../packages/ai/qoder
       '@tick/ai-workbuddy':
         specifier: workspace:*
         version: link:../../packages/ai/workbuddy
       '@tick/ai-workbuddy-ai':
         specifier: workspace:*
         version: link:../../packages/ai/workbuddy-ai
+      '@tick/ai-zcode':
+        specifier: workspace:*
+        version: link:../../packages/ai/zcode
       '@tick/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -87,8 +120,149 @@ importers:
         specifier: ^0.28.8
         version: 0.28.8
 
+  packages/ai/claude:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/claude-desktop:
+    dependencies:
+      '@tick/ai-claude':
+        specifier: workspace:*
+        version: link:../claude
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/cline:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/codex:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/ai/core:
     dependencies:
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/dsh:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/grok:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/kimi:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/omp:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/opencode:
+    dependencies:
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
       '@tick/shared':
         specifier: workspace:*
         version: link:../../shared
@@ -102,6 +276,25 @@ importers:
       '@tick/ai-core':
         specifier: workspace:*
         version: link:../core
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/qoder:
+    dependencies:
+      '@tick/ai-claude':
+        specifier: workspace:*
+        version: link:../claude
+      '@tick/ai-core':
+        specifier: workspace:*
+        version: link:../core
+      '@tick/ai-pi':
+        specifier: workspace:*
+        version: link:../pi
       '@tick/shared':
         specifier: workspace:*
         version: link:../../shared
@@ -131,6 +324,19 @@ importers:
       '@tick/ai-workbuddy':
         specifier: workspace:*
         version: link:../workbuddy
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/ai/zcode:
+    dependencies:
+      '@tick/ai-opencode':
+        specifier: workspace:*
+        version: link:../opencode
       '@tick/shared':
         specifier: workspace:*
         version: link:../../shared
@@ -185,6 +391,12 @@ importers:
 
   packages/session-locators:
     dependencies:
+      '@tick/ai-claude':
+        specifier: workspace:*
+        version: link:../ai/claude
+      '@tick/ai-claude-desktop':
+        specifier: workspace:*
+        version: link:../ai/claude-desktop
       '@tick/ai-pi':
         specifier: workspace:*
         version: link:../ai/pi

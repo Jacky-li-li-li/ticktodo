@@ -28,9 +28,9 @@
 **现状（代码核实）**
 
 - 数据模型：`Todo.bindings: SessionBinding[]`（`toolId / sessionId / boundAt / state / filePath`）+ `primarySessionId`（`packages/shared`）。Tick 只存绑定关系，会话元数据权威源在工具侧 adapter。
-- 合同：`AiToolAdapter`（`packages/ai/core`）已有 `listSessionInfos / describeSession`，`SessionInfo` 含 `name / firstMessage / lastMessage / createdAt / lastUsedAt / filePath / parentSessionPath`，列表用的 `SessionSummary` 另带 `resumable?`（缺省=可回到）与 `size?`；`SessionService`（`apps/desktop/src/main/services/sessions.ts`）负责拼视图，5s 内存缓存，不落镜像。
+- 合同：`AiToolAdapter`（`packages/ai/core`）已有 `listSessionInfos / describeSession`，`SessionInfo` 含 `name / firstMessage / lastMessage / createdAt / lastUsedAt / filePath / parentSessionPath / files?`（多文件会话的全部正文文件），列表用的 `SessionSummary` 另带 `resumable?`（缺省=可回到）、`size?` 与 `files?`；`SessionService`（`apps/desktop/src/main/services/sessions.ts`）负责拼视图，5s 内存缓存，不落镜像。
 - UI：`TodoDetail` 以列表展示绑定会话，「停在哪」仅用 `lastMessage ?? name ?? firstMessage` 的一行文本；可选单会话用量。
-- 已有三个适配器实装：`pi`（CLI）、`workbuddy`（WorkBuddy 国内版，桌面形态）、`workbuddy-ai`（WorkBuddy AI 国际版，桌面形态）；Claude Code / Cursor 仍未接入。桌面适配器只读本地 DB/会话文件、只能经深链接回到会话；新建会话语义由 `capabilities.newSessionMode` 表达（`launch` / `prefill` / `none`），两个 WorkBuddy 均为 `prefill`（可打开 GUI 新建页并预填，但不自动发送/不绑定），`SessionService` 已按 `binding.toolId` 路由到对应 adapter。
+- 已有**十五个**适配器实装（完整清单与能力位见 `CLAUDE.md`「当前状态」与 `docs/agent-session-storage-map.md`）：`pi` / `claude` 为 `launch`；`workbuddy` / `workbuddy-ai` / `claude-desktop` 为 `prefill` + `deeplink`；Codex / Cline / Grok / omp / Kimi Code / OpenCode / Qoder 两个发行版为 `prefill` + `terminal-copy`；`zcode` / `dsh` 为 `none`（只能倒入历史会话 + 回到会话 + 用量）。桌面适配器只读本地 DB/会话文件、只能经深链接回到会话；`SessionService` 已按 `binding.toolId` 路由到对应 adapter。**`claude` 与 `claude-desktop` 共用同一份 `~/.claude/projects` jsonl**，列表层按正文 `entrypoint`（`claude-desktop` / `claude-desktop-3p`）与 Desktop 记录 `cliSessionId` 区分归属；被 Desktop adopt 的 CLI 会话允许双 id 各列一次（已知设计，见 `docs/claude-code-adapter-notes.md` §3.4）；依据见 §10 表 C。
 - 缺口：① 现有 `lastMessage` 不保证是 user 消息，也无时间、无折叠；② 没有跨会话的时间线视图；③ 会话状态只有 pending/verified，缺「进行中/已停下」等语义；④ 跨工具的字段尚未归一（时间、状态、角色）。
 
 ## 2. 目标用户与场景
@@ -397,6 +397,40 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 > [M] 只覆盖「文件读取 + 安装检测 + 标题/cwd/用量口径」；深链接、完成状态、软删除/`transport`/`playground` 语义**没有第三方佐证**，等级不因新增 [M] 上调。
 
 表 B 的等级不计入表 A 的统计，两表独立。
+
+**表 C：Claude Code CLI（`claude`）与 Claude Desktop Code tab（`claude-desktop`）**
+
+来源：
+[CC1] 官方 CLI 参考 https://code.claude.com/docs/en/cli-reference
+[CC2] 官方会话管理（transcript 存储位置）https://code.claude.com/docs/en/sessions
+[CC3] 官方 `~/.claude` 目录说明 https://code.claude.com/docs/en/claude-directory
+[CC4] 官方 Desktop 文档（Coming from the CLI / 从链接打开 SSH 会话）https://code.claude.com/docs/en/desktop
+[CC5] 官方深链接文档 https://code.claude.com/docs/en/deep-links
+[CC6] 本机实测笔记 `docs/claude-code-adapter-notes.md`（CLI 2.1.302 / Desktop 1.46388.4）
+[CC7] Desktop `app.asar`（1.46388.4）的 `claudeURLHandler` / `adoptCliSession` 实现
+
+| # | 项 | 依据等级 | 来源与说明 |
+| --- | --- | --- | --- |
+| C1 | 会话正文 `~/.claude/projects/<编码 cwd>/<uuid>.jsonl`；编码 cwd = 非字母数字换 `-`，超 200 字符截断+哈希 | 官方文档明确 | [CC2][CC3]；[CC6] 本机一致。cwd 一律取记录里的 `cwd`，不反解目录名 |
+| C2 | 配置根可被 `CLAUDE_CONFIG_DIR` 覆盖 | 官方文档明确 | [CC3]（“Move storage off `~/.claude`”）；[CC6] 实测生效 |
+| C3 | **无首行 header**；`cwd` 在第一条带 `cwd` 的记录上；首行可能是 `mode` / `queue-operation` / `custom-title` | 仅本机实测（非公开契约） | [CC6]；[CC3] 明确「entry format 是内部实现、随版本变」——所以按字段名容错，不按行位 |
+| C4 | 同一条 assistant 消息写多行（`apiBlockIndex` + 续写），需按 `message.id` 去重 | 仅本机实测（非公开契约） | [CC6]：285 行只有 109 个不同 id |
+| C5 | `cost-state` 行为成本与 token 的累计快照（`totalCostUSD` / `modelUsage` / `hasUnknownModelCost`） | 仅本机实测（非公开契约） | [CC6]；与逐行去重结果对比过 |
+| C6 | `--session-id <uuid>` 预生成会话 id（必须合法 UUID） | 官方文档明确 | [CC1]；[CC6] 实测落盘文件名即该 UUID（发消息后） |
+| C7 | `--prefill=<text>` 原生预填输入框（不发送、不落盘） | 仅本机实测（非公开契约，`--help` 不列该 flag） | [CC6]：TUI 中文本已填、无 `unknown option`、不产生会话文件；多行/中文/引号/emoji 均原样 |
+| C8 | 位置参数即发送；`-` 开头用 `--` 分隔 | 官方文档明确 | [CC1]（`claude "query"`）；[CC6] 实测 `--` 生效 |
+| C9 | resume：`claude --resume <会话文件绝对路径>`，cwd 取会话自己的 cwd | 官方文档明确 | [CC1]（`--resume` 接受 transcript 绝对路径）；[CC6] TTY 与 `-p` 均实测接通原会话 |
+| C10 | Desktop 与 CLI **共用同一份会话正文**，Desktop 只是 adopt；`claude --resume` 仍能找到 | 官方文档明确 | [CC4]（“Desktop continues the same session rather than a copy”）；[CC7] `adoptCliSession` 原地 adopt、`resolveProjectDirForSession` 指向 `~/.claude/projects` |
+| C11 | Desktop 会话在 jsonl 里写 `entrypoint = claude-desktop / claude-desktop-3p` | 仅 asar 逆向 + 本机代码核实（非公开契约） | [CC7] `UFn=["claude-desktop","claude-desktop-3p"]`；**本机 Desktop 未登录、无 Desktop 会话样本** |
+| C11b | Desktop **自己的**会话：`<userData>/<kind>/<acct>/<org>/local_<id>/.claude/projects/…/<uuid>.jsonl`，记录为同级 `local_<id>.json` | 第三方实现佐证 + asar 互相印证 | [CC7] 的 `iFt()`/`Gti()`（kind 目录 = `claude-code-sessions` / `local-agent-mode-sessions`）；magpie `internal/sessions/calls.go`、`desktop_titles.go` 读同一布局。**本机无样本**，夹具覆盖结构 |
+| C11c | `claude://code/continue?session=local_<id>` 打开 Desktop 会话（只认 `local_[A-Za-z0-9-]{1,64}`，且只找**非归档**） | 仅 asar 逆向（非公开契约） | [CC7] `Wc.Code` 的 `/continue` 分支 + `J9t` 正则 + `$9t()`（`!isArchived` 过滤）。未验证 UI 落地 |
+| C12 | `claude://code/new?folder=<abs>&q=<enc>` 打开 Code 新建页并预填（不发送） | 仅 asar 逆向（非公开契约）；官方只写了 SSH 变体 | [CC7]；[CC4] 只公开了 `claude://code/new?ssh_host=…&ssh_folder=…&q=…` 形态。`q` 在 Desktop 侧按 14336 码元截断 |
+| C13 | `claude://resume?session=<uuid>` 把 CLI 会话导入 Desktop 并打开 | 仅 asar 逆向（非公开契约） | [CC7]（`Wc.Resume` 分支 + 失败归因 `auth_expired` / `network` / `transcript_missing`）；[CC6] 本机 `open` 返 0，未验证 UI 落地 |
+| C14 | Desktop 安装判定：`Claude.app` + `CFBundleIdentifier=com.anthropic.claudefordesktop` | 官方文档明确（bundle id 由本机 Info.plist 核实） | [CC4]；`/Applications/APP/Claude.app` 读数一致（1.46388.4） |
+| C15 | 已登录判定：`<userData>/local-agent-mode-sessions` 或 `config.json` 存在 | 仅本机实测（非公开契约） | [CC6]；只做存在性判断，不读内容 |
+| C16 | `claude-cli://open?q=&cwd=` 是**另一条**通路（handler app 在终端开新会话） | 官方文档明确 | [CC5]；本适配器**不使用**（Tick 自己生成终端脚本，能确定性控制 cwd/argv/session id） |
+
+**等级统计（表 C，共 18 项）**：官方文档明确 **8**（C1、C2、C6、C8、C9、C10、C14；C16 属「明确但不采用」）；第三方实现佐证 **1**（C11b，与 asar 一致）；仅本机实测/逆向 **9**（C3、C4、C5、C7、C11、C11c、C12、C13、C15）。**未验证子项**：C11/C11b 无 Desktop 原生会话样本（结构由 asar + magpie 印证，夹具覆盖）；C11c/C12/C13 只验证了 URL 被系统接受，未验证 UI 落地效果；`--prefill` + `--session-id` 回车后是否沿用该 UUID 未验证（故 prefill 一律走 pending 对账）。跨工具对照见 `docs/agent-session-storage-map.md`。
 
 ### 诚实结论
 

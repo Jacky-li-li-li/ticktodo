@@ -70,19 +70,31 @@ body,
 }
 
 /* ---------- 焦点可见性 ---------- */
-/* 键盘操作时用面板 Accent 做 focus ring；鼠标点击后由 html.using-pointer 抑制，
-   避免 macOS 系统 accent（橙色）焦点框一直挂在按钮上。 */
+/* 键盘操作时用面板强调色做 focus ring；鼠标点击后由 html.using-pointer 抑制，
+   避免 macOS 系统 accent（橙色）焦点框一直挂在按钮上。
+   不变量 11：焦点环墨黑、不用蓝色 —— 与 @tick/ui 的 --accent 一致；工具行是
+   div[role=radio]（不是 button），必须一并覆盖，否则键盘聚焦时只剩 UA 默认描边。 */
 button:focus-visible,
 [role='button']:focus-visible,
+[role='radio']:focus-visible,
 a:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.6);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* 工具行在 .ns-tools（overflow-y:auto，另一轴会被计算成 auto）里滚动：
+   正向 offset 的焦点环会被容器左右裁掉，只剩上下两条。行内改用内缩环，四边都可见。
+   其它控件不受影响（不在滚动容器边缘）。 */
+[role='radio']:focus-visible {
+  outline-offset: -2px;
 }
 
 html.using-pointer button:focus,
 html.using-pointer button:focus-visible,
 html.using-pointer [role='button']:focus,
 html.using-pointer [role='button']:focus-visible,
+html.using-pointer [role='radio']:focus,
+html.using-pointer [role='radio']:focus-visible,
 html.using-pointer a:focus,
 html.using-pointer a:focus-visible {
   outline: none;
@@ -107,8 +119,8 @@ html.using-pointer a:focus-visible {
 }
 
 /* ---------- 品牌图标（内联 SVG） ---------- */
-/* PiIcon / WorkbuddyIcon / WorkbuddyAiIcon 都是带 className="tool-icon" 的内联 SVG：
-   放进 flex 行时不要被拉伸、也不要出现 inline 基线空隙。 */
+/* ToolIcon 输出两种形态：内联 SVG（pi / WorkBuddy / Claude）与位图 <img>（其余工具）。
+   两者都带 className="tool-icon"：放进 flex 行时不要被拉伸、也不要出现 inline 基线空隙。 */
 .tool-icon {
   display: block;
   flex: none;
@@ -390,19 +402,22 @@ html.using-pointer a:focus-visible {
   line-height: 1.45;
 }
 
-/* ---------- Toast（§3.5：覆盖捕获行，3s，不占布局） ---------- */
+/* ---------- Toast（§3.5：覆盖捕获行，不占布局；短提示 3s / 长文案 5s，最多两行） ---------- */
 
 .toast {
   position: absolute;
   top: 43px;
   left: 14px;
   right: 14px;
-  height: 46px;
+  /* 原来是写死 46px 单行：adapter 的 notice 较长，单行省略号会把尾部指引截掉。
+     改成最小高 46 + 自适应高度（两行时约 47px，观感不变）。 */
+  min-height: 46px;
+  height: auto;
   border-radius: 16px;
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 0 14px;
+  padding: 8px 14px;
   background:
     linear-gradient(180deg, rgba(52, 199, 89, 0.16), rgba(52, 199, 89, 0.16) 100%),
     rgba(15, 23, 31, 0.92);
@@ -435,9 +450,16 @@ html.using-pointer a:focus-visible {
 
 .toast-text {
   flex: 1;
-  white-space: nowrap;
+  /* 允许两行：notice 的尾部往往就是可操作指引（「请在会话列表里选择…」/「⌘V 再回车」）。
+     用 line-clamp 兜住极端长文案；不支持 -webkit-box 的环境会退化成「换行 + 自动高度」，不丢字。 */
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  /* notice 里偶发长路径/URL：允许任意断行，避免撑破 toast 宽度 */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.4;
 }
 
 /* ---------- 顶栏右侧按钮组（M2） ---------- */
@@ -2012,12 +2034,91 @@ button.sheet-row:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 190px;
+  /* 工具字段吃满剩余高度（列表铺到底部按钮上方，footer 固定不动）。
+     min-height 取 2 行（88px）而不是 3 行：默认 360×520 窗口下，3 行（132px）会让外层
+     .content 溢出 ~28px，而外层滚动条是隐藏的（.content::-webkit-scrollbar width:0），
+     列表最后一行反而更难滚到；flex:1 在窗口更高时会自然铺满并显示更多行。 */
+  flex: 1;
+  min-height: 88px;
+  max-height: none;
   overflow-y: auto;
+  /* 列表是内层滚动区：滚到底不要把滚动传给外层 .content（避免嵌套滚动乱跳） */
+  overscroll-behavior: contain;
 }
 
+/* 工具字段吃满剩余高度（新建会话页最后一组字段，下面就是固定高度的 footer）。
+   不写 min-height:0：让字段至少容纳列表的 2 行，而不是把列表压成 0 高度后溢出到 footer 上。 */
+.new-session > .ns-field-tools {
+  flex: 1;
+}
+
+/* 细滚动条常显：列表可能滚（15 个工具）而之前完全隐藏滚动条，看不出还有更多 */
 .ns-tools::-webkit-scrollbar {
-  width: 0;
+  width: 4px;
+}
+
+.ns-tools::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.ns-tools::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 多客户端工具（OpenCode）的「桌面版 / CLI」切换：与 radio 卡片并排、行尾一块小分段控件。
+   它必须是 radio 的兄弟节点（ARIA：radio 的 descendants 是 presentational，里面嵌 button
+   读屏不会报），所以外层包一个 .ns-tool-row 做布局。 */
+.ns-switch {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  /* 材质令牌来自 @tick/ui（不再另写 rgba 叠层） */
+  background: var(--glass-overlay);
+}
+
+.ns-switch-btn {
+  height: 20px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--t-weak);
+  cursor: pointer;
+}
+
+.ns-switch-btn:hover {
+  /* 比容器（--glass-overlay）略不透明一档，悬停才有可见反馈 */
+  background: var(--glass-pill-bg);
+  color: var(--t-body);
+}
+
+/* 选中段用墨黑（与 radio 同口径），不用蓝色 */
+.ns-switch-btn.on {
+  background: var(--accent);
+  color: var(--metal-text);
+}
+
+/* 工具行：radio 卡片 + 行尾的入口切换器。卡片占「切换器之外的剩余宽度」——
+   带切换器的行会比其它行窄约 90px（trailing control 布局），行高不变。 */
+.ns-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.ns-tool-row > .ns-tool {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
 }
 
 .ns-tool {
@@ -2040,17 +2141,12 @@ button.sheet-row:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.ns-tool:disabled,
-.ns-tool:disabled:hover {
+/* 不可新建的行（div，不是 button，所以没有 :disabled；禁用语义由 aria-disabled 表达） */
+.ns-tool.unavailable,
+.ns-tool.unavailable:hover {
   opacity: 0.5;
   cursor: default;
   background: transparent;
-}
-
-.ns-tool.on {
-  /* §3.4 选中态：Accent 24%→10% + 亮边 #9EC5FF 50% */
-  background: linear-gradient(180deg, rgba(10, 132, 255, 0.24), rgba(10, 132, 255, 0.1));
-  border-color: rgba(158, 197, 255, 0.5);
 }
 
 /* 工具品牌图标：16×16，不参与拉伸，垂直居中 */
@@ -2061,6 +2157,11 @@ button.sheet-row:hover {
 
 .ns-tool-name {
   flex: 1;
+  /* 行尾多一个切换器时卡片会变窄：名字允许收缩并省略，不要顶出卡片 */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 12px;
   font-weight: 600;
   color: #fff;
@@ -2076,28 +2177,6 @@ button.sheet-row:hover {
   font-size: 9px;
   font-weight: 500;
   line-height: 1.3;
-}
-
-/* 右侧单选圆点（单选语义；选中时填 Accent） */
-.ns-tool-radio {
-  position: relative;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-}
-
-.ns-tool.on .ns-tool-radio {
-  border-color: rgba(158, 197, 255, 0.9);
-}
-
-.ns-tool.on .ns-tool-radio::after {
-  content: '';
-  position: absolute;
-  inset: 2.5px;
-  border-radius: 50%;
-  background: #0a84ff;
 }
 
 .ns-project {
@@ -2358,21 +2437,8 @@ button.sheet-row:hover {
   background: rgba(0, 0, 0, 0.06);
 }
 
-.ns-tool.on {
-  background: linear-gradient(180deg, rgba(10, 132, 255, 0.14), rgba(10, 132, 255, 0.06));
-  border-color: rgba(10, 132, 255, 0.45);
-}
-
 .ns-tool-name {
   color: #0b1a2a;
-}
-
-.ns-tool-radio {
-  border-color: rgba(0, 0, 0, 0.22);
-}
-
-.ns-tool.on .ns-tool-radio {
-  border-color: rgba(10, 132, 255, 0.9);
 }
 
 .thread-card {
@@ -2772,29 +2838,17 @@ button.sheet-row:hover {
 }
 
 /* ---------- 选中态：工具行 / 项目行 / 筛选 chip / 顶栏开关 ---------- */
+/* 工具行唯一一处 .ns-tool.on（上面主题段的同名规则已合并到这里）：浅色玻璃下用一层
+   半透明白填充 + 墨色内描边表达选中；不用深色填充（会被读成禁用，也会把行尾的
+   「桌面版 / CLI」切换器一起压暗）。 */
 .ns-tool.on {
-  background: linear-gradient(180deg, #3a3e46 0%, #191b20 58%, #0c0d10 100%);
-  border-color: rgba(255, 255, 255, 0.26);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.26),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.22);
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 0 0 1.25px rgba(0, 0, 0, 0.45);
 }
 
 .ns-tool.on:hover {
-  background: linear-gradient(180deg, #444852 0%, #1e2026 58%, #0f1013 100%);
-}
-
-.ns-tool.on .ns-tool-name {
-  color: var(--metal-text);
-}
-
-.ns-tool.on .ns-tool-radio {
-  border-color: rgba(255, 255, 255, 0.72);
-}
-
-.ns-tool.on .ns-tool-radio::after {
-  background: #f3f5f9;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .project-item.current {

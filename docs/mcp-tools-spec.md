@@ -18,7 +18,7 @@
 | `@tick/session-locators` | 已落地：`pi` / `workbuddy` / `workbuddy-ai` 三个只读 locator（`roots()` / `readSession()` / `resumeSpec()`），复用 `@tick/ai-*` 的路径解析 |
 | `@tick/probe-scan` | 已落地：`tk_` handle、probe 读写/过期、字节级回扫、命中后写 verified 绑定；写路径 fail-closed |
 | `@tick/mcp-server` | 已落地：stdio + `@modelcontextprotocol/server@2.3.1`（默认双代协议）、3 个 v1 工具、rate limit、审计、resources、stdin EOF 最终回扫 |
-| 回归 | `node scripts/mcp-check.mjs`：**112 PASS / 0 FAIL**（含 Tick 未运行时 pi/WorkBuddy 回扫、只读、限流、stdin EOF） |
+| 回归 | `node scripts/mcp-check.mjs`：**119 PASS / 0 FAIL**（2026-10-21 实测，以命令输出为准；含 Tick 未运行时 pi/WorkBuddy/Claude 回扫、只读、限流、stdin EOF） |
 | 打包 | `apps/desktop` extraResources 内置 `mcp/tick-mcp.sh` + `mcp/tick-mcp.mjs`，`electronFuses.runAsNode=true`；已从 `Tick.app` 实测 shim 握手成功 |
 | P1（未做） | Tier 1 bridge / `get_todo` / `complete_todo` / `list_sessions` / UI「Agent 连接」与来源角标 / npm·Registry 分发 |
 

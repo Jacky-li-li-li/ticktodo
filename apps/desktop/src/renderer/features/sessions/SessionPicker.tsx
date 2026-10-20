@@ -112,7 +112,13 @@ export function SessionPicker({
         toolId: s.toolId,
         projectPath: s.cwd,
       })
-      onToast(out.ok ? `已在 ${toolDisplayName(s.toolId)} 里打开这个会话` : (out.reason ?? '打开失败'))
+      // notice 是「实际发生了什么」的唯一来源（桌面入口只能激活 App、无法定位会话时必须如实说明），
+      // 不能再用一句「已打开这个会话」盖过去 —— 那正是「假装定位成功」。
+      onToast(
+        out.ok
+          ? (out.notice ?? `已在 ${toolDisplayName(s.toolId)} 里打开这个会话`)
+          : (out.reason ?? '打开失败'),
+      )
       if (out.ok) onClose()
     } finally {
       setBusyId(null)

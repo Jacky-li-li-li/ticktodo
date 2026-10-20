@@ -1,0 +1,15 @@
+{
+  "name": "@tick/ai-grok",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@tick/ai-core": "workspace:*",
+    "@tick/ai-pi": "workspace:*",
+    "@tick/shared": "workspace:*"
+  },
+  "devDependencies": { "typescript": "^5.6.0" }
+}

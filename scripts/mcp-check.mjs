@@ -214,6 +214,33 @@ function writeWorkbuddySession(root, sessionId, handle) {
   return file
 }
 
+/**
+ * 假的 Claude Code 会话：**没有首行 header**（实测 2.1.302 首行是 mode/queue-operation），
+ * cwd 在第一条带 cwd 的记录上；句柄写在一条 user 消息里（回扫只做字面量匹配）。
+ * 文件名必须是 `<uuid>.jsonl`，否则 locator 不认。
+ */
+function writeClaudeSession(claudeDir, sessionId, handle, opts = {}) {
+  const dir = path.join(claudeDir, 'projects', opts.project ?? '-tmp-tick-claude')
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, `${sessionId}.jsonl`)
+  const entrypoint = opts.entrypoint ?? 'cli'
+  const lines = [
+    { type: 'mode', mode: 'normal', sessionId },
+    { type: 'custom-title', customTitle: 'claude fixture', sessionId },
+    {
+      type: 'user',
+      isMeta: false,
+      message: { role: 'user', content: `请处理：Tick 绑定句柄：${handle}` },
+      sessionId,
+      cwd: '/tmp',
+      timestamp: '2026-10-19T00:00:00.000Z',
+      entrypoint,
+    },
+  ]
+  fs.writeFileSync(file, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`)
+  return file
+}
+
 const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'tick-mcp-check-'))
 
 async function main() {
@@ -806,6 +833,126 @@ async function main() {
     JSON.stringify(wbAiBinding),
   )
   await wbAiClient.close()
+
+  // ============================================================
+  // F2. Claude Code：CLAUDE_CONFIG_DIR 假根（与 pi 同类：无首行 header）
+  // ============================================================
+  const claudeBase = path.join(TMP_ROOT, 'claude-data')
+  const claudeCtx = makeContext('claude', { CLAUDE_CONFIG_DIR: claudeBase })
+  const { client: claudeClient } = await startClient(claudeCtx, 'claude-code', '2.1.302')
+  const claudeCreate = await claudeClient.callTool('create_todo', {
+    title: 'Claude Code 绑定',
+    tool_id: 'claude',
+  })
+  const claudeSc = sc(claudeCreate)
+  check(
+    'claude: create 返回 pending + handle',
+    claudeSc.ok === true && claudeSc.binding?.state === 'pending' && HANDLE_RE.test(claudeSc.handle ?? ''),
+    JSON.stringify(claudeSc),
+  )
+  const claudeSessionId = 'bbbbbbbb-1111-4222-8333-444444444444'
+  writeClaudeSession(claudeBase, claudeSessionId, claudeSc.handle)
+  const claudeBinding = await waitFor(() => {
+    const binding = findTodo(claudeCtx.home, claudeSc.todoId)?.bindings?.[0]
+    return binding?.state === 'verified' ? binding : undefined
+  })
+  check(
+    'claude: 无首行 header 的会话回扫 → verified（cwd 取自记录）',
+    claudeBinding?.state === 'verified' && claudeBinding?.toolId === 'claude' && claudeBinding?.sessionId === claudeSessionId,
+    JSON.stringify({ binding: claudeBinding, todo: findTodo(claudeCtx.home, claudeSc.todoId) }),
+  )
+  // Desktop 会话（entrypoint=claude-desktop）不能被 claude locator 抢走
+  const desktopHandle = `tk_${'d'.repeat(26)}`
+  const desktopSessionId = 'cccccccc-1111-4222-8333-444444444444'
+  writeClaudeSession(claudeBase, desktopSessionId, desktopHandle, { entrypoint: 'claude-desktop' })
+  const desktopCreate = await claudeClient.callTool('create_todo', {
+    title: 'Desktop 会话不该被 claude 绑定',
+    tool_id: 'claude',
+  })
+  const desktopSc = sc(desktopCreate)
+  // 负向断言（Desktop 会话不被 claude 命中）不能只等固定 2s 就下结论：MCP server 只在「进程启动 / stdin EOF」
+  // 回扫，同一进程内新写的 probe 本来就不会被扫到（旧版等 2s 的负向断言因此恒过）。
+  // 做法：再建一条 entrypoint=cli 的正向 control，关闭并重开客户端触发**同一次启动回扫**——
+  // control 必须 verified（证明扫描确实跑过），desktop 必须仍未 verified，负向才有意义。
+  const controlSessionId = 'eeeeeeee-1111-4222-8333-444444444444'
+  const controlCreate = await claudeClient.callTool('create_todo', {
+    title: '同轮扫描 control',
+    tool_id: 'claude',
+  })
+  const controlSc = sc(controlCreate)
+  // 必须把 create 返回的 handle 写进会话（与上面 claude/desktop 用例同一模式）
+  writeClaudeSession(claudeBase, controlSessionId, controlSc.handle)
+  await claudeClient.close()
+  const { client: rescanClient } = await startClient(claudeCtx, 'claude-code', '2.1.302')
+  const controlBinding = await waitFor(() => {
+    const binding = findTodo(claudeCtx.home, controlSc.todoId)?.bindings?.[0]
+    return binding?.state === 'verified' ? binding : undefined
+  })
+  check(
+    'claude: 启动回扫的 control 已验证（负向断言的前提）',
+    controlBinding?.state === 'verified' && controlBinding?.sessionId === controlSessionId,
+    JSON.stringify({ binding: controlBinding, create: controlSc, todo: findTodo(claudeCtx.home, controlSc.todoId) }),
+  )
+  const desktopBinding = findTodo(claudeCtx.home, desktopSc.todoId)?.bindings?.[0]
+  check(
+    'claude: entrypoint=claude-desktop 的会话不会被 claude 命中',
+    desktopBinding?.state !== 'verified',
+    JSON.stringify(desktopBinding ?? null),
+  )
+  await rescanClient.close()
+
+  // ============================================================
+  // F1b. Claude Desktop 自己的会话：每会话 .claude home（id 必须是 local_<id>）
+  //   布局：<HOME>/Library/Application Support/Claude/claude-code-sessions/<acct>/<org>/local_<id>/.claude/projects/…
+  //   依据：app.asar 的 iFt()/Gti() + magpie 的 calls.go/desktop_titles.go（两处独立一致）。
+  // ============================================================
+  const desktopCtx = makeContext('claude-desktop')
+  // makeContext 把 HOME 指到 base（Tick 自己的数据在 TICK_HOME=home），Desktop 的 userData 跟着 HOME 走
+  const desktopData = path.join(desktopCtx.base, 'Library', 'Application Support', 'Claude')
+  const localId = 'local_abc'
+  const desktopCliId = 'dddddddd-2222-4333-8444-555555555555'
+  const desktopHomeDir = path.join(desktopData, 'claude-code-sessions', 'acct', 'org', localId)
+  fs.mkdirSync(path.join(desktopData, 'claude-code-sessions', 'acct', 'org'), { recursive: true })
+  fs.writeFileSync(
+    path.join(desktopData, 'claude-code-sessions', 'acct', 'org', `${localId}.json`),
+    JSON.stringify({ sessionId: localId, cliSessionId: desktopCliId, title: 'Desktop 会话', isArchived: false, lastActivityAt: Date.now() }),
+  )
+  const { client: desktopClient } = await startClient(desktopCtx, 'claude-desktop', '1.46388.4')
+  const localCreateOut = await desktopClient.callTool('create_todo', {
+    title: 'Claude Desktop 自己的会话绑定',
+    tool_id: 'claude-desktop',
+  })
+  const localSc = sc(localCreateOut)
+  check(
+    'claude-desktop: create 返回 pending + handle',
+    localSc.ok === true && localSc.binding?.state === 'pending' && HANDLE_RE.test(localSc.handle ?? ''),
+    JSON.stringify(localSc),
+  )
+  // 句柄写进会话自己的 home（不是全局 ~/.claude）
+  const desktopTranscriptDir = path.join(desktopHomeDir, '.claude', 'projects', '-tmp-tick-desktop')
+  fs.mkdirSync(desktopTranscriptDir, { recursive: true })
+  fs.writeFileSync(
+    path.join(desktopTranscriptDir, `${desktopCliId}.jsonl`),
+    [
+      { type: 'mode', mode: 'normal', sessionId: desktopCliId },
+      { type: 'user', message: { role: 'user', content: `Tick 绑定句柄：${localSc.handle}` }, sessionId: desktopCliId, cwd: '/tmp' },
+    ].map((line) => JSON.stringify(line)).join('\n') + '\n',
+  )
+  const localBinding = await waitFor(() => {
+    const binding = findTodo(desktopCtx.home, localSc.todoId)?.bindings?.[0]
+    return binding?.state === 'verified' ? binding : undefined
+  })
+  check(
+    'claude-desktop: 每会话 home 回扫 → verified',
+    localBinding?.state === 'verified' && localBinding?.toolId === 'claude-desktop',
+    JSON.stringify(localBinding),
+  )
+  check(
+    'claude-desktop: 绑定 id 用 local_<id>（深链接只认它）',
+    localBinding?.sessionId === localId,
+    localBinding?.sessionId,
+  )
+  await desktopClient.close()
 
   // ============================================================
   // F. data/settings.json 的开关（不设环境变量）

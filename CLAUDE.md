@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Ticktodo（包名 `tick`）是 macOS 菜单栏常驻的置顶面板：以 Todo（线索）为索引，把同一件事在不同 AI 工具里的多个 AI 会话聚合起来，并能一键回到任意会话继续。面板内置一个基于 pi-durable 的 Chat，用来自然对话并让模型调用 `create_todo`。
 
-适配器有三个实装：`pi`（CLI，在终端里拉起 / resume）、WorkBuddy 国内版（`workbuddy`）与 WorkBuddy AI 国际版（`workbuddy-ai`）。两个 WorkBuddy 都是**桌面工具适配**：只读其本地数据库与会话文件，只能经深链接回到已有会话，**不支持从 Tick 直接新建并绑定**。两个 WorkBuddy 均为 `newSessionMode='prefill'`（可打开 GUI 新建页并预填，发送/绑定仍由用户完成）；2026-10-19 起不再做版本校验（装了就开放 prefill / 新建页，版本差异由真实调用失败暴露）。
+适配器已有**十五个实装**（清单与能力位见「当前状态」）：其中只有 `pi` 与 Claude Code CLI（`claude`）能预生成会话 id（`newSessionMode='launch'`）；两个 WorkBuddy（`workbuddy` / `workbuddy-ai`）与 Claude Desktop（`claude-desktop`）是**桌面工具适配**：只读本地数据库/会话文件，只能经深链接回到已有会话，新建走 `newSessionMode='prefill'` + `prefillDelivery='deeplink'`（打开 GUI 新建页并预填，发送/绑定仍由用户完成）；其余 CLI（Qoder / Codex / Cline / Grok / omp / Kimi / OpenCode）走 `prefill` + `terminal-copy`（打开终端 + 文案进剪贴板，不自动发送），ZCode / DeepSeek Harness 是 `none`（只能倒入历史会话）。2026-10-19 起不再做版本校验（装了就开放 prefill / 新建页，版本差异由真实调用失败暴露）。
 
 - 仅 macOS；全仓 TypeScript；Electron 44（内置 Node 24，满足 pi-durable 的 Node ≥ 22.19 硬约束）。
 - 权威设计：`README.md`（功能/操作细节）、`docs/已对齐/PRD-tick.md`、`docs/已对齐/TECH-ARCH-tick.md`。设计文档与代码冲突时，以 as-built 代码为准并同步文档。
@@ -17,6 +17,8 @@ Ticktodo（包名 `tick`）是 macOS 菜单栏常驻的置顶面板：以 Todo�
 pnpm install                              # 首次；.npmrc 固定 node-linker=hoisted，勿改 isolated
 pnpm dev                                  # 根脚本：先 build tick-extension，再起 Electron（vite dev 5173）
 pnpm typecheck                            # 全仓 tsc --noEmit
+pnpm verify:agents                        # 逐工具核对「会话检索」真实数据（IMPL/STORE/NOT-INSTALLED/NO-SESSIONS；只读，不吞错）
+pnpm review:tool <toolId>                 # 单工具只读探针（detect/list/describe/usage/resume argv），交叉评审用
 pnpm selftest:prefill                     # 预填/多工具边界 selftest（esbuild 临时打包 TS 断言，不启动 Electron）
 pnpm mcp:check                            # MCP server 回归（真实 stdio 客户端；Tick 未运行时回扫/只读/限流）
 pnpm build                                # 全仓构建（desktop = tsc --noEmit + vite build）
@@ -47,10 +49,10 @@ Main (Electron，全部服务与凭据)
    ├─ TodoStore / SettingsStore / CredentialVault
    ├─ services: launch · chat-host · project-index · sessions · export
    │            terminal-launch · provider-config
-   └─ AiToolRegistry → PiAdapter / WorkbuddyAdapter / WorkbuddyAiAdapter
+   └─ AiToolRegistry → 15 个适配器（pi / workbuddy / workbuddy-ai / claude / claude-desktop / qoder×2 / codex / cline / grok / omp / kimi / opencode / zcode / dsh）
 packages/shared   类型 + IPC 通道常量（main/preload/renderer 单一来源）
 packages/ai/core  工具无关合同 + 纯函数（不得依赖任何具体 adapter）
-packages/ai/*     三个适配器（只吐证据，不做归并/缓存/UI）
+packages/ai/*     十五个适配器（只吐证据，不做归并/缓存/UI）
 ```
 
 组合根是 `apps/desktop/src/main/main.ts`：resolveDirs → ensureDirs(0700) → TodoStore → 装配 adapter/索引/拉起/Chat → 窗口 → IPC → 载入 UI。新增 IPC 通道必须同时改四处：`packages/shared` 的常量、`main/ipc.ts`、`preload/index.ts` 白名单、renderer 的 hook。
@@ -62,9 +64,11 @@ packages/ai/*     三个适配器（只吐证据，不做归并/缓存/UI）
 - `@tick/ai-pi`：CLI 工具的参考实现（合同完整语义：detect / 会话目录解析 / listSessionInfos / describeSession / computeUsage / launch / resume / verify；`probe-exe.ts` 负责 GUI 最小 PATH 下的可执行文件定位）。新增 CLI 工具照它写。
 - `@tick/ai-workbuddy`：WorkBuddy 国内版适配器（`workbuddy`），同时是**两个发行版共用的只读读取内核**：`paths.ts`（App bundle / 数据根 / cwd 编码 / jsonl 定位）、`sqlite.ts`（`workbuddy.db` 只读 + WAL 复制兜底 + schema 探测）、`transcript.ts`（jsonl 流式解析 + `<user_query>` 抽取）、`base-adapter.ts`（detect / list / discover / describe / resume / launch）、`adapter.ts`（国内版身份常量）。
 - `@tick/ai-workbuddy-ai`：WorkBuddy AI 国际版适配器（`workbuddy-ai`），只声明自己的身份常量（App bundle / bundle id / 数据根 / scheme / playground 策略），读取内核复用上一个包。两个发行版是**两个独立工具**：两个 toolId、两份缓存、互不共用配置（国内版吃 `WORKBUDDY_CONFIG_DIR`，国际版不吃）。
+- `@tick/ai-claude`：Claude Code CLI 适配器（`claude`）。`paths.ts`（`CLAUDE_CONFIG_DIR` / `~/.claude/projects` 解析、`<uuid>.jsonl` 定位、流式元数据）、`usage.ts`（按 `message.id` 去重 + `cost-state` 快照成本）、`adapter.ts`（detect / list / describe / verify / launch / resume）。CLI 拉起纪律同 pi，但**预填用原生 `--prefill=`**（无需一次性文件与 ack）；resume 用 `--resume <会话文件绝对路径>`。
+- `@tick/ai-claude-desktop`：Claude Desktop（Code tab）适配器（`claude-desktop`）。只声明身份（App bundle `com.anthropic.claudefordesktop` / scheme `claude://` / `prefill` 策略），读取内核复用 `@tick/ai-claude`——Desktop 与 CLI **共用同一份 jsonl**，靠正文 `entrypoint`（`claude-desktop` / `claude-desktop-3p`）与 Desktop 记录里的 `cliSessionId` 区分（adopt 会话双入口见「当前状态」）。新建走 `claude://code/new?folder=&q=`（prefill），回到会话走 `claude://resume?session=<CLI 会话 UUID>`。
 - `@tick/tick-extension`：pi 扩展 `create_todo` / `list_todos`。领域逻辑只有 `src/todos-file.ts` 一份；`src/index.ts`（coding-agent `registerTool`）与 `src/durable.ts`（pi-durable `defineTool`）是两套不通用 API 的薄适配。esbuild 打包成单文件，因为 pi 用 jiti 在无 node_modules 的目录里执行它；`dist/` 不进 git，首次需 build。
 - `@tick/todo-core`：`todos.json` 的**唯一写实现**（锁/原子写/损坏备份/fail-closed/幂等/绑定冲突）。Main 的 `TodoStore` 与 pi extension 都只是它的薄适配；改锁语义只改这里。
-- `@tick/session-locators`：只读 locator（`pi` / `workbuddy` / `workbuddy-ai`），只回答「扫哪个目录、命中文件里的 sessionId 是什么」，不 import Electron。
+- `@tick/session-locators`：只读 locator（`pi` / `workbuddy` / `workbuddy-ai` / `claude`），只回答「扫哪个目录、命中文件里的 sessionId 是什么」，不 import Electron。
 - `@tick/probe-scan`：MCP 句柄（`tk_`）的 probe 写入/过期/回扫；命中后写 verified 绑定。MCP server 与（P1）Tick main 共用。
 - `@tick/mcp-server`：stdio MCP server（3 个 v1 工具 + resources；`dist/tick-mcp.mjs` 单文件，打包进 app 的 `Resources/mcp/`）。
 - `@tick/ui`：玻璃材质与设计令牌的唯一来源；desktop 的 `styles.css` 只保留布局/业务 class。材质、按钮和焦点环规范见 `packages/ui/README.md`。
@@ -115,6 +119,7 @@ packages/ai/*     三个适配器（只吐证据，不做归并/缓存/UI）
 ## 验证方式
 
 - `pnpm typecheck` 是提交前的必跑项；`pnpm selftest:prefill` 覆盖预填/多工具关键边界（不启动 Electron、不碰真实数据）。其余 core 纯函数仍可临时用 `node` 跑 `.mjs`（参考 `scripts/session-usage.mjs`）。
+- 三个 `.mjs` 入口（`selftest-prefill.mjs` / `verify-agent-stores.mjs` / `review-tools.mjs`）共用 `scripts/run-ts.mjs` 做 esbuild 临时打包（入口是各自的 `.ts`）；新增只读 TS 脚本沿用这个套路，不要复制引导代码。
 - dev 模式 main 会开 CDP `127.0.0.1:9223`：`curl http://127.0.0.1:9223/json` 拿页面 WebSocket，再用 `Runtime.evaluate` 驱动/断言 UI。renderer 的 console 已转发到终端。
 - pi 扩展的快速自检：`create_todo` 重复调用应返回既有线索且不重复建单；并发写 `todos.json` 后条目数应守恒。
 
@@ -124,18 +129,23 @@ packages/ai/*     三个适配器（只吐证据，不做归并/缓存/UI）
 - `docs/已对齐/PRD-tick.md`、`docs/已对齐/TECH-ARCH-tick.md`：产品与架构权威设计（含 pi 的实测事实与陷阱）。
 - `docs/已对齐/RESEARCH-pi.md`、`docs/已对齐/RESEARCH-magpie.md`：pi 与本地会话读取器的调研依据。
 - `docs/release-playbook.md`：macOS 签名/公证/发版全链路。
-- `docs/prd-session-timeline.md`：进行中的「最后一条 user 消息 + 跨工具时间线」PRD（P0 含 WorkBuddy 国内版与国际版适配器）。
+- `docs/prd-session-timeline.md`：进行中的「最后一条 user 消息 + 跨工具时间线」PRD（P0 含 WorkBuddy 国内版与国际版适配器；Claude Code / Claude Desktop 已于 2026-10-19 接入，但该 PRD 的 P0-1..P0-6 仍未实现）。
 - `docs/prd-mcp.md`：MCP 对外能力的设计提案（句柄回扫绑定、2025/2026 双代协议、Tier 0/1 架构、分发与安全）；配套可运行 spike 在 `scripts/mcp-spike/`。
 - `docs/mcp-tools-spec.md`：MCP 工具完整合同（6 个工具的 schema/错误码/幂等/回扫算法/测试矩阵）；实现与测试以它为准。
 - `docs/workbuddy-adapter-notes.md`：WorkBuddy 存储格式与深链接的只读实测记录；§11 是适配器落地后的 as-built 对照（事实与未验证项不变）。
+- `docs/claude-code-adapter-notes.md`：Claude Code CLI 与 Claude Desktop 的实测记录（无首行 header、`--prefill`、`claude://code/new` / `claude://resume` / `claude://code/continue`、两者共用同一份 jsonl、靠正文 `entrypoint` 与 Desktop 记录 `cliSessionId` 区分、adopt 双入口已知设计、Desktop 每会话 `.claude` home、未验证项）。
+- `docs/multi-agent-adapter-plan.md`：**多工具适配器现状评估与落地计划**（P1–P3 已落地 Codex/Grok/Cline/omp/Kimi/OpenCode/ZCode/dsh）（能力矩阵、T1/T2/T3/T4 分档、合同扩展清单、推荐顺序与「不建议做」的理由）。
+- `docs/agent-session-storage-map.md`：**跨工具的会话检索对照表**（pi / Claude Code / Claude Desktop / Codex / OpenCode / Cursor / Kimi / WorkBuddy / Droid / Grok / Qoder / Cline / Hermes 的路径、id 来源、cwd、标题、用量口径、resume 通道），主要依据 magpie 的读取器 + 官方文档 + 本机实测。接新适配器前先读它。
 - `docs/rules/README.md`：规则文档索引（先读这里）；接入/修改 AI 工具适配器前必读 `docs/rules/agent-tool-adapter.md`。两个 WorkBuddy 适配器落地后，规则文档的合同能力位（`capabilities.newSessionMode`）与「多适配器落地改动面」已同 PR 回写。
 - `.workbuddy/memory/`：项目长期记忆（含更细的踩坑记录，可作背景参考）。
 
-## 当前状态（2026-10-19）
+## 当前状态（2026-10-21）
 
 - M0–M4 已完成：面板/Todo CRUD、项目索引与拉起、面板 Chat、多会话绑定、用量、导出、打包安装。UI 玻璃化分支已合入。
-- 适配器已有三个实装：`pi`、`workbuddy`（WorkBuddy 国内版）、`workbuddy-ai`（WorkBuddy AI 国际版）。main 侧 `SessionService` / `LaunchService` / `ProjectIndexService` / `ExportService` 已收敛到 `AiToolAdapter[]` 并按 `toolId` 路由；`ProjectIndexService` 只调各 adapter 的 `discoverProjects()`（不再持有 pi 专属的 `sessionRoots()`，也删掉了文件级增量缓存）。两个 WorkBuddy 适配器通过真实数据只读冒烟：国内版 6 条有效会话（DB 10 行，4 行被软删除/云端/后台自动化过滤），国际版 4 条（其中 2 条 playground 会话 `resumable=false`）；集成断言 26/26 PASS（含未安装时静默禁用的 4 项降级断言）。
-- 新建会话语义统一为 `capabilities.newSessionMode`（`launch` / `prefill` / `none`），但**不统一 session id 生成方式**：pi 走 `launch`（Tick 预生成 UUID + `--session-id`，可 pending 绑定/verify）；默认 `deliver='prefill'`：文案写 `cache/launch/<sessionId>.prefill.json`（0600），终端脚本用 `TICK_LAUNCH_FILE`/`TICK_LAUNCH_ACK` 传给 tick-extension，扩展在 `session_start` 调 `ctx.ui.setEditorText()` 预填 pi 输入框、读后即删并写 ack；主进程等 ack（3s），失败/超时降级剪贴板并给 `notice`，**不自动发送**；勾选「直接发送」才走 argv。`ToolStatus` 只按 `installed` 判断（2026-10-19 起移除 `version`/`usable` 与版本门控，`detect()` 不再跑 `pi --version`、WorkBuddy 不再读 `CFBundleShortVersionString`）；新建会话页列出**本机已安装**的所有工具，`newSessionMode='none'` 的行禁用并显示原因。WorkBuddy（国内版 / 国际版）走 `prefill`（由 `openNewSessionPage()` 打开 `workbuddy[ -ai]://task?action=start&prompt=…&cwd=…`，把文案与项目预填进 GUI 新建任务页；不自动发送、不预生成/绑定 sessionId，发送后仍用「倒入历史会话」绑定）。WorkBuddy 的 task 协议是 App 内部实现、无官方公开规范（国内版 5.8.3 / 国际版 5.8.4 均实测；2026-10-19 起不再按版本门控），超长文案按 URL 长度截断并返回 `truncated`；prompt/cwd 会进入深链接 URL（可能出现在 LaunchServices/App 日志，Tick 自身不记录）。
+- 适配器已有**十五个**实装：`pi`、`workbuddy`、`workbuddy-ai`、`claude`、`claude-desktop`、`qoder` / `qoder-cn`、`codex`、`cline`、`grok`、`omp`、`kimi`、`opencode`、`zcode`、`dsh`（DeepSeek Harness）。除 `pi` / `claude` 外全部是 `newSessionMode='none'` 或 `'prefill'`（只能倒入历史会话 + 回到会话 + 用量），因为**只有 pi 与 Claude Code 支持预生成会话 id**。`codex` 是第一个「一会话多文件」的工具：`SessionSummary.files` 保留同一个 thread 的全部 rollout，`filePath` 指向最新那个；`opencode` / `zcode` 是第一批「会话在 SQLite 里」的工具（`filePath` 指向数据库，`zcode` 没有 resume 通道）；`omp` 的 cwd=~ 时会被 omp 自动切到临时目录（`--allow-home` 才允许以 home 为项目）→ Tick 必须在 home 启动/恢复时补这个 flag，否则新会话落到 `/tmp` 项目下；它的首行 `title` 物理记录才是当前标题（`title_change` 只是审计历史）。`dsh` 的正文是**多帧 zstd**（本机 10MB = 23,331 帧，必须按块头切帧；`zstdDecompressSync` / 一次 `end()` 都只解第一帧），标题与用量改读 dsh 自己的投影缓存（`storages/session_projcache`），且**没有按会话打开的通道**。main 侧 `SessionService` / `LaunchService` / `ProjectIndexService` / `ExportService` 已收敛到 `AiToolAdapter[]` 并按 `toolId` 路由；`ProjectIndexService` 只调各 adapter 的 `discoverProjects()`。两个 WorkBuddy 适配器通过真实数据只读冒烟：国内版 6 条有效会话（DB 10 行，4 行被软删除/云端/后台自动化过滤），国际版 4 条（其中 2 条 playground 会话 `resumable=false`）；全套回归以 `pnpm selftest:prefill` 为准（当前 85 PASS / 0 FAIL，数字随用例增删变化）。
+- **多客户端工具**：`capabilities.clients: ToolClientId[]`（当前只有 OpenCode 声明 `['desktop','cli']`）。OpenCode 桌面版与 CLI 共用 `~/.local/share/opencode/opencode.db`、同一批 `ses_…` id，**没有归属字段** → 不拆适配器；新建页在该工具下方显示「打开方式」选择器，写 `settings.toolClients[toolId]`，`LaunchService` 解析后透传 `ctx.client`（请求 > settings > 缺省：新建 `desktop`、回到会话 `cli`）。桌面深链接**实测不可用**：`opencode://new-session?directory=&prompt=` 与 `opencode://open-project?directory=` 虽然在 renderer 源码里能解析、App 主进程日志也收得到，但 1.19.3 的新布局没挂 `opencode:deep-link` 监听（只有旧 shell 挂了），发完 URL 后 `opencode.global.dat`/路由/草稿都没有任何变化 → 桌面入口只做「`open -a` 激活 App + 文案进剪贴板」，回到会话只打开 App 并如实给 `notice`；`prefillDelivery` 只描述 CLI 分支（terminal-copy），不另立工具。教训：源码里有解析函数不等于端到端可用，判据要落在 App 侧可观测状态。
+- 新建会话语义统一为 `capabilities.newSessionMode`（`launch` / `prefill` / `none`）+ `capabilities.prefillDelivery`（`deeplink` / `terminal-copy`），但**不统一 session id 生成方式**：pi 走 `launch`（Tick 预生成 UUID + `--session-id`，可 pending 绑定/verify）；默认 `deliver='prefill'`：文案写 `cache/launch/<sessionId>.prefill.json`（0600），终端脚本用 `TICK_LAUNCH_FILE`/`TICK_LAUNCH_ACK` 传给 tick-extension，扩展在 `session_start` 调 `ctx.ui.setEditorText()` 预填 pi 输入框、读后即删并写 ack；主进程等 ack（3s），失败/超时降级剪贴板并给 `notice`，**不自动发送**；勾选「直接发送」才走 argv。`ToolStatus` 只按 `installed` 判断（2026-10-19 起移除 `version`/`usable` 与版本门控，`detect()` 不再跑 `pi --version`、WorkBuddy 不再读 `CFBundleShortVersionString`）；新建会话页列出**本机已安装**的所有工具，`newSessionMode='none'` 的行禁用并显示原因。WorkBuddy（国内版 / 国际版）与 Claude Desktop 走 `prefill` + `deeplink`（`openNewSessionPage()` 打开 GUI 新建页并预填；不自动发送、不预生成/绑定 sessionId）。**CLI 工具（Codex / Cline / Grok / omp / Kimi / OpenCode / Qoder 两个发行版）走 `prefill` + `terminal-copy`**：它们没有草稿 API（实测 `opencode --prompt`、`cline "<prompt>"`、`grok --prompt` 都会**立刻发送**），所以只「在终端里打开工具（argv 不带 prompt）+ 文案进剪贴板」，`notice` 明确要求用户 ⌘V 再回车；`ZCode` / `DeepSeek Harness` 是桌面应用且没有带 prompt 的新建深链接 → 仍是 `none`。WorkBuddy 的 task 协议是 App 内部实现、无官方公开规范（国内版 5.8.3 / 国际版 5.8.4 均实测；2026-10-19 起不再按版本门控），超长文案按 URL 长度截断并返回 `truncated`；prompt/cwd 会进入深链接 URL（可能出现在 LaunchServices/App 日志，Tick 自身不记录）。
+- **Claude Code / Claude Desktop（2026-10-19 接入）**：`claude` 为 CLI 适配器（`newSessionMode='launch'`，预生成 UUID + `--session-id`；**预填用原生 `--prefill=`**，无扩展/无 ack；直接发送用位置参数，`-` 开头用 `--` 分隔；resume 用 `--resume <会话文件绝对路径>` + 会话自己的 cwd；用量按 `message.id` 去重（同 id 取最后修订）、跳过 `<synthetic>`、成本优先取 `cost-state` 快照；标题 `custom-title` > `ai-title` > `summary`）。`claude-desktop` 为桌面适配器（`newSessionMode='prefill'`：`claude://code/new?folder=&q=`），读**两套**会话：① Desktop 自己的会话（`<userData>/{claude-code-sessions,local-agent-mode-sessions}/<acct>/<org>/local_<id>/.claude/projects/…`，id = `local_<id>`，resume 走 `claude://code/continue?session=`；归档会话 `resumable=false`）；② 被 Desktop adopt 的 CLI 会话（仍在 `~/.claude/projects`，id = CLI uuid，resume 走 `claude://resume?session=`）。全局 store 里 CLI 适配器排除 `entrypoint=claude-desktop/3p` 的 Desktop 会话；**被 Desktop adopt 的 CLI 会话（正文 entrypoint 仍是 `cli`/`sdk-cli`，Desktop 记录里 `cliSessionId=<uuid>`）会以双 id 各列一次**（`claude` 用 CLI uuid、`claude-desktop` 用 `local_<id>`）——保留 Desktop 入口的已知设计，不是重复计数。调用前校验 App 已装 / 正文在本机 / 已登录过。实测事实与未验证项见 `docs/claude-code-adapter-notes.md`。
 - `docs/prd-session-timeline.md` 的 P0-1..P0-6（最后一条 user 消息展示、跨工具时间线）**仍未落地**：`SessionInfo` 还没有归一化的 `status`/`state` 字段（时间线依赖它），`SessionDigest` 合同也尚未实现。适配器侧已具备 `lastMessage` / `resumable` / `discoverProjects`，时间线应在 core 合同扩展 + `SessionService` 上做。
-- **MCP 对外能力**：设计提案 `docs/prd-mcp.md` + 可运行 spike `scripts/mcp-spike/`（协议断言 19/19、并发 5/5、pi 1.3.0 与 Claude Code 2.1.302 真机接入；两者都走 legacy 2025-11-25，都不提供 session id）。Jacky 已定：允许 Tick 未运行时直写并由 MCP server 自回扫完成绑定、接受「只记不跳」、允许只读扫描本机会话文件做 handle 匹配、实现以官方 build-server 文档为准；认证客户端跟随项目现有工具（pi / workbuddy / workbuddy-ai），`list_todos` 默认不带 body，v1 主分发用 app 内置 shim。工具合同已完整设计（`docs/mcp-tools-spec.md`：3 个 v1 工具 + 3 个 P1 预设计、错误码、扫描算法、测试矩阵）。**P0 已落地**：`@tick/todo-core`（唯一写实现，Main/extension 改为薄适配）、`@tick/session-locators`、`@tick/probe-scan`、`@tick/mcp-server`；`node scripts/mcp-check.mjs` 112 PASS/0 FAIL（含 Tick 未运行时 pi/WorkBuddy 回扫、启动补扫、过期 probe、损坏 fail-closed、只读、限流、stdin EOF、modern 2026-07-28、resources）；app 内置 shim `Resources/mcp/tick-mcp.sh` + `electronFuses.runAsNode=true` 已从打包 app 实测握手。**设置页「Agent 连接（MCP）」已落地**（安装包 shim 状态、pi/Claude/JSON 复制、只读与扫描开关）。**P1 未做**：Tier 1 bridge、`get_todo`/`complete_todo`/`list_sessions`、来源角标/手动补绑、npm/MCPB 分发。
+- **MCP 对外能力**：设计提案 `docs/prd-mcp.md` + 可运行 spike `scripts/mcp-spike/`（协议断言 19/19、并发 5/5、pi 1.3.0 与 Claude Code 2.1.302 真机接入；两者都走 legacy 2025-11-25，都不提供 session id）。Jacky 已定：允许 Tick 未运行时直写并由 MCP server 自回扫完成绑定、接受「只记不跳」、允许只读扫描本机会话文件做 handle 匹配、实现以官方 build-server 文档为准；认证客户端跟随项目现有工具（pi / workbuddy / workbuddy-ai），`list_todos` 默认不带 body，v1 主分发用 app 内置 shim。工具合同已完整设计（`docs/mcp-tools-spec.md`：3 个 v1 工具 + 3 个 P1 预设计、错误码、扫描算法、测试矩阵）。**P0 已落地**：`@tick/todo-core`（唯一写实现，Main/extension 改为薄适配）、`@tick/session-locators`、`@tick/probe-scan`、`@tick/mcp-server`；`node scripts/mcp-check.mjs` 119 PASS/0 FAIL（2026-10-21 实测；含 Tick 未运行时 pi/WorkBuddy/Claude 回扫、启动补扫、过期 probe、损坏 fail-closed、只读、限流、stdin EOF、modern 2026-07-28、resources；数字随用例增删变化，以命令输出为准）；app 内置 shim `Resources/mcp/tick-mcp.sh` + `electronFuses.runAsNode=true` 已从打包 app 实测握手。**设置页「Agent 连接（MCP）」已落地**（安装包 shim 状态、pi/Claude/JSON 复制、只读与扫描开关）。回扫用例已覆盖 `claude`：无首行 header 的会话能绑上、`entrypoint=claude-desktop` 的不会被 `claude` 抢。**P1 未做**：Tier 1 bridge、`get_todo`/`complete_todo`/`list_sessions`、来源角标/手动补绑、npm/MCPB 分发。
 - 提交信息沿用中文 `feat(scope): ...` / `fix(scope): ...` 风格；代码注释保持中文并解释「为什么」而非复述「做了什么」。

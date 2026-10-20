@@ -20,7 +20,7 @@
 > **以 todo 为中心**，把属于同一个 todo 的多个 AI 会话聚到一起。<br />
 > 回来时不用回忆、不用逐个工具翻找——看到停在哪，点一下就能接着做。
 
-当前版本支持 **pi**、**WorkBuddy（国内版）** 与 **WorkBuddy AI（国际版）**。两个 WorkBuddy 适配器都是只读的：从对应桌面应用的本地存储里索引会话，再用深链接把会话打开。两个 WorkBuddy 都能打开新建任务页并预填文案和项目，但 Ticktodo 不会自动发送或绑定——发送与倒入仍是你在应用里的显式动作。
+当前版本支持 **15 个工具**：**pi**、**Claude Code**、**Claude Desktop**、**WorkBuddy（国内版）**、**WorkBuddy AI（国际版）**、**Qoder / Qoder CN**、**Codex**、**Cline**、**Grok**、**omp**、**Kimi Code**、**OpenCode**、**ZCode** 与 **DeepSeek Harness**（见下表）。桌面形态的适配器（两个 WorkBuddy、Claude Desktop、ZCode、DeepSeek Harness）都是只读的：从本地存储里索引会话，再用深链接打开。CLI 工具里，pi / Claude Code 用预生成的会话 id 在终端里新建；其余 CLI（Codex / Cline / Grok / omp / Kimi / OpenCode / Qoder）只打开终端里的工具并把文案放进剪贴板——你按 ⌘V 再回车即可。Ticktodo 不会自动发送或绑定：发送与倒入仍是你在工具里的显式动作。
 
 ## 它解决什么问题
 
@@ -140,7 +140,18 @@ bash scripts/install.sh path/to/Tick.app
 | **pi** | ✅ 已支持 | ✅ | 终端 TUI | 需要本机装有 `pi` |
 | WorkBuddy（国内版） | ✅ 已支持 | ✅ | 深链接 | 只读其本地数据库 / 会话文件；需要 WorkBuddy 桌面应用。可打开预填好的新建任务页；发送/绑定仍在应用里完成 |
 | WorkBuddy AI（国际版） | ✅ 已支持 | ✅ | 深链接 | 独立适配器（独立身份、同一只读读取内核）；需要 WorkBuddy AI 桌面应用。可打开预填好的新建任务页；发送/绑定仍在应用里完成 |
-| Claude Code / Cursor | 后续 | — | — | Claude Code 同为本地 JSONL；Cursor 格式待查 |
+| **Claude Code** | ✅ 已支持 | ✅ | 终端 TUI | 需要本机装有 `claude` CLI。新建会话用原生 `--prefill=` 预填输入框（不需要扩展）；回到会话用 `--resume <会话文件绝对路径>`。读 `~/.claude/projects`（认 `CLAUDE_CONFIG_DIR`） |
+| **Qoder** / **Qoder CN** | ✅ 已支持 | ✅ | 终端 TUI | 两个独立适配器（`qoder` / `qoder-cn`）。Qoder 的会话就是 Claude Code 的格式，复用同一套只读读取内核，只声明自己的身份（`$QODER_CONFIG_DIR` / `$QODERCN_CONFIG_DIR`）。回到会话用 `qodercli[cn] --resume <id>`；**新建会话**会在终端里打开它并把文案放进剪贴板（⌘V 后回车；它没有草稿参数，提示词参数会立刻发送） |
+| **Codex** | ✅ 已支持 | ✅ | 终端 TUI | 一个会话可能写在多个 `rollout-*.jsonl` 里（同一 thread id），全部文件都在 `SessionSummary.files`。用量取 `token_count` 累计值（input 含 cache，已扣除）。**新建会话**：在终端里打开 Codex 并把文案复制到剪贴板（Codex 没有草稿参数，提示词参数会立刻发送）——⌘V 后回车，不会自动发送 |
+| **Cline** | ✅ 已支持 | ✅ | 终端 TUI | manifest + `messages.json`（整份重写）。用量取每条 assistant 消息的 AI SDK `metrics`。**新建会话**：在终端里打开 Cline，文案在剪贴板（⌘V 后回车，不会自动发送） |
+| **Grok** | ✅ 已支持 | ✅ | 终端 TUI | 一个会话一个目录（`summary.json` + `updates.jsonl`，时间戳是秒）。子代理会话不列。**新建会话**：在终端里打开 Grok，文案在剪贴板（⌘V 后回车） |
+| **omp** | ✅ 已支持 | ✅ | 终端 TUI | 与 pi 同布局，但首行是定宽 `title` 记录（session header 在第二行）；物理 `title` 记录才是当前标题（`title_change` 只是审计历史）。项目就是 home 时 Tick 会传 `--allow-home`（否则 omp 把会话落到 `/tmp`）。**新建会话**：在终端里打开 omp，文案在剪贴板（⌘V 后回车） |
+| **Kimi Code** | ✅ 已支持 | ✅ | 终端 TUI | cwd 只在 `session_index.jsonl`（`state.json` 里没有）；主对话在 `agents/main/wire.jsonl`，子代理 wire 的用量计入同一会话。**新建会话**：在终端里打开 Kimi Code，文案在剪贴板（⌘V 后回车） |
+| **OpenCode** | ✅ 已支持 | ✅ | 终端 TUI | 会话是 `opencode.db` 里的行（`session` 行自带 token/cost/model），所以 `filePath` 指向数据库。子代理会话不列。桌面版与 CLI 共用同一份数据、没有客户端归属字段 → 一个适配器提供两个入口（`capabilities.clients`）：桌面版只激活 App，CLI 能精确定位。**新建会话**：在终端里打开 OpenCode，文案在剪贴板（⌘V 后回车） |
+| **ZCode** | ✅ 已支持 | ✅ | — | 与 OpenCode 同表结构，但 `session` 行没有 token 列（用量取 `model_usage`），且是桌面应用：**不能回到会话**，只读 |
+| **DeepSeek Harness** | ✅ 已支持 | ✅ | — | 会话是**多帧 zstd**（本机一个文件 = 23,331 帧），Tick 自己按 zstd 块头切帧；标题与 token 总量取 dsh 自己的投影缓存，列会话只解压开头若干帧（取 header / 首条消息），不整份解压正文。**无法回到会话**：`dsh://` 只处理 `dsh://open` |
+| **Claude Desktop** | ✅ 已支持 | ✅ | 深链接 | 独立适配器。读两套会话：Desktop 自己的会话（`<userData>/claude-code-sessions/…/local_<id>/.claude/projects`，用 `claude://code/continue` 打开）与被 Desktop adopt 的 CLI 会话（同一份 `~/.claude/projects`，用 `claude://resume` 打开）。可打开预填好的 `claude://code/new` 新建页。需要装 Claude 桌面版且登录过 |
+| Cursor | 后续 | — | — | 存储格式待查 |
 
 接入新工具 = 在 `packages/ai/<tool>` 实现 `AiToolAdapter`，再在 `main.ts` 注册。不需要改 core 或 UI。
 

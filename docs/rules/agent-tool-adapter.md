@@ -17,7 +17,9 @@
 - `id` 稳定、小写 kebab（`pi`、`workbuddy`、`workbuddy-ai`）。
 - **同一工具的不同发行版 = 两个独立适配器**：各自的数据根目录、App bundle、缓存键、依据等级、`toolId`；不通过切换环境变量/根目录复用同一个适配器（例：国内版 `workbuddy` 与国际版 `workbuddy-ai`）。
 - 会话 id 用工具侧原始 id，经 `newCliSessionId` 交给 core；`(toolId, sessionId)` 必须全局唯一，命名空间就靠这个二元组——**不要给 sessionId 加 `toolId:` 前缀**（共享层只做品牌转换；as-built 与 PRD 均已按此收敛）。
-- 图标在 `apps/desktop/src/renderer/features/icons/ToolIcon.tsx` 的 `ICONS` 登记；未登记只显示文字，不要猜图标。已登记：`pi`、`workbuddy`、`workbuddy-ai`（两个 WorkBuddy 的官方 mark 相同，国际版图标在官方 mark 上叠 Tick 自加的右下角地球徽标用于区分，不能对外当官方 logo 使用）。
+- 图标在 `apps/desktop/src/renderer/features/icons/ToolIcon.tsx` 登记，**两条路**：官方有矢量 mark 的用内联 SVG（`ICONS`），只有 App 图标/位图 favicon 的用位图资源（`MARKS` + `assets/`，来源逐条记在 `assets/README.md`）。未登记只显示文字，不要猜图标。
+  已登记：`pi`、`workbuddy`、`workbuddy-ai`（两个 WorkBuddy 的官方 mark 相同，国际版图标在官方 mark 上叠 Tick 自加的右下角地球徽标用于区分，不能对外当官方 logo 使用）、`claude` 与 `claude-desktop`（共用 claude.ai 官方星芒 mark；官方没有区分 CLI/Desktop 的图形，区分靠展示名，不另造图形）、`kimi`、`zcode`、`dsh`（三个官方桌面应用的 App 图标）、`qoder` / `qoder-cn`（同一官方 mark）、`cline`、`grok`、`opencode`、`omp`（官方站点/仓库的位图或 hero 图形）。
+  **`codex` 没有独立 mark**：用 **OpenAI 官方 blossom**（`developers.openai.com/favicon.svg`，去掉蓝色底圆、按官方单色用法转黑）标识厂商，不自行重绘；来源与理由写在 `assets/README.md`。若将来拿到 Codex 独立 SVG，换成它并回写本条。
 - 工具是否安装的展示走 `detect()`，不要在 UI 里猜；2026-10-19 起不做版本校验（装了就按可用处理）。
 
 ## 2. 合同最小集（`packages/ai/core/src/index.ts` 的 `AiToolAdapter`）
@@ -42,7 +44,23 @@
 
 - **MUST NOT** 在适配器里做跨工具归并、缓存共享、todo 状态联动。
 - **MUST NOT** 让 `packages/ai/*` 依赖 Electron / renderer；需要的外部副作用（剪贴板、终端、时钟）由 main 注入（参考 `PiAdapterDeps`）。
-- 合同参考实现：CLI 工具看 `packages/ai/pi/src/adapter.ts`（含 launch/verify/resume/carry 的完整语义）；桌面工具看 `packages/ai/workbuddy/src/base-adapter.ts`（只读 DB/jsonl + 深链接 resume，launch 直接抛错）。
+- 合同参考实现：CLI 工具看 `packages/ai/pi/src/adapter.ts`（launch/verify/resume/carry 的完整语义）或 `packages/ai/claude/src/adapter.ts`（无首行 header 的流式元数据 + 原生预填）；桌面工具看 `packages/ai/workbuddy/src/base-adapter.ts`、`packages/ai/claude-desktop/src/adapter.ts`（只读 jsonl/DB + 深链接 resume，`launch()` 直接抛错）。
+
+**不能预生成会话 id 的工具**（没有 `--session-id` 类能力，例如 Codex / Cline / Grok / omp / Kimi / OpenCode / Qoder）：
+`launch()` MUST 直接抛错，并按「有没有新建入口」二选一：
+`newSessionMode='none'`（没有新建入口；as-built：`zcode` / `dsh`）或
+`newSessionMode='prefill'` + `prefillDelivery='terminal-copy'`（能打开工具的新建入口、只把文案放进剪贴板；
+as-built：上列 CLI，见 §6）。
+它仍然 MUST 提供 `listSessionInfos` / `describeSession` / `resume` /（有的话）`computeUsage`，因为「倒入历史会话 +
+回到会话」本身就是产品价值。**MUST NOT** 为了凑出 `launch` 而让 Tick 自己造一个 id（工具侧不认，绑定必然对不上）。
+
+**一会话多文件**：若工具会把同一个会话续写到多个文件（as-built：Codex 的 `rollout-…[_seg].jsonl`），
+MUST 在列表层按工具自己的会话 id 归并成**一条**会话，`filePath` 指向最新文件，并用 `SessionSummary.files`
+给出全部正文文件；`describeSession` / `computeUsage` 必须把全部文件都算进去（用量按文件基线累加，不能重复计）。
+
+**同一工具的两个形态：有归属字段才拆成两个适配器**：当桌面 App 与 CLI **共用同一份会话存储**时（as-built：`claude` 与 `claude-desktop` 都读 `~/.claude/projects/<project>/<uuid>.jsonl`），MUST 用工具自己写进正文的归属字段（此处 `entrypoint`）在**列表/项目发现**层互斥——CLI 适配器排除桌面会话、桌面适配器只收桌面会话，否则同一会话会在「倒入历史会话」里出现两次、且 resume 会路由到错误的工具（**被 adopt 的会话例外见下条**）。**按 id 直查（`describeSession` / `verify` / `resume`）不过滤**，否则旧绑定会因为归属字段缺失而变成「会话不存在」。共用的是读取内核（可直接 import 另一个 ai 包的纯函数），**不共用**身份、`toolId`、`capabilities`、缓存与失败模式。反过来，**没有**任何归属字段时不要拆（同一条会话无法路由）——按 §6 的 `capabilities.clients` 表达多入口（as-built：OpenCode 桌面版/CLI 共用 `opencode.db`）。
+
+**as-built 例外：被 adopt 的会话允许双入口各列一次**（与 §6 的多客户端不拆判据一致——都是「同一对话、两个入口」，只是这里入口分属两个 `toolId`）。桌面 App 会**原地 adopt** CLI 会话（as-built：Claude Desktop 的 `adoptCliSession`，正文仍在 `~/.claude/projects`、Desktop 记录里 `cliSessionId=<CLI uuid>`），这类会话在 `claude`（id = CLI uuid，`claude://resume`）与 `claude-desktop`（id = `local_<id>`，`claude://code/continue`）下**各列一次是已知设计**，不违反上面的互斥要求：互斥只约束「同一 `toolId` 内不得重复列」，adopt 会话保留桌面入口必须靠双 id。代价是项目会话数会在两个工具之间各计一次（`mergeProjects` 求和，UI 侧如要消歧按 `filePath` 去重/标注）；`(toolId, sessionId)` 唯一性仍成立，不会跨工具误路由。
 
 ## 3. 落地改动面（MUST 清单）
 
@@ -85,9 +103,24 @@
 ## 6. 拉起 / 回到会话
 
 - CLI 交互式：**MUST** 在终端里拉起（非 TTY 会静默降级）；argv 一律数组，**MUST NOT** shell 拼接；终端脚本由 main 侧做 POSIX 单引号转义。
+- CLI 预填：**优先用工具自带的预填参数**（as-built：Claude Code 的 `--prefill=<text>`，2026-10-19 实测 2.1.302 可把文案填进输入框且不发送、不落盘），只有工具没有原生能力时才做「一次性文件 + 扩展 + ack」（pi 的路径）。注入面不复用另一个工具的私有协议。
 - 桌面工具：用深链接；调用前 **MUST** 校验 id 在工具 DB 里存在且未被软删除（不存在/已删除的 id 不调用；已实测会回落首页或空会话页且无返回码）。`resume()` 前 `detect()` 未通过、id 查不到、或该类型会话已被判定为不可定位（如 WorkBuddy AI 的 `is_playground=1`）时，MUST 直接抛错并给可读原因。
 - 桌面工具的 `launch(ctx)` MUST 直接抛错（「桌面应用不能从 Tick 新建会话」），不要返回假的 `LaunchResult`。
-- 桌面工具若声明 `capabilities.newSessionMode='prefill'`，`openNewSessionPage(ctx)` MUST 只做「打开 GUI 新建页 + 预填文案/工作目录」：**不自动发送、不预生成/绑定 sessionId**；`cwd` 必须是存在的绝对路径；深链接超过安全长度时要截断（按码点，不能劈开 emoji）并如实返回 `truncated`；未公开协议不再按版本门控（2026-10-19 移除），但实测版本要写进 notes。
+- **同一工具多个客户端共用一个数据源**时（as-built：OpenCode 桌面版与 CLI 共用 `opencode.db`），
+  不要拆适配器（同一条会话会列两次，且没有归属字段可路由），而是声明
+  `capabilities.clients: ToolClientId[]`（当前只有 `'desktop' | 'cli'`）：
+  - UI 在该工具下方显示「打开方式」选择器，写 `settings.toolClients[toolId]`；
+  - `LaunchContext.client` / `NewSessionPageContext.client` 由 `LaunchService` 解析（请求显式值 > settings >
+    操作缺省：新建 `desktop`、回到会话 `cli`），适配器**必须**在两条分支上分别实现，缺省分支不受影响；
+  - 数据读取（`listSessionInfos`/`describeSession`/`computeUsage`）**不因 client 改变**——客户端只是入口；
+  - 没有「按会话打开」协议的客户端（OpenCode 桌面版）必须如实返回 `notice` 说明「只能打开 App」，
+    不能假装定位成功；新建入口若支持真正的预填（不发送）才可用，否则退回「激活 App + 剪贴板」。
+  - 判据是**端到端实测**：深链接必须能在 App 侧看到可观测效果（数据库/设置/路由落盘）。
+    反例：OpenCode 1.19.3 的 `opencode://new-session` 在源码里能解析、主进程日志也收得到，
+    但新布局没挂 renderer 监听 → 什么都不会发生（见 `docs/agent-session-storage-map.md`）。
+- `capabilities.newSessionMode='prefill'` 有两种投递形态（`capabilities.prefillDelivery`）：
+  - **`deeplink`**（缺省；WorkBuddy 系 / Claude Desktop）：`openNewSessionPage(ctx)` 只做「打开 GUI 新建页 + 深链接预填文案/工作目录」，**不自动发送、不预生成/绑定 sessionId**；`cwd` 必须是存在的绝对路径；深链接超过安全长度时要截断（按码点，不能劈开 emoji）并如实返回 `truncated`；未公开协议不再按版本门控（2026-10-19 移除），但实测版本要写进 notes。
+  - **`terminal-copy`**（CLI：Codex / Cline / Grok / omp / Kimi / OpenCode / Qoder 两个发行版）：CLI 没有草稿 API——**它们的启动提示词参数会立刻发送**（实测 `opencode --prompt`、`cline "<prompt>"` 都会当场开跑）。所以 `openNewSessionPage(ctx)` MUST 只做两件事：在终端里打开工具的新会话（argv 不带 prompt），把文案写进剪贴板，并在 `notice` 里说明「⌘V 再回车」；**MUST NOT** 用启动参数把文案塞进去（那等于自动发送），也仍然不预生成/绑定 id。UI 必须原样展示 `notice`，不能写成「已预填」。
 - 若 prefill 依赖工具侧扩展（如 pi 的 `session_start` + `setEditorText`），MUST 有消费回执（ack/文件消失）并在超时/失败时降级到剪贴板 + 可见 `notice`；**不得**在未确认时提示「已预填」。
 - 深链接 `open` 恒 exit 0，**MUST NOT** 依赖返回值判断成败；失败不重试、不阻塞、给提示；**MUST NOT** 降级到另一个工具的 scheme（例如国际版失败后改调国内版 `workbuddy://` 属错误工具）。
 - 深链接属未公开协议时，实测结论要写「样本数 + 版本范围」；不再因版本不在白名单而关闭入口（2026-10-19 起不做版本门控）。

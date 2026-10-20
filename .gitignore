@@ -9,3 +9,6 @@ release
 
 # local icon WIP
 .icon-wip/
+
+# 交叉评审的临时快照（约定只写 /tmp/review/；误写到仓库根也一律忽略）
+wbai_b*.txt

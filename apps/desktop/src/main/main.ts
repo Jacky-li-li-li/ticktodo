@@ -11,9 +11,21 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc } from '@tick/shared'
+import { execFile } from 'node:child_process'
+import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc, toolDisplayName } from '@tick/shared'
 import { AiToolRegistry, canonicalPath, gitRootOf } from '@tick/ai-core'
 import { PiAdapter } from '@tick/ai-pi'
+import { ClaudeAdapter } from '@tick/ai-claude'
+import { ClaudeDesktopAdapter } from '@tick/ai-claude-desktop'
+import { QoderAdapter, QODER_CN_DISTRO, QODER_DISTRO } from '@tick/ai-qoder'
+import { CodexAdapter } from '@tick/ai-codex'
+import { ClineAdapter } from '@tick/ai-cline'
+import { GrokAdapter } from '@tick/ai-grok'
+import { OmpAdapter } from '@tick/ai-omp'
+import { KimiAdapter } from '@tick/ai-kimi'
+import { OpenCodeAdapter, resolveOpenCodeDbPath } from '@tick/ai-opencode'
+import { ZCodeAdapter } from '@tick/ai-zcode'
+import { DshAdapter } from '@tick/ai-dsh'
 import { WorkbuddyAdapter } from '@tick/ai-workbuddy'
 import { WorkbuddyAiAdapter } from '@tick/ai-workbuddy-ai'
 import { ensureDirs, resolveDirs } from './services/storage'
@@ -118,25 +130,118 @@ app.whenReady().then(() => {
 
   // ---------- adapter 注册表（M1；M5 起多工具） ----------
   const registry = new AiToolRegistry()
+  const openTerminal = createTerminalLauncher(path.join(dirs.cache, 'launch'))
+  // Electron 44 的 clipboard.writeText 返回 Promise；ai 包的注入面是同步 void，所以这里不 await。
+  // 但失败必须留日志：terminal-copy 的 notice 会宣称「文案已复制」，静默失败会让用户粘到旧内容。
+  const clipboardWrite = (text: string): void => {
+    void clipboard.writeText(text).catch((e) => {
+      console.warn('[tick] 剪贴板写入失败:', (e as Error).message)
+    })
+  }
   const pi = new PiAdapter({
-    clipboardWrite: (text) => clipboard.writeText(text), // 剪贴板投递出口（ai 包不依赖 Electron）
+    clipboardWrite, // 剪贴板投递出口（ai 包不依赖 Electron）
     // 交互式 pi 必须开在终端里（非 TTY 会降级成 headless print 模式）
-    openTerminal: createTerminalLauncher(path.join(dirs.cache, 'launch')),
+    openTerminal,
     // 预填投递：一次性 prompt 文件交给 pi 扩展（session_start 读取后删除）
     prefillDir: path.join(dirs.cache, 'launch'),
   })
   registry.register(pi)
 
+  // Claude Code CLI：与 pi 同类（终端拉起 + resume + 用量），但预填用原生 `--prefill=`，
+  // 不需要一次性文件/扩展回执。会话正文与 Claude Desktop 共用同一份 jsonl，靠 entrypoint 分开。
+  const claude = new ClaudeAdapter({ clipboardWrite, openTerminal })
+  registry.register(claude)
+
+  // Qoder（`qoder` / 国内版 `qoder-cn`）：会话格式与 Claude Code 逐字段相同 → 复用同一套解析，
+  // 只换身份/数据根/resume argv。没有预生成 id 的能力，所以只能「倒入历史会话 + 回到会话」。
+  registry.register(new QoderAdapter(QODER_DISTRO, { clipboardWrite, openTerminal }))
+  registry.register(new QoderAdapter(QODER_CN_DISTRO, { clipboardWrite, openTerminal }))
+
+  // 桌面/数据库类适配器的日志出口按 (key, message) 约定收口，文案不含会话正文/标题
+  const logDesktopTool = (key: string, message: string): void => console.warn(`[tick] ${key}:`, message)
   // 桌面工具的深链接出口：用 shell.openExternal，并把异常原样向上抛给 adapter → LaunchService 转成
   // 可读的 reason（`open` 恒 exit 0，不能靠返回值判断成败，所以只能靠 Promise 拒绝表达失败）。
   const openUrl = (url: string): Promise<void> => shell.openExternal(url)
-  // 桌面适配器的日志出口按 (key, message) 约定收口，文案不含会话正文/标题
-  const logDesktopTool = (key: string, message: string): void => console.warn(`[tick] ${key}:`, message)
+  /**
+   * 把桌面 App 带到前台：`open -a <bundle 路径>`。
+   * 不用深链接：OpenCode 1.19.3 的新布局不处理 `opencode://`（见 adapter 头注释），
+   * 而 `open -a` 能在 App 已隐藏 / 在别的 Space 时把窗口叫回来。
+   *
+   * 两个纪律：
+   *  - 绝对路径 `/usr/bin/open`：GUI 进程只继承 launchd 的最小 PATH，不依赖 PATH 更稳（不变量 15）；
+   *  - 必须带超时：这条 Promise 会被 IPC（新建页按钮的 busy 状态）await，LaunchServices 卡住
+   *    不返回时会让按钮永远停在「打开中…」。
+   */
+  const ACTIVATE_TIMEOUT_MS = 5_000
+  const activateApp = (appPath: string): Promise<void> =>
+    new Promise((resolve, reject) => {
+      execFile('/usr/bin/open', ['-a', appPath], { timeout: ACTIVATE_TIMEOUT_MS }, (err) => {
+        if (!err) {
+          resolve()
+          return
+        }
+        // execFile 超时会 SIGTERM 子进程并把 killed 置 true；换成人能读的原因交给 adapter
+        reject(
+          err.killed
+            ? new Error(`激活 App 超时（${ACTIVATE_TIMEOUT_MS / 1000}s 未返回）：${appPath}`)
+            : err,
+        )
+      })
+    })
+
+  // 只能「倒入历史会话 + 回到会话」的 CLI 工具（都没有预生成会话 id 的能力）：
+  //   codex  ：一个 thread 可能跨多个 rollout 文件 → SessionSummary.files 保留全部
+  //   cline  ：manifest + 整份重写的 messages.json
+  //   grok   ：一目录一会话（summary.json + updates.jsonl）
+  //   omp    ：pi 的目录/格式，但首行是 title 行（不是 header）
+  // 这些 CLI 没有草稿 API（启动参数会立刻发送）→ prefill 形态是「打开终端 + 文案进剪贴板」
+  registry.register(new CodexAdapter({ openTerminal, clipboardWrite }))
+  registry.register(new ClineAdapter({ openTerminal, clipboardWrite }))
+  registry.register(new GrokAdapter({ openTerminal, clipboardWrite }))
+  registry.register(new OmpAdapter({ openTerminal, clipboardWrite }))
+  // kimi：cwd 只在 session_index.jsonl 的 workDir（state.json 没有），子代理 wire 归主会话
+  // log：kimi 的 wire 读取失败要按 key 记一次原因（rules「读失败记录一次、不含正文/标题」）；
+  // 不接的话读失败会静默，会话/标题/用量只是「看起来变少」，无法诊断。
+  registry.register(new KimiAdapter({ openTerminal, clipboardWrite, log: logDesktopTool }))
+  // opencode / zcode：会话在 SQLite 里（filePath 指向数据库）；zcode 是桌面应用，没有 resume 通道
+  registry.register(
+    new OpenCodeAdapter(
+      {
+        toolId: 'opencode',
+        displayName: toolDisplayName('opencode'),
+        // 身份里的 dbPath 只是兜底快照（string 必填）；真正的读取走下面 deps 的 lazy getter
+        dbPath: resolveOpenCodeDbPath(),
+        usageSource: 'session-row',
+        exeName: 'opencode',
+        resumeArgs: (id) => ['--session', id],
+        // 桌面版（ai.opencode.desktop）与 CLI 共用同一份 DB：只用于「装没装」判断，不拆适配器。
+        // 本机实测它可能装在 /Applications/APP/OpenCode.app（findDesktopApp 会兜底 mdfind）。
+        desktopBundleId: 'ai.opencode.desktop',
+        desktopBundleName: 'OpenCode.app',
+      },
+      {
+        openTerminal,
+        clipboardWrite,
+        activateApp,
+        log: logDesktopTool,
+        // lazy getter：每次读取重新解析数据根（XDG_DATA_HOME / 运行中首次安装后不必重启 Tick）
+        dbPath: () => resolveOpenCodeDbPath(),
+      },
+    ),
+  )
+  registry.register(new ZCodeAdapter({ openTerminal, log: logDesktopTool }))
+  // dsh（DeepSeek Harness）：会话是多帧 zstd，标题/用量走 dsh 自己的投影缓存；
+  // 只有 dsh://open（聚焦窗口），没有按会话打开的通道 → 不能回到会话
+  registry.register(new DshAdapter({ log: logDesktopTool }))
+
   // 国内版 / 国际版是**两个独立工具**（各自数据根、App bundle、scheme、toolId），不通过切换根目录复用
   const workbuddy = new WorkbuddyAdapter({ openUrl, log: logDesktopTool })
   const workbuddyAi = new WorkbuddyAiAdapter({ openUrl, log: logDesktopTool })
   registry.register(workbuddy)
   registry.register(workbuddyAi)
+  // Claude Desktop（Code tab）：与 `claude` CLI 共用会话正文，但身份/新建/回到会话都独立
+  const claudeDesktop = new ClaudeDesktopAdapter({ openUrl, log: logDesktopTool })
+  registry.register(claudeDesktop)
 
   // 服务的适配器视图：一次性快照。装配期后不再注册新工具，所以不必每次问 registry。
   const adapters = registry.list()
