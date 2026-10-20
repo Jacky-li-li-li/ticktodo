@@ -237,6 +237,11 @@ export interface AppSettings {
   mcpReadOnly?: boolean
   /** MCP 句柄回扫开关（关闭后新绑定退化为 unbound） */
   mcpScan?: boolean
+  /**
+   * 多客户端工具的偏好（toolId → desktop/cli）。OpenCode 的桌面版与 CLI 共用同一份会话，
+   * 这里只决定「打开 / 回到会话」走哪个入口；不影响会话读取。
+   */
+  toolClients?: Record<string, ToolClientId>
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -329,6 +334,12 @@ export const ToolsIpc = {
 /** 「新建会话」能力枚举：各工具按自己的设计规范选其一，不做跨工具 id 生成方式统一 */
 export type NewSessionMode = 'launch' | 'prefill' | 'none'
 
+/**
+ * 同一个工具可用的客户端（as-built：OpenCode 的桌面版与 CLI 共用同一份会话数据）。
+ * 有多个时 UI 在工具后面给一个选择器，选择结果存 `AppSettings.toolClients`。
+ */
+export type ToolClientId = 'desktop' | 'cli'
+
 /** tools:status 的返回项（main 生产 / preload 转发 / renderer 消费，单一来源） */
 export interface ToolStatus {
   toolId: string
@@ -338,8 +349,12 @@ export interface ToolStatus {
   installed: boolean
   /** installed=false 时的可读原因（未安装 / 探测失败） */
   reason?: string
-  /** 新建会话能力：launch = Tick 预生成 id 并绑定；prefill = 只打开 GUI 新建页预填；none = 不支持 */
+  /** 新建会话能力：launch = Tick 预生成 id 并绑定；prefill = 只打开新建入口并放入文案；none = 不支持 */
   newSessionMode: NewSessionMode
+  /** prefill 的投递形态：deeplink=GUI 预填；terminal-copy=打开终端工具 + 文案进剪贴板 */
+  prefillDelivery?: 'deeplink' | 'terminal-copy'
+  /** 可选客户端（>1 个时 UI 显示「桌面版 / CLI」选择器；缺省 = 该工具只有一个入口） */
+  clients?: ToolClientId[]
   /** true = 支持回到已有会话（CLI 终端 resume 或桌面深链接） */
   resumeSession: boolean
 }
@@ -352,6 +367,18 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   pi: 'pi',
   workbuddy: 'WorkBuddy',
   'workbuddy-ai': 'WorkBuddy AI',
+  claude: 'Claude Code',
+  'claude-desktop': 'Claude Desktop',
+  qoder: 'Qoder',
+  'qoder-cn': 'Qoder CN',
+  codex: 'Codex',
+  cline: 'Cline',
+  grok: 'Grok',
+  omp: 'omp',
+  kimi: 'Kimi Code',
+  opencode: 'OpenCode',
+  zcode: 'ZCode',
+  dsh: 'DeepSeek Harness',
 }
 
 export function toolDisplayName(toolId: string): string {
@@ -410,6 +437,8 @@ export interface LaunchRequest {
   deliver: LaunchDeliver
   /** 投递文案（缺省用 todo.title） */
   promptText?: string
+  // 注意：launch 不走客户端选择（as-built：唯一多客户端工具是 OpenCode，它没有 launch 通路），
+  // 所以这里没有 `client`；桌面/CLI 入口只影响 prefillNewSession 与 resume（各自请求类型上带 client）。
 }
 
 export interface LaunchOutcome {
@@ -437,6 +466,8 @@ export interface ResumeRequest {
   /** 会话所属工具（缺省按 todo.bindings 反查；desktop 工具走各自深链接） */
   toolId?: string
   projectPath?: string
+  /** 多客户端工具用哪个入口（OpenCode：desktop 打开项目 / cli 打开 TUI）；缺省读 settings */
+  client?: ToolClientId
 }
 
 /**
@@ -450,6 +481,8 @@ export interface PrefillNewSessionRequest {
   projectPath?: string
   /** 预填文案；缺省用 todo.title */
   promptText?: string
+  /** 多客户端工具用哪个入口；缺省读 settings */
+  client?: ToolClientId
 }
 
 export interface PrefillNewSessionOutcome {
@@ -459,6 +492,8 @@ export interface PrefillNewSessionOutcome {
   cwd?: string
   /** true = 文案超过深链接安全长度，预填时已截断 */
   truncated?: boolean
+  /** 非致命提示（例如 CLI 没有草稿 API，文案只能进剪贴板）；UI 原样展示 */
+  notice?: string
 }
 
 export const LaunchIpc = {

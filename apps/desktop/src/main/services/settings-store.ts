@@ -6,7 +6,13 @@
  */
 
 import fs from 'node:fs'
-import type { AppSettings, CustomProviderConfig, DefaultProjectSetting, LaunchDeliverSetting } from '@tick/shared'
+import type {
+  AppSettings,
+  CustomProviderConfig,
+  DefaultProjectSetting,
+  LaunchDeliverSetting,
+  ToolClientId,
+} from '@tick/shared'
 import { DEFAULT_SETTINGS } from '@tick/shared'
 import { atomicWriteJson, readJson } from './storage'
 
@@ -18,6 +24,19 @@ interface SettingsFile {
 /** 设置里只暴露 prefill / argv；clipboard 仅作为旧配置/运行期降级，不再写入 settings */
 const DELIVERS: LaunchDeliverSetting[] = ['prefill', 'argv']
 const DEFAULT_PROJECTS: DefaultProjectSetting[] = ['home', 'recent', 'ask']
+
+/**
+ * 多客户端偏好（toolId → desktop/cli）的白名单归一化：
+ * 只接受已知值，未知 toolId 也先留着（适配器可能来自更新版本），但不接受非法客户端名。
+ */
+function normalizeToolClients(raw: unknown): Record<string, ToolClientId> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Record<string, ToolClientId> = {}
+  for (const [toolId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value === 'desktop' || value === 'cli') out[toolId] = value
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
 
 /** 自配 provider 的白名单归一化：只接受合法形状，旧版本/未知字段不进文件 */
 function normalizeProvider(raw: CustomProviderConfig | null | undefined): CustomProviderConfig | null {
@@ -64,6 +83,12 @@ export class SettingsStore {
     if (patch.customProvider !== undefined) next.customProvider = normalizeProvider(patch.customProvider)
     if (patch.mcpReadOnly !== undefined) next.mcpReadOnly = Boolean(patch.mcpReadOnly)
     if (patch.mcpScan !== undefined) next.mcpScan = Boolean(patch.mcpScan)
+    if (patch.toolClients !== undefined) {
+      // 整表替换（renderer 发的是完整表）：删掉最后一个偏好时也要能落盘
+      const clients = normalizeToolClients(patch.toolClients)
+      if (clients) next.toolClients = clients
+      else next.toolClients = undefined
+    }
     this.settings = { ...this.settings, ...next }
     this.save()
     return this.get()
@@ -98,5 +123,7 @@ function normalize(raw: Partial<AppSettings> | undefined): AppSettings {
   if (raw?.customProvider !== undefined) s.customProvider = normalizeProvider(raw.customProvider)
   if (typeof raw?.mcpReadOnly === 'boolean') s.mcpReadOnly = raw.mcpReadOnly
   if (typeof raw?.mcpScan === 'boolean') s.mcpScan = raw.mcpScan
+  const clients = normalizeToolClients(raw?.toolClients)
+  if (clients) s.toolClients = clients
   return s
 }

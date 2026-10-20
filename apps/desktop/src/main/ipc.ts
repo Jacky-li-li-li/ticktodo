@@ -53,6 +53,7 @@ import type { ProviderConfigService } from './services/provider-config'
 import type { SessionService } from './services/sessions'
 import type { ExportService } from './services/export'
 import type { McpConnectionService } from './services/mcp-connection'
+import { detectWithTimeout } from './services/detect'
 
 export interface IpcWindows {
   panel: () => BrowserWindow | null
@@ -214,20 +215,15 @@ export function registerIpc(
   ipcMain.handle(ToolsIpc.status, async (): Promise<ToolStatus[]> => {
     return Promise.all(
       adapters.map(async (a): Promise<ToolStatus> => {
-        // detect 失败不能把整块 status 打成 IPC 异常：就绪探测不到 = 「未安装 + 原因」，
-        // 一个工具挂掉时其他工具的状态仍要能显示（失败降级）
-        let detected: { installed: boolean; reason?: string }
-        try {
-          detected = await a.detect()
-        } catch (e) {
-          detected = { installed: false, reason: `就绪探测失败：${(e as Error).message}` }
-        }
+        const detected = await detectWithTimeout(a)
         return {
           toolId: a.id,
           // 展示名统一映射（shared 单一来源），不把 id 当名字用
           name: toolDisplayName(a.id),
           ...detected,
           newSessionMode: a.capabilities.newSessionMode,
+          ...(a.capabilities.prefillDelivery ? { prefillDelivery: a.capabilities.prefillDelivery } : {}),
+          ...(a.capabilities.clients ? { clients: a.capabilities.clients } : {}),
           resumeSession: a.capabilities.resumeSession,
         }
       }),

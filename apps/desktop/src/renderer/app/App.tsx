@@ -52,7 +52,10 @@ export default function App(): React.JSX.Element {
   const showToast = useCallback((text: string, onUndo?: () => void) => {
     setToast({ text, onUndo })
     if (toastTimer.current) window.clearTimeout(toastTimer.current)
-    toastTimer.current = window.setTimeout(() => setToast(null), 3000)
+    // 短提示（归档/撤销等）保持 3s；长文案（adapter 的 notice，如「桌面版无法定位，请去会话列表里选」）
+    // 两行也要读得完，给 5s —— 否则 P1 修复后用户还没读完指引 toast 就消失了。
+    const durationMs = text.length > 30 ? 5000 : 3000
+    toastTimer.current = window.setTimeout(() => setToast(null), durationMs)
   }, [])
 
   useEffect(() => () => {

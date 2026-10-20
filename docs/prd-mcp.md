@@ -1330,7 +1330,7 @@ console.error('[tick-mcp] running on stdio')
 ### 14.3 验证
 
 - `pnpm typecheck`：全仓通过。
-- `node scripts/mcp-check.mjs`：**112 PASS / 0 FAIL**（真实 stdio 客户端；覆盖 pi/WorkBuddy 回扫、Tick 未运行、只读、限流、幂等、cross-tool requestId 作用域、stdin EOF、启动补扫、过期 probe、损坏 fail-closed、modern 2026-07-28、resources）。
+- `node scripts/mcp-check.mjs`：**119 PASS / 0 FAIL**（2026-10-21 实测，以命令输出为准；真实 stdio 客户端；覆盖 pi/WorkBuddy/Claude 回扫、Tick 未运行、只读、限流、幂等、cross-tool requestId 作用域、stdin EOF、启动补扫、过期 probe、损坏 fail-closed、modern 2026-07-28、resources）。
 - 真 `pi 1.3.0`：临时 `PI_CODING_AGENT_DIR` 下 `pi mcp add tick -- node dist/tick-mcp.mjs` → `pi mcp list --json` 显示 `state:"connected"`、3 个工具、resources=true。
 - 真实 locator 只读冒烟：`pi` / `workbuddy` / `workbuddy-ai` 各命中一条真实会话，`sessionId`/`cwd` 正确（未改用户数据）。
 - `@tick/todo-core` 并发：8 进程 × 20 条 = 160 条全保留、无残留 `.lock`。

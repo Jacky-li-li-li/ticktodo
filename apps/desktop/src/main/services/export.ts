@@ -4,6 +4,7 @@
  * 纪律（PRD F8）：
  *  - 导出的是索引，不是对话内容；不复制 pi 的文件；
  *  - `filePath` 必须给（拿到记录就能定位原始会话），`exists` 实时判定；
+ *  - 多文件会话（Codex 一个 thread 跨多个 rollout）另给 `files` 全部正文文件，`filePath` 仍是主文件；
  *  - `usage` 仅在设置开用量统计时有值，否则 null；
  *  - 产物落 `~/.ticktodo/exports/tick-export-<ts>.{json,md}`。
  */
@@ -20,7 +21,10 @@ interface ExportedSession {
   sessionId: string
   cwd: string
   name?: string
+  /** 主文件（多文件会话取最新那个；导出/定位默认打开它） */
   filePath: string | null
+  /** 多文件会话（as-built：Codex 一个 thread 跨多个 rollout）的全部正文文件 */
+  files?: string[]
   exists: boolean
   usage: SessionUsage | null
 }
@@ -67,6 +71,8 @@ export class ExportService {
           cwd: info?.cwd ?? '',
           name: info?.name ?? info?.firstMessage,
           filePath: info?.filePath ?? binding.filePath ?? null,
+          // 多文件会话不能只给主文件，否则导出侧会漏掉其余 rollout 的定位线索
+          ...(info?.files?.length ? { files: info.files } : {}),
           exists: Boolean(info),
           usage,
         })
@@ -132,8 +138,10 @@ function renderMarkdown(exportedAt: string, todos: ExportedTodo[]): string {
           s.usage && s.usage.tokens.totalTokens > 0
             ? ` · ${s.usage.tokens.totalTokens} tokens · ${s.usage.costReported ? '' : '≥'}$${s.usage.cost.total.toFixed(4)}`
             : ''
+        const extraFiles =
+          s.files && s.files.length > 1 ? `（共 ${s.files.length} 个正文文件，见 JSON 的 files）` : ''
         lines.push(
-          `- ${s.toolId} · ${s.cwd || '—'} · ${s.name || '未命名'} · ${s.filePath ?? '路径未知'}${exists}${usage}`,
+          `- ${s.toolId} · ${s.cwd || '—'} · ${s.name || '未命名'} · ${s.filePath ?? '路径未知'}${extraFiles}${exists}${usage}`,
         )
       }
     }

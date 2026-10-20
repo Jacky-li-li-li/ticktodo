@@ -9,7 +9,9 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "selftest:prefill": "node scripts/selftest-prefill.mjs",
     "mcp:build": "pnpm --filter @tick/mcp-server build",
-    "mcp:check": "node scripts/mcp-check.mjs"
+    "mcp:check": "node scripts/mcp-check.mjs",
+    "verify:agents": "node scripts/verify-agent-stores.mjs",
+    "review:tool": "node scripts/review-tools.mjs"
   },
   "engines": {
     "node": ">=22.19.0"

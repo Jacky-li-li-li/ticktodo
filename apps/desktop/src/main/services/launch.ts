@@ -30,7 +30,7 @@ import type {
   ResumeRequest,
   SessionBinding,
 } from '@tick/shared'
-import { newCliSessionId, toolDisplayName, type CliSessionId, type Todo } from '@tick/shared'
+import { newCliSessionId, toolDisplayName, type CliSessionId, type Todo, type ToolClientId } from '@tick/shared'
 import { canonicalPath, type AiToolAdapter, type SessionInfo } from '@tick/ai-core'
 import type { TodoStore } from '../store'
 
@@ -57,9 +57,9 @@ export interface LaunchServiceOptions {
   resolveAlias?: (projectPath: string) => string | undefined
 }
 
-/** 桌面工具不能走 launch（预生成 id + 绑定）时的统一提示；UI 只按 newSessionMode 过滤，这里是最后一道兜底 */
-const DESKTOP_TOOL_REASON =
-  '该工具是桌面应用，不能从 Tick 直接新建并绑定；请用「打开新建页」或先在应用里开始会话，再用「倒入历史会话」绑定'
+/** 非 launch 工具不能走 launch（预生成 id + 绑定）时的统一提示；UI 只按 newSessionMode 过滤，这里是最后一道兜底 */
+const NON_LAUNCH_TOOL_REASON =
+  '该工具不支持从 Tick 直接新建并绑定；请用「打开新建页 / 打开并复制文案」，或先在工具里开始会话，再用「倒入历史会话」绑定'
 
 export class LaunchService {
   private adapters: AiToolAdapter[]
@@ -80,6 +80,23 @@ export class LaunchService {
 
   private adapterById(id: string | undefined): AiToolAdapter | undefined {
     return id ? this.adapters.find((a) => a.id === id) : undefined
+  }
+
+  /**
+   * 多客户端工具（OpenCode 桌面版 / CLI）用哪个入口：
+   * 请求里显式指定 > 设置里的偏好 > 适配器声明里第一个（缺省 desktop）。
+   */
+  private clientFor(
+    adapter: AiToolAdapter,
+    explicit: ToolClientId | undefined,
+    fallback: ToolClientId,
+  ): ToolClientId | undefined {
+    const clients = adapter.capabilities.clients
+    if (!clients || clients.length === 0) return undefined
+    if (explicit && clients.includes(explicit)) return explicit
+    const preferred = this.opts.settings().toolClients?.[adapter.id]
+    if (preferred && clients.includes(preferred)) return preferred
+    return clients.includes(fallback) ? fallback : clients[0]
   }
 
   /**
@@ -187,7 +204,7 @@ export class LaunchService {
     }
     // 只有 launch 模式能「预生成 id + 写绑定」；prefill 模式走 openNewSessionPage，不能混用
     if (adapter.capabilities.newSessionMode !== 'launch') {
-      return { ok: false, delivered: req.deliver, reason: DESKTOP_TOOL_REASON }
+      return { ok: false, delivered: req.deliver, reason: NON_LAUNCH_TOOL_REASON }
     }
     // 未安装时不要假装成功（Q14 双出口空态）；detect 自身异常也要兜成原因。
     // 不再判断版本（2026-10-19 移除）：装了就让调用发生，版本差异由真实失败如实暴露。
@@ -314,13 +331,20 @@ export class LaunchService {
 
     const resolved = await this.resolveCwd(req.todoId, req.projectPath)
     const promptText = (req.promptText ?? todo.title).trim() || todo.title
+    // 入口只解析一次：clientFor 会读 settings，调两次既有重复读也有「两次结果可能不同」的隐患
+    const client = this.clientFor(adapter, req.client, 'desktop')
     try {
-      const result = await adapter.openNewSessionPage({ promptText, cwd: resolved.projectPath })
+      const result = await adapter.openNewSessionPage({
+        promptText,
+        cwd: resolved.projectPath,
+        ...(client ? { client } : {}),
+      })
       return { ...result, cwd: resolved.projectPath }
     } catch (e) {
       return {
         ok: false,
-        reason: `打开 ${toolDisplayName(adapter.id)} 新建页失败：${(e as Error).message}`,
+        // 不写「新建页」：terminal-copy 的 CLI 没有 GUI 新建页，这里是「打开终端」失败
+        reason: `打开 ${toolDisplayName(adapter.id)} 失败：${(e as Error).message}`,
         cwd: resolved.projectPath,
       }
     }
@@ -367,6 +391,8 @@ export class LaunchService {
       }
     }
 
+    // 回到会话默认走 CLI（能精确定位到会话）；桌面版只能打开项目
+    const client = this.clientFor(adapter, req.client, 'cli')
     const info = await adapter
       .describeSession?.(req.sessionId, { withName: false })
       .catch(() => undefined)
@@ -449,6 +475,7 @@ export class LaunchService {
         cwd,
         sessionId: req.sessionId,
         deliver: 'none',
+        ...(client ? { client } : {}),
       })
       if (todo) {
         this.store.update(todo.id, {
@@ -463,7 +490,15 @@ export class LaunchService {
           lastLaunch: { toolId: adapter.id, projectPath: cwd, launchedAt: new Date().toISOString() },
         })
       }
-      return { ok: true, sessionId: result.sessionId, projectPath: cwd, delivered: 'none' }
+      return {
+        ok: true,
+        sessionId: result.sessionId,
+        projectPath: cwd,
+        delivered: 'none',
+        // 桌面入口（如 OpenCode 桌面版）无法按会话定位，只能给 notice 说明「请在列表里自己选」；
+        // 这里必须原样透传，否则 UI 会按 ok 弹「已打开这个会话」= 假装定位成功。
+        ...(result.notice ? { notice: result.notice } : {}),
+      }
     } catch (err) {
       return {
         ok: false,

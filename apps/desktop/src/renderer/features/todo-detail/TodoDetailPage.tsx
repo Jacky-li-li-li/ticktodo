@@ -171,7 +171,8 @@ export function TodoDetailPage({
     })
     onToast(
       out.ok
-        ? `已在 ${toolDisplayName(session.toolId)} 里打开这个会话`
+        ? // notice 优先：桌面入口只能激活 App、无法定位会话，必须原样告诉用户去列表里选
+          (out.notice ?? `已在 ${toolDisplayName(session.toolId)} 里打开这个会话`)
         : (out.reason ?? '打开失败'),
     )
   }

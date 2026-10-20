@@ -7,7 +7,7 @@
 
 | 文档 | 管什么 | 何时必读 | 不适用 / 替代文档 |
 | --- | --- | --- | --- |
-| [`agent-tool-adapter.md`](./agent-tool-adapter.md) | 给 Tick 接入/修改 AI 工具适配器：`AiToolAdapter` 合同最小集、落地改动面、只读与降级/安全边界、验收清单、文档交付物 | 新增或修改 `packages/ai/*`；在 `main.ts` 注册适配器；改 `ToolIcon` / 工具能力位；写 PRD 的适配器需求章节 | 只想查某工具的存储/深链实测事实 → `docs/workbuddy-adapter-notes.md`；想看产品决策与依据等级 → `docs/prd-session-timeline.md` §9/§9B/§10 |
+| [`agent-tool-adapter.md`](./agent-tool-adapter.md) | 给 Tick 接入/修改 AI 工具适配器：`AiToolAdapter` 合同最小集、落地改动面、只读与降级/安全边界、验收清单、文档交付物 | 新增或修改 `packages/ai/*`；在 `main.ts` 注册适配器；改 `ToolIcon` / 工具能力位；写 PRD 的适配器需求章节 | 只想查某工具的存储/深链实测事实 → `docs/workbuddy-adapter-notes.md`、`docs/claude-code-adapter-notes.md`；想看产品决策与依据等级 → `docs/prd-session-timeline.md` §9/§9B/§10 |
 
 > 新增规则文档时，必须在本表登记一行；未登记视为不存在。
 
@@ -17,6 +17,9 @@
 | --- | --- |
 | 接一个新工具（CLI 或桌面 app） | 本目录 `agent-tool-adapter.md`（全流程 + 验收清单） |
 | 查 WorkBuddy 国内版/国际版的实测事实、未验证项 | `docs/workbuddy-adapter-notes.md` |
+| 查 Claude Code CLI / Claude Desktop 的实测事实、深链接、未验证项 | `docs/claude-code-adapter-notes.md` |
+| 查各家工具（Codex / OpenCode / Cursor / Kimi / Droid / Grok / Qoder / Cline…）的会话存在哪、id 怎么来、怎么 resume | `docs/agent-session-storage-map.md` |
+| 决定「下一个接哪个工具」、要不要改合同、某工具为什么不建议接 | `docs/multi-agent-adapter-plan.md` |
 | 查产品范围、会话时间线规则、WorkBuddy 依据表 A/B | `docs/prd-session-timeline.md` |
 | 查架构不变量（锁、verify、TTY、IPC 四处、UI 材质） | `CLAUDE.md`、`docs/已对齐/TECH-ARCH-tick.md` |
 | 查 pi 的调研与陷阱 | `docs/已对齐/RESEARCH-pi.md` |
