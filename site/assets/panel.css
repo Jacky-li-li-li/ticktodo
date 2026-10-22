@@ -1,0 +1,2047 @@
+/*
+ * ticktodo.cc · App 面板还原样式
+ *
+ * 首屏的「迷你 macOS 桌面」与功能卡片里的迷你界面共用这里的 .tk-* 类。
+ * 数值按 apps/desktop/src/renderer/styles.css 的 as-built 样式还原（360×520 面板、
+ * 46px 捕获行、44px 线索行、右侧 1/8 方块滑块、浅色 toast 覆盖捕获行等）；
+ * 视觉规范同 App：浅色玻璃 + 墨黑文字、主按钮金属黑、次按钮哑光石墨、不用蓝色、
+ * 语义色只有绿/红。
+ * 差异（有意为之）：App 的面板几乎全透明，靠 macOS vibrancy 透出壁纸；网页没有
+ * vibrancy，所以面板底色更实一些，保证示意图在任意壁纸 / 深色主题下都读得清。
+ *
+ * 舞台固定尺寸（wide 700×580 / compact 392×640），由 site.js 按容器宽度等比缩放。
+ */
+
+/* ---------- 迷你桌面 ---------- */
+.desk-frame {
+  position: relative;
+  width: 100%;
+  height: 580px;
+}
+
+.desk {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 700px;
+  height: 580px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 22px;
+  transform-origin: 0 0;
+  background: radial-gradient(42% 46% at 10% 84%, rgba(255, 190, 152, 0.85), transparent 72%),
+    radial-gradient(40% 40% at 34% 14%, rgba(255, 228, 176, 0.75), transparent 72%),
+    radial-gradient(46% 50% at 92% 86%, rgba(172, 200, 252, 0.7), transparent 72%),
+    radial-gradient(38% 44% at 78% 16%, rgba(214, 192, 255, 0.72), transparent 72%),
+    linear-gradient(160deg, #f4eee4 0%, #ebe5f1 100%);
+  box-shadow: 0 0 0 1px rgba(20, 20, 20, 0.06), var(--shadow-lg);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:root[data-theme="dark"] .desk {
+  background: radial-gradient(42% 46% at 10% 84%, rgba(196, 110, 92, 0.55), transparent 72%),
+    radial-gradient(40% 40% at 34% 14%, rgba(180, 140, 90, 0.42), transparent 72%),
+    radial-gradient(46% 50% at 92% 86%, rgba(80, 110, 190, 0.55), transparent 72%),
+    radial-gradient(38% 44% at 78% 16%, rgba(130, 100, 200, 0.5), transparent 72%),
+    linear-gradient(160deg, #2b2733 0%, #1e2230 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), var(--shadow-lg);
+}
+
+.desk[data-mode="compact"] {
+  width: 392px;
+  height: 600px;
+}
+
+/* 菜单栏：Tick 常驻在右上角，点图标显示 / 隐藏面板 */
+.mb {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 40;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 14px;
+  background: rgba(255, 255, 255, 0.45);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  backdrop-filter: blur(18px) saturate(1.6);
+  color: rgba(0, 0, 0, 0.84);
+  font: 500 12px/1 var(--font);
+}
+
+:root[data-theme="dark"] .mb {
+  background: rgba(24, 24, 30, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.mb-l,
+.mb-r {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  white-space: nowrap;
+}
+
+.mb-l svg {
+  width: 13px;
+  height: 13px;
+}
+
+.mb-l b {
+  font-weight: 700;
+}
+
+.mb-item {
+  opacity: 0.88;
+}
+
+.mb-r {
+  gap: 11px;
+}
+
+.mb-r > svg {
+  width: 15px;
+  height: 15px;
+}
+
+.mb-tray {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.mb-tray svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mb-tray.on {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+:root[data-theme="dark"] .mb-tray.on {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.desk[data-mode="compact"] .mb-item {
+  display: none;
+}
+
+/* ---------- 面板 ---------- */
+.tk-panel {
+  position: absolute;
+  right: 14px;
+  top: 36px;
+  z-index: 20;
+  width: 360px;
+  height: 520px;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.06) 28%, rgba(255, 255, 255, 0) 55%),
+    rgba(247, 247, 250, 0.72);
+  -webkit-backdrop-filter: blur(30px) saturate(1.9);
+  backdrop-filter: blur(30px) saturate(1.9);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.12),
+    0 26px 70px rgba(3, 5, 13, 0.24);
+  color: rgba(0, 0, 0, 0.9);
+  font-family: var(--tk-font);
+  line-height: 1.4;
+  text-align: left;
+  transform-origin: 100% 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.tk-panel.is-hidden {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  pointer-events: none;
+}
+
+.desk[data-mode="compact"] .tk-panel {
+  left: 16px;
+  right: auto;
+}
+
+.tk-panel button,
+.mini-glass button {
+  font-family: inherit;
+}
+
+.tk-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tk-top {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 26px;
+  padding: 2px 2px 0;
+}
+
+.tk-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+
+.tk-brand svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.tk-top-r {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tk-ico,
+.tk-menu,
+.tk-back,
+.tk-x {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.38);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tk-ico:hover,
+.tk-menu:hover,
+.tk-back:hover,
+.tk-x:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.tk-ico svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 置顶开关打开 = 金属黑填充（App「UI 规范统一」段） */
+.tk-ico.on {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, #3a3d45 0%, #111216 100%);
+  color: #f3f5f9;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.24);
+}
+
+.tk-ico.on:hover {
+  background: linear-gradient(180deg, #464a54 0%, #17181c 100%);
+  color: #fff;
+}
+
+.tk-menu {
+  min-width: 26px;
+  font-size: 14px;
+}
+
+.tk-back {
+  margin-right: 2px;
+  padding-bottom: 3px;
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 17px;
+}
+
+.tk-lhs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tk-ptitle {
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 捕获行：「＋ 想到什么，先丢下」 */
+.tk-capture {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.4));
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.7), 0 1px 2px rgba(20, 30, 50, 0.05);
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 13px;
+  cursor: text;
+}
+
+.tk-plus {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.tk-cap-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.9);
+  font: inherit;
+  font-size: 13px;
+}
+
+.tk-cap-input::placeholder {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* 线索列表 */
+.tk-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-width: none;
+}
+
+.tk-list::-webkit-scrollbar {
+  display: none;
+}
+
+.tk-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.tk-row:hover,
+.tk-row.hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.tk-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.28);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.tk-row:hover .tk-check {
+  border-color: rgba(0, 0, 0, 0.42);
+}
+
+.tk-check svg {
+  display: none;
+  width: 9px;
+  height: 9px;
+}
+
+/* 归档态 = 绿底 + 白勾（圆角 9） */
+.tk-row.done .tk-check {
+  border-color: #34c759;
+  border-radius: 9px;
+  background: #34c759;
+  cursor: default;
+}
+
+.tk-row.done .tk-check svg {
+  display: block;
+}
+
+.tk-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-row.done .tk-title {
+  color: rgba(0, 0, 0, 0.45);
+  text-decoration-line: line-through;
+}
+
+.tk-time {
+  flex: none;
+  color: rgba(0, 0, 0, 0.42);
+  font-size: 10px;
+}
+
+/* 圆形石墨按钮：行尾「进入」、详情页「新建会话 / 倒入历史会话」 */
+.tk-enter,
+.tk-round {
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #2e3138 0%, #1a1c21 100%);
+  color: #f3f5f9;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.18), 0 3px 8px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.tk-enter {
+  display: none;
+}
+
+.tk-round {
+  display: grid;
+}
+
+.tk-enter:hover,
+.tk-round:hover {
+  background: linear-gradient(180deg, #383c44 0%, #202329 100%);
+}
+
+.tk-enter svg,
+.tk-round svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 悬停：时间让位给「进入」按钮 */
+.tk-row:hover .tk-enter,
+.tk-row.hover .tk-enter {
+  display: grid;
+}
+
+.tk-row:hover .tk-time,
+.tk-row.hover .tk-time {
+  display: none;
+}
+
+.tk-restore {
+  display: none;
+  flex: none;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 13px;
+  background: linear-gradient(180deg, #2e3138 0%, #1a1c21 100%);
+  color: rgba(243, 245, 249, 0.92);
+  font-size: 10.5px;
+  font-weight: 600;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.18), 0 4px 12px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.tk-row:hover .tk-restore {
+  display: inline-flex;
+}
+
+.tk-row.is-new,
+.tk-sess.is-new {
+  animation: tk-flash 1.6s ease;
+}
+
+@keyframes tk-flash {
+  0%,
+  30% {
+    background: rgba(52, 199, 89, 0.18);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.tk-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.tk-empty-title {
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tk-empty-hint {
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.tk-empty-act {
+  margin-top: 6px;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+/* Toast：覆盖在捕获行位置（top 43 / 圆角 16）；详情页和新建页没有捕获行，改浮在底部 */
+.tk-toast {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 43px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 8px 14px;
+  border: 1px solid rgba(52, 199, 89, 0.45);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(52, 199, 89, 0.18), rgba(52, 199, 89, 0.12)), rgba(250, 252, 250, 0.97);
+  box-shadow: 0 10px 26px rgba(20, 30, 50, 0.22);
+  color: rgba(0, 0, 0, 0.9);
+  font-family: var(--tk-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  animation: tk-toast 0.2s ease-out;
+}
+
+.tk-toast.at-bottom {
+  top: auto;
+  bottom: 16px;
+}
+
+/* 窄屏时窗口叠在面板下半部：toast 一律放到顶部，避免被窗口挡住 */
+.desk[data-mode="compact"] .tk-toast.at-bottom {
+  top: 43px;
+  bottom: auto;
+}
+
+.tk-toast svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+
+.tk-toast-text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tk-undo {
+  flex: none;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0b1a2a;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@keyframes tk-toast {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- 线索详情页 ---------- */
+.tk-dmain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 2px;
+}
+
+/* 进行中 = 绿色呼吸灯 */
+.tk-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34c759;
+  box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.16), 0 0 8px rgba(52, 199, 89, 0.55);
+  animation: tk-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes tk-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+    box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.1), 0 0 6px rgba(52, 199, 89, 0.4);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+    box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.18), 0 0 10px rgba(52, 199, 89, 0.65);
+  }
+}
+
+/* 已归档 = 静态灰点 + 「已归档」标签 */
+.tk-dot.done {
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: none;
+  animation: none;
+}
+
+.tk-dchip {
+  flex: none;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.tk-dtitle.done {
+  color: rgba(0, 0, 0, 0.45);
+  text-decoration-line: line-through;
+}
+
+.tk-row:focus-visible {
+  outline: 2px solid rgba(0, 0, 0, 0.6);
+  outline-offset: -2px;
+}
+
+.tk-row:focus-visible .tk-enter {
+  display: grid;
+}
+
+.tk-row:focus-visible .tk-time {
+  display: none;
+}
+
+.mg-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 10.5px;
+}
+
+.mg-confirm span {
+  flex: 1;
+  color: rgba(0, 0, 0, 0.7);
+  font-weight: 600;
+}
+
+.mg-confirm .tk-mini.danger {
+  border-color: rgba(255, 120, 120, 0.5);
+  background: linear-gradient(180deg, #5a1f1f 0%, #2c0d0d 100%);
+  color: #ffd9d9;
+}
+
+.tk-dtitle {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  line-height: 1.32;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-dcontent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 0 14px 18px;
+  scrollbar-width: none;
+}
+
+.tk-dcontent::-webkit-scrollbar {
+  display: none;
+}
+
+.tk-body {
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.75);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.tk-body-empty {
+  align-self: flex-start;
+  padding: 6px 10px;
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.tk-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tk-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tk-sec-title {
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+
+.tk-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 7px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.07);
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+
+.tk-sec-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tk-dempty {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tk-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tk-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tk-ghead {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.tk-ghead .n {
+  flex: none;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tk-ghead .p {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ---------- 会话卡片 + 右侧 1/8 方块滑块（单击接着做 / 按住左拖到底解绑） ---------- */
+.tk-sess {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.tk-sbody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 8px 10px 12px;
+  transition: opacity 0.12s ease;
+}
+
+.tk-stool {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+}
+
+.ti {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* 工具名只在悬停图标时出现（卡片上不占文字位） */
+.tk-stool::after {
+  content: attr(data-tool);
+  position: absolute;
+  left: -4px;
+  top: -6px;
+  z-index: 5;
+  padding: 3px 7px;
+  transform: translateY(-100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  background: linear-gradient(180deg, #2e3138 0%, #16181c 100%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+  color: #f3f5f9;
+  font-size: 9.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.tk-stool:hover::after,
+.tk-stool.tip::after {
+  opacity: 1;
+}
+
+.tk-smain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tk-shead {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tk-stitle {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tk-stime {
+  flex: none;
+  margin-top: 1px;
+  color: rgba(0, 0, 0, 0.42);
+  font-size: 9px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.tk-slast {
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 9.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-slast i {
+  margin-right: 4px;
+  color: rgba(0, 0, 0, 0.32);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.tk-stags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tk-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 9px;
+}
+
+.tk-usage {
+  color: rgba(0, 0, 0, 0.42);
+  font-size: 9px;
+}
+
+.tk-sess.is-missing .tk-sbody {
+  opacity: 0.6;
+}
+
+.tk-blk {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 12.5%;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0 12px 12px 0;
+  background: rgba(255, 255, 255, 0.24);
+  color: rgba(0, 0, 0, 0.58);
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 0.16s ease, background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.tk-blk:hover {
+  background: rgba(255, 255, 255, 0.42);
+}
+
+/* 空闲时的「抓手」：两道竖线，提示这一块可以拖 */
+.tk-grip {
+  width: 7px;
+  height: 16px;
+  border-left: 1.5px solid rgba(0, 0, 0, 0.24);
+  border-right: 1.5px solid rgba(0, 0, 0, 0.24);
+}
+
+.tk-blk.is-dragging {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  cursor: grabbing;
+  transition: none;
+}
+
+.tk-blk.is-armed {
+  border-left-color: rgba(198, 40, 40, 0.4);
+  background: rgba(198, 40, 40, 0.1);
+  color: #c62828;
+}
+
+.tk-blk svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tk-blk-label {
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+/* 拖动时：终点区（卡片最左 1/8）+ 引导线 */
+.tk-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  z-index: 1;
+  border-top: 1px dashed rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+}
+
+.tk-target {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 12.5%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px dashed rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.02);
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 8px;
+  font-weight: 600;
+  pointer-events: none;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.tk-target svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tk-target.is-armed {
+  border-color: rgba(198, 40, 40, 0.55);
+  background: rgba(198, 40, 40, 0.1);
+  color: #c62828;
+}
+
+.tk-sess.is-dragging .tk-sbody {
+  opacity: 0.35;
+}
+
+/* 单击接着做：方块右滑 + 卡片轻推 */
+.tk-sess.is-resuming {
+  animation: tk-nudge 0.22s ease;
+}
+
+.tk-sess.is-resuming .tk-blk {
+  transform: translateX(3px);
+}
+
+@keyframes tk-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+}
+
+/* ---------- 浮层：sheet / ⋯ 菜单 ---------- */
+.tk-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.tk-layer > * {
+  pointer-events: auto;
+}
+
+.tk-backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(20, 24, 36, 0.25);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: tk-fade 0.16s ease;
+}
+
+.tk-sheet {
+  width: 100%;
+  max-height: calc(100% - 28px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  background: rgba(250, 250, 253, 0.97);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.85), 0 16px 36px rgba(20, 30, 50, 0.22);
+  color: rgba(0, 0, 0, 0.9);
+  font-family: var(--tk-font);
+  line-height: 1.4;
+  text-align: left;
+  scrollbar-width: none;
+  animation: tk-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tk-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 2px;
+}
+
+.tk-sheet-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tk-x {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+
+.tk-note {
+  padding: 0 2px 2px;
+  color: rgba(0, 0, 0, 0.42);
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.tk-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.tk-actions button {
+  flex: 1;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 次按钮 / 小按钮 = 哑光石墨 */
+.tk-actions .secondary,
+.tk-mini {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, #2e3138 0%, #1a1c21 100%);
+  color: rgba(243, 245, 249, 0.92);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.18), 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.tk-actions .danger {
+  border: 1px solid rgba(255, 120, 120, 0.5);
+  background: linear-gradient(180deg, #5a1f1f 0%, #2c0d0d 100%);
+  color: #ffd9d9;
+}
+
+@keyframes tk-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tk-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 倒入历史会话 */
+.tk-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.tk-chip {
+  padding: 4px 9px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 14px;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 9.5px;
+}
+
+.tk-chip.on {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, #34373e 0%, #141619 100%);
+  color: #f3f5f9;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+}
+
+.tk-scount {
+  margin-left: auto;
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 9px;
+}
+
+.tk-igroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tk-ighead {
+  padding: 4px 2px;
+  color: rgba(0, 0, 0, 0.36);
+  font-size: 9px;
+}
+
+.tk-iitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.tk-iitem:hover {
+  background: rgba(0, 0, 0, 0.055);
+}
+
+.tk-imain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tk-iname {
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-imeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 9px;
+}
+
+.tk-itool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tk-itool .ti {
+  width: 12px;
+  height: 12px;
+}
+
+.tk-iacts {
+  flex: none;
+  display: flex;
+  gap: 5px;
+}
+
+.tk-mini {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  cursor: pointer;
+}
+
+/* 主小按钮 = 抛光金属黑 */
+.tk-mini.primary {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, #3f434c 0%, #1c1f25 54%, #0a0b0e 100%);
+  color: #f3f5f9;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.36), inset 0 -1px 2px rgba(0, 0, 0, 0.55),
+    0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.tk-iempty {
+  padding: 14px 4px;
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.tk-pop {
+  position: absolute;
+  top: 40px;
+  right: 14px;
+  z-index: 26;
+  min-width: 136px;
+  padding: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  background: rgba(250, 250, 253, 0.97);
+  box-shadow: 0 16px 36px rgba(20, 30, 50, 0.22);
+  animation: tk-fade 0.12s ease;
+}
+
+.tk-pop button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.75);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tk-pop button:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+/* ---------- 新建会话（整页） ---------- */
+.tk-ncontent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 2px;
+  scrollbar-width: none;
+}
+
+.tk-ncontent::-webkit-scrollbar {
+  display: none;
+}
+
+.tk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tk-label {
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tk-ntitle {
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-prompt {
+  width: 100%;
+  min-height: 70px;
+  padding: 9px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  outline: none;
+  background: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.9);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.tk-prompt:focus {
+  border-color: rgba(0, 0, 0, 0.45);
+}
+
+.tk-proj {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.04);
+  font-size: 11px;
+}
+
+.tk-proj .n {
+  flex: none;
+  font-weight: 600;
+}
+
+.tk-proj .p {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-proj .c {
+  flex: none;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tk-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tk-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.tk-tool:hover,
+.tk-tool.hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* 选中：半透明白 + 墨色内描边（不用深色填充，避免读成禁用） */
+.tk-tool.on {
+  border-color: rgba(0, 0, 0, 0.16);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1.25px rgba(0, 0, 0, 0.45);
+}
+
+.tk-tool.off,
+.tk-tool.off:hover {
+  background: transparent;
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tk-tool .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #0b1a2a;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-tool .tg {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.42);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.tk-nfoot {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tk-frow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tk-go {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #3f434c 0%, #1c1f25 54%, #0a0b0e 100%);
+  color: #f3f5f9;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.36), inset 0 -1px 2px rgba(0, 0, 0, 0.55),
+    0 6px 16px rgba(0, 0, 0, 0.34);
+  cursor: pointer;
+}
+
+.tk-go:hover {
+  background: linear-gradient(180deg, #4a4e58 0%, #23262c 54%, #101115 100%);
+}
+
+.tk-direct {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.58);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 原生 checkbox 依赖系统 accent：画成与主按钮一致的墨黑勾选块 */
+.tk-direct input {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.tk-direct input:checked {
+  border-color: #1c1f25;
+  background: #1c1f25;
+}
+
+.tk-direct input:checked::after {
+  content: "";
+  width: 6px;
+  height: 3px;
+  border-left: 1.5px solid #fff;
+  border-bottom: 1.5px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+.tk-nnote {
+  color: rgba(0, 0, 0, 0.42);
+  font-size: 9.5px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* ---------- 面板对话 ---------- */
+.tk-chat {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px;
+  scrollbar-width: none;
+}
+
+.tk-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 86%;
+}
+
+.tk-msg.u {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.tk-msg .b {
+  padding: 8px 11px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.tk-msg.u .b {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, #2e3138 0%, #16181c 100%);
+  color: #f3f5f9;
+}
+
+.tk-msg.a .b {
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.6);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.tk-call {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.62);
+  font: 10px/1.5 var(--mono);
+}
+
+.tk-call svg {
+  width: 11px;
+  height: 11px;
+}
+
+.tk-cinput {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 6px 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 11px;
+}
+
+.tk-cinput span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tk-csend {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #2e3138, #1a1c21);
+  color: #f3f5f9;
+  opacity: 0.55;
+}
+
+/* ---------- 演示里的终端 / 桌面 App 窗口 ---------- */
+.win {
+  position: absolute;
+  left: 20px;
+  top: 132px;
+  z-index: 10;
+  width: 340px;
+  height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 24px 64px rgba(3, 5, 13, 0.3);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.28s ease, transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.win.is-open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* 窄屏没有并排空间：窗口叠在面板下半部（面板置顶时真实情况是窗口在面板后面，这里为了看得见） */
+.desk[data-mode="compact"] .win {
+  left: 12px;
+  right: 12px;
+  top: auto;
+  bottom: 14px;
+  z-index: 35;
+  width: auto;
+  height: 236px;
+}
+
+.win-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 10px;
+}
+
+.win-dot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+
+.win-dot:nth-child(2) {
+  background: #febc2e;
+}
+
+.win-dot:nth-child(3) {
+  background: #28c840;
+}
+
+button.win-dot {
+  cursor: pointer;
+}
+
+.win-title {
+  flex: 1;
+  min-width: 0;
+  margin-right: 44px;
+  overflow: hidden;
+  font: 600 11px/1 var(--font);
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.72;
+}
+
+.win.term {
+  background: #1b1c20;
+  color: #e6e6e9;
+}
+
+.win.term .win-bar {
+  background: #2a2b31;
+  color: #d6d6db;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.term-body {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  padding: 10px 14px;
+  font: 10.5px/1.62 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.c-dim {
+  color: #8a8c96;
+}
+
+.c-ok {
+  color: #7ee2a0;
+}
+
+.c-hi {
+  color: #fff;
+  font-weight: 600;
+}
+
+.c-path {
+  color: #e9c98f;
+}
+
+.term-input {
+  display: block;
+  margin-top: 6px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #fff;
+  white-space: pre-wrap;
+}
+
+.caret {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  margin-left: 1px;
+  background: currentColor;
+  vertical-align: -2px;
+  animation: caret 1.05s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.win.app {
+  background: #fbfbfc;
+  color: #1d1d1f;
+}
+
+.win.app .win-bar {
+  background: #ececef;
+  color: #3a3a3e;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.app-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 116px;
+  padding: 10px 8px;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  background: #f2f2f5;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 8px;
+  font: 700 11px/1.2 var(--font);
+}
+
+.app-brand svg {
+  width: 16px;
+  height: 16px;
+}
+
+.app-it {
+  overflow: hidden;
+  padding: 5px 7px;
+  border-radius: 7px;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.app-it.on {
+  background: rgba(1, 200, 134, 0.16);
+  color: #05683f;
+  font-weight: 600;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  font-size: 10.5px;
+}
+
+.app-h {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.app-line {
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.app-bubble {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: rgba(1, 200, 134, 0.14);
+}
+
+.app-compose {
+  margin-top: auto;
+  padding: 8px 9px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 9px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.82);
+  white-space: pre-wrap;
+}
+
+.app-send {
+  align-self: flex-end;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: #01c886;
+  color: #fff;
+  font-weight: 600;
+}
+
+.app-hint {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 9.5px;
+}
+
+/* ---------- 演示光标 ---------- */
+.cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  width: 20px;
+  height: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(560px, 520px);
+  transition: transform 0.7s cubic-bezier(0.45, 0.05, 0.2, 1), opacity 0.25s ease;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+}
+
+.cursor.show {
+  opacity: 1;
+}
+
+.cursor svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  transform-origin: 3px 2px;
+  transition: transform 0.12s ease;
+}
+
+.cursor.down svg {
+  transform: scale(0.84);
+}
+
+.cursor .rip {
+  position: absolute;
+  left: -9px;
+  top: -10px;
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(20, 20, 20, 0.5);
+  border-radius: 50%;
+  animation: rip 0.5s ease-out forwards;
+}
+
+@keyframes rip {
+  from {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* ---------- 功能卡片里的迷你玻璃面板 ---------- */
+.mini-glass {
+  position: relative;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 14px;
+  background: rgba(247, 247, 250, 0.76);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.1),
+    0 16px 40px rgba(3, 5, 13, 0.16);
+  color: rgba(0, 0, 0, 0.9);
+  font-family: var(--tk-font);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.mini-glass.bare {
+  padding: 0;
+  border: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
