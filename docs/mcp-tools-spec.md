@@ -189,7 +189,7 @@
 ### 2.1 `serverInfo`
 
 ```json
-{ "name": "tick", "version": "0.2.1+mcp.1" }
+{ "name": "tick", "version": "0.3.0+mcp.1" }
 ```
 
 ### 2.2 `instructions`（原文，进客户端系统提示）
@@ -211,7 +211,7 @@ Tick 是用户的本地线索（todo）系统，和用户的 AI 会话绑定在�
   "tools": { "listChanged": false },
   "resources": { "listChanged": false },
   "experimental": {
-    "com.tick/bridge": { "schema": 1, "appVersion": "0.2.1" }
+    "com.tick/bridge": { "schema": 1, "appVersion": "0.3.0" }
   }
 }
 ```

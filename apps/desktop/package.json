@@ -1,7 +1,7 @@
 {
   "name": "@tick/desktop",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "unset ELECTRON_RUN_AS_NODE && vite",
