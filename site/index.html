@@ -130,8 +130,8 @@
       <div class="hero-copy">
         <img class="mascot" src="mascot.png" alt="Ticktodo 吉祥物：一颗别着图钉的云朵豆" data-en-alt="Ticktodo mascot: a cloud bean with a pin" width="108" height="108">
         <a class="pill" href="#status">
-          <span class="pill-tag" id="pillTag">v0.2.1</span>
-          <span class="pill-text" id="pillText" title="v0.2.1 安装包含其中 3 个，其余 12 个随下一版发布" data-en-title="v0.2.1 ships 3 of them; the other 12 land in the next release">15 个 AI 工具已接入</span>
+          <span class="pill-tag" id="pillTag">v0.3.0</span>
+          <span class="pill-text" id="pillText" title="v0.3.0 已包含全部 15 个工具" data-en-title="v0.3.0 ships all 15 tools">15 个 AI 工具已接入</span>
           <svg aria-hidden="true"><use href="#i-arrow"/></svg>
         </a>
         <h1 data-en="Every AI session <br>for one todo, <br><span class=&quot;mark&quot;>at a glance</span>">一个 todo 的<br>所有 AI 会话，<br><span class="mark">一眼看全</span></h1>
@@ -153,7 +153,7 @@
         <ul class="hero-meta">
           <li data-en="macOS · menu bar">macOS · 常驻菜单栏</li>
           <li data-en="15 AI tools">15 个 AI 工具</li>
-          <li id="relLine">v0.2.1</li>
+          <li id="relLine">v0.3.0</li>
           <li><a href="#download-placeholder" data-dl-alt aria-label="下载 Intel 版本" data-en-label="Download the Intel build">Intel (x64)</a></li>
         </ul>
       </div>
@@ -236,7 +236,7 @@
 <section class="strip" aria-labelledby="stripTitle">
   <div class="wrap">
     <div class="strip-head">
-      <span id="stripTitle">已接入 <b>15</b> 个 AI 工具：v0.2.1 含其中 3 个，其余 12 个随下一版发布</span>
+      <span id="stripTitle">已接入 <b>15</b> 个 AI 工具</span>
       <a href="#tools" data-en="See the capability matrix →">看能力对照 →</a>
     </div>
   </div>
@@ -657,9 +657,9 @@
         <button type="button" aria-pressed="false" data-f="none" data-en="Read-only">只读</button>
       </div>
       <div class="legend">
-        <span><span class="badge is-shipped" data-since="0.2.1">v0.2.1</span></span>
-        <span><span class="badge is-next" data-en="Next release">下一版</span></span>
-        <span><span class="badge is-planned" data-en="Planned">规划中</span></span>
+        <span><span class="badge is-shipped" data-since="0.3.0">v0.3.0</span><em data-en="added in this release">本版新增</em></span>
+        <span><span class="badge is-shipped" data-since="0.2.1">v0.2.1</span><em data-en="already supported">已有</em></span>
+        <span><span class="badge is-planned" data-since="planned">规划中</span></span>
       </div>
     </div>
 
@@ -676,46 +676,46 @@
     <div class="sec-head reveal">
       <p class="eyebrow" data-en="Changelog">最新进展</p>
       <h2 data-en="What shipped, <br class=&quot;sm&quot;>what is coming.">已经发布的，<br class="sm">和马上要来的。</h2>
-      <p class="sec-lede" data-en="Three states, no marketing rounding: in the latest release, merged into main and landing next, and still being designed.">
-        三种状态，不写模糊话：已随最新版发布、已合入 main 随下一版发布、还在设计里。
+      <p class="sec-lede" data-en="By release, without rounding up: what this version added, what the previous one already had, and what is still being designed.">
+        按版本记，不写模糊话：这一版新增了什么、上一版已经有什么、还在设计什么。
       </p>
     </div>
 
     <div class="status-grid">
-      <div class="scol is-shipped reveal">
+      <div class="scol is-shipped is-latest reveal">
+        <div class="scol-head">
+          <span class="badge is-shipped" data-since="0.3.0">v0.3.0</span>
+          <h3 data-en="Shipped">已发布</h3>
+          <p class="scol-meta" data-en="2026-10-23 · latest release">2026-10-23 · 最新版本</p>
+        </div>
+        <ul class="slist">
+          <li data-en="12 more adapters: Claude Code, Claude Desktop, Codex, Cline, Grok, omp, Kimi Code, OpenCode, Qoder / Qoder CN, ZCode, DeepSeek Harness">再接入 12 个适配器：Claude Code、Claude Desktop、Codex、Cline、Grok、omp、Kimi Code、OpenCode、Qoder / Qoder CN、ZCode、DeepSeek Harness</li>
+          <li data-en="Claude Code prefills its native input; pi and Claude Code pre-generate session ids, the other CLIs open with the prompt on the clipboard">Claude Code 用原生 <code class="ic">--prefill</code> 预填；pi 与 Claude Code 预生成会话 id，其余 CLI 打开工具并把文案放进剪贴板</li>
+          <li data-en="In-app updates: check, download after confirmation, install on restart; dev and unsigned builds say so honestly">应用内更新：检查、确认后下载、重启安装；开发模式与未签名构建如实显示不可更新</li>
+          <li data-en="Multi-client tools: OpenCode desktop and CLI share one index; the CLI resumes precisely">多客户端工具：OpenCode 桌面版与 CLI 共用一个索引，回到会话时 CLI 能精确恢复</li>
+          <li data-en="Fixes: desktop/CLI switcher moved into the tool card, scroll wheel on the new-session page, update handoff no longer stuck at a fake ready">修复：桌面版 / CLI 切换器移入工具卡片、新建会话页滚轮失效、更新交接失败不再停在假 ready</li>
+        </ul>
+        <p class="scol-note" data-en="Download at the top of this page, or from GitHub Releases.">可在页面顶部下载，或到 GitHub Releases 取。</p>
+      </div>
+
+      <div class="scol is-prev reveal">
         <div class="scol-head">
           <span class="badge is-shipped" data-since="0.2.1">v0.2.1</span>
-          <h3 data-en="Shipped">已发布</h3>
-          <p class="scol-meta" data-en="2026-10-19 · latest release">2026-10-19 · 最新版本</p>
+          <h3 data-en="Previous release">上一个版本</h3>
+          <p class="scol-meta" data-en="2026-10-19">2026-10-19</p>
         </div>
         <ul class="slist">
           <li data-en="pi, WorkBuddy (China) and WorkBuddy AI (International) adapters">pi、WorkBuddy（国内版）与 WorkBuddy AI（国际版）三个适配器</li>
           <li data-en="MCP server: create_todo / list_todos / link_session, plus Settings → Agent connection">MCP server：create_todo / list_todos / link_session，含设置页「Agent 连接」</li>
-          <li data-en="Todo-centric panel: capture, group sessions by project, continue in one click">以 todo 为中心的面板：捕获行、会话按项目分组、一键接着做</li>
-          <li data-en="Import past sessions, panel chat, usage, JSON + Markdown export">倒入历史会话、面板 Chat、用量统计、JSON + Markdown 导出</li>
-          <li data-en="Install script with SHA256 verification; menu bar only, no Dock icon">带 SHA256 校验的一行安装脚本；只驻菜单栏，不占 Dock</li>
+          <li data-en="Todo-centric panel, import past sessions, panel chat, usage and export">以 todo 为中心的面板、倒入历史会话、面板 Chat、用量与导出</li>
+          <li data-en="One-line install with SHA256 verification; menu bar only, no Dock icon">带 SHA256 校验的一行安装脚本；只驻菜单栏，不占 Dock</li>
         </ul>
-        <p class="scol-note" data-en="Grab it below, or from the releases page.">可在下方下载，或到 GitHub Releases 取。</p>
-      </div>
-
-      <div class="scol is-next reveal" id="nextCol">
-        <div class="scol-head">
-          <span class="badge is-next" data-since="next" data-en="Next release">下一版</span>
-          <h3 id="nextTitle" data-en="Landing next">即将发布</h3>
-          <p class="scol-meta" id="nextMeta" data-en="Merged into main; ships with the next release">已合入 main 分支，随下一个版本发布</p>
-        </div>
-        <ul class="slist">
-          <li data-en="12 more adapters: Claude Code, Claude Desktop, Codex, Cline, Grok, omp, Kimi Code, OpenCode, Qoder / Qoder CN, ZCode, DeepSeek Harness">再接入 12 个适配器：Claude Code、Claude Desktop、Codex、Cline、Grok、omp、Kimi Code、OpenCode、Qoder / Qoder CN、ZCode、DeepSeek Harness</li>
-          <li data-en="Claude Code and pi pre-generate session ids and prefill the native input; other CLIs open with the prompt on the clipboard">Claude Code 与 pi 预生成会话 id、预填原生输入框；其余 CLI 打开工具并把文案放进剪贴板</li>
-          <li data-en="In-app updates: check, download after confirmation, install on restart, honest “unsupported” on dev / unsigned builds">应用内更新：检查、确认后下载、重启安装；开发模式与未签名构建如实显示不可更新</li>
-          <li data-en="Multi-client tools (OpenCode desktop + CLI) and per-tool launch arguments">多客户端工具（OpenCode 桌面版 + CLI）与逐工具启动参数</li>
-        </ul>
-        <p class="scol-note" data-en="Follow the main branch, or watch releases.">可以关注 main 分支，或留意 Releases。</p>
+        <p class="scol-note" data-en="Installed from v0.2.1? The app will offer this update in Settings → App update.">从 v0.2.1 装起的用户，会在「设置 → 应用更新」里收到这一版的提示。</p>
       </div>
 
       <div class="scol is-planned reveal">
         <div class="scol-head">
-          <span class="badge is-planned" data-en="Planned">规划中</span>
+          <span class="badge is-planned" data-since="planned">规划中</span>
           <h3 data-en="On the drawing board">还在设计里</h3>
           <p class="scol-meta" data-en="Designed, not implemented">已有设计，尚未实现</p>
         </div>
@@ -882,7 +882,7 @@
     nextDate              可选，新版本的发布日期
 -->
 <script>
-  window.TICK_SITE = { version: '0.2.1', date: '2026-10-19', nextShippedIn: null, nextDate: '' };
+  window.TICK_SITE = { version: '0.3.0', date: '2026-10-23', nextShippedIn: null, nextDate: '' };
 </script>
 <script src="assets/site.js" defer></script>
 

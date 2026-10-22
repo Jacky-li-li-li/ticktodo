@@ -110,9 +110,11 @@
     const tag = $('#pillTag');
     const txt = $('#pillText');
     if (txt) {
-      txt.title = SHIPPED
-        ? L('已发布的版本包含这 15 个工具', 'The released build ships all 15 tools')
-        : L('v0.2.1 安装包含其中 3 个，其余 12 个随下一版发布', 'v0.2.1 ships 3 of them; the other 12 land in the next release');
+      const pending = TOOLS.some((t) => t.since === 'next');
+      const v = SHIPPED ? CFG.nextShippedIn : CFG.version;
+      txt.title = pending && !SHIPPED
+        ? L(`v${v} 安装包含其中 3 个，其余 12 个随下一版发布`, `v${v} ships 3 of them; the other 12 land in the next release`)
+        : L(`已发布的 v${v} 包含这 15 个工具`, `Released v${v} ships all 15 tools`);
     }
     if (tag) tag.textContent = `v${SHIPPED ? CFG.nextShippedIn : CFG.version}`;
     if (txt) {
@@ -124,18 +126,22 @@
     if (rel) rel.textContent = `v${REL_VERSION}`;
     const strip = $('#stripTitle');
     if (strip) {
-      strip.innerHTML = SHIPPED
-        ? L('已接入 <b>15</b> 个 AI 工具', 'Works with <b>15</b> AI tools')
-        : L(
-            `已接入 <b>15</b> 个 AI 工具：v${CFG.version} 含其中 3 个，其余 12 个随下一版发布`,
-            `Works with <b>15</b> AI tools — 3 in v${CFG.version}, 12 more in the next release`,
-          );
+      // 只有真的存在「已合入 main、还没发版」的工具时，才解释 3 / 12 的差别
+      const pending = TOOLS.some((t) => t.since === 'next');
+      const v = SHIPPED ? CFG.nextShippedIn : CFG.version;
+      strip.innerHTML =
+        pending && !SHIPPED
+          ? L(
+              `已接入 <b>15</b> 个 AI 工具：v${v} 含其中 3 个，其余 12 个随下一版发布`,
+              `Works with <b>15</b> AI tools — 3 in v${v}, 12 more in the next release`,
+            )
+          : L('已接入 <b>15</b> 个 AI 工具', 'Works with <b>15</b> AI tools');
     }
     $$('[data-next-hide]').forEach((el) => {
       el.hidden = SHIPPED;
     });
     const col = $('#nextCol');
-    if (col) {
+    if (col && col.isConnected) {
       col.classList.toggle('is-next', !SHIPPED);
       col.classList.toggle('is-shipped', SHIPPED);
       $('#nextTitle', col).textContent = SHIPPED ? L('已发布', 'Shipped') : L('即将发布', 'Landing next');
@@ -289,26 +295,26 @@
     { id: 'pi', name: 'pi', since: '0.2.1', resume: 'term', create: 'launch', kind: 'cli' },
     { id: 'workbuddy', name: 'WorkBuddy', tag: ['国内版', 'China'], since: '0.2.1', resume: 'deeplink', create: 'page', kind: 'app' },
     { id: 'workbuddy-ai', name: 'WorkBuddy AI', tag: ['国际版', 'Global'], since: '0.2.1', resume: 'deeplink', create: 'page', kind: 'app' },
-    { id: 'claude', name: 'Claude Code', since: 'next', resume: 'term', create: 'launch', kind: 'cli' },
-    { id: 'claude-desktop', name: 'Claude Desktop', since: 'next', resume: 'deeplink', create: 'page', kind: 'app' },
-    { id: 'codex', name: 'Codex', since: 'next', resume: 'term', create: 'copy', kind: 'cli' },
-    { id: 'cline', name: 'Cline', since: 'next', resume: 'term', create: 'copy', kind: 'cli' },
-    { id: 'grok', name: 'Grok', since: 'next', resume: 'term', create: 'copy', kind: 'cli' },
-    { id: 'omp', name: 'omp', since: 'next', resume: 'term', create: 'copy', kind: 'cli' },
-    { id: 'kimi', name: 'Kimi Code', since: 'next', resume: 'term', create: 'copy', kind: 'cli' },
+    { id: 'claude', name: 'Claude Code', since: '0.3.0', resume: 'term', create: 'launch', kind: 'cli' },
+    { id: 'claude-desktop', name: 'Claude Desktop', since: '0.3.0', resume: 'deeplink', create: 'page', kind: 'app' },
+    { id: 'codex', name: 'Codex', since: '0.3.0', resume: 'term', create: 'copy', kind: 'cli' },
+    { id: 'cline', name: 'Cline', since: '0.3.0', resume: 'term', create: 'copy', kind: 'cli' },
+    { id: 'grok', name: 'Grok', since: '0.3.0', resume: 'term', create: 'copy', kind: 'cli' },
+    { id: 'omp', name: 'omp', since: '0.3.0', resume: 'term', create: 'copy', kind: 'cli' },
+    { id: 'kimi', name: 'Kimi Code', since: '0.3.0', resume: 'term', create: 'copy', kind: 'cli' },
     {
       id: 'opencode',
       name: 'OpenCode',
-      since: 'next',
+      since: '0.3.0',
       resume: 'term',
       create: 'copy',
       kind: 'both',
       note: ['桌面版入口只激活 App；CLI 能精确回到会话', 'Desktop entry only activates the app; the CLI resumes precisely'],
     },
-    { id: 'qoder', name: 'Qoder', since: 'next', resume: 'term', create: 'copy', kind: 'cli' },
-    { id: 'qoder-cn', name: 'Qoder CN', since: 'next', resume: 'term', create: 'copy', kind: 'cli' },
-    { id: 'zcode', name: 'ZCode', since: 'next', resume: 'none', create: 'none', kind: 'app' },
-    { id: 'dsh', name: 'DeepSeek Harness', since: 'next', resume: 'none', create: 'none', kind: 'app' },
+    { id: 'qoder', name: 'Qoder', since: '0.3.0', resume: 'term', create: 'copy', kind: 'cli' },
+    { id: 'qoder-cn', name: 'Qoder CN', since: '0.3.0', resume: 'term', create: 'copy', kind: 'cli' },
+    { id: 'zcode', name: 'ZCode', since: '0.3.0', resume: 'none', create: 'none', kind: 'app' },
+    { id: 'dsh', name: 'DeepSeek Harness', since: '0.3.0', resume: 'none', create: 'none', kind: 'app' },
   ];
 
   const RESUME_TXT = {

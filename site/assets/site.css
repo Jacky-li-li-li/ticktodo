@@ -3040,3 +3040,28 @@ h3 {
 .ba[data-state="after"] .ba-col-body {
   opacity: 0;
 }
+
+/* 状态栏：最新版高亮；上一个版本用中性卡（不再用「即将发布」的强调描边） */
+.scol.is-latest {
+  border: 1.5px solid var(--ink);
+  box-shadow: var(--shadow-md);
+}
+
+.scol.is-prev {
+  background: var(--card-2);
+  box-shadow: none;
+}
+
+.scol.is-prev .slist li::before {
+  background: rgba(52, 199, 89, 0.1)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.3l2.1 2.1 4.7-4.8' fill='none' stroke='%2334c759' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 11px no-repeat;
+}
+
+/* 工具墙图例里的说明文字 */
+.legend em {
+  margin-left: 2px;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12.5px;
+}
