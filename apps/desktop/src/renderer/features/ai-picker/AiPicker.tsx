@@ -487,16 +487,15 @@ export function AiPicker({
                   const multiClient = (t.clients?.length ?? 0) > 1
                   return (
                     // radio 与「桌面版 / CLI」切换器必须是**兄弟节点**：ARIA 规定 radio 的 descendants
-                    // 是 presentational，把 button 嵌进 radio 里读屏不会报它。视觉上切换器在行尾，
-                    // 卡片只占「切换器之外的剩余宽度」——带切换器的行会比其它行窄一个控件宽（约 90px），
-                    // 这是 trailing control 布局，不是等宽卡片。
+                    // 是 presentational，把 button 嵌进 radio 里读屏不会报它。切换器用绝对定位放进
+                    // 卡片内部右侧（.ns-tool.has-switch 让出 96px），卡片保持整行等宽。
                     <div key={t.toolId} className="ns-tool-row">
                       <div
                         role="radio"
                         aria-checked={on}
                         aria-disabled={!available}
                         tabIndex={available ? 0 : -1}
-                        className={`ns-tool ${on ? 'on' : ''} ${available ? '' : 'unavailable'}`}
+                        className={`ns-tool ${on ? 'on' : ''} ${available ? '' : 'unavailable'}${multiClient ? ' has-switch' : ''}`}
                         title={available ? undefined : importOnlyHint(t)}
                         onClick={(e) => {
                           e.stopPropagation()

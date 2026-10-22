@@ -2071,9 +2071,9 @@ button.sheet-row:hover {
   background: transparent;
 }
 
-/* 多客户端工具（OpenCode）的「桌面版 / CLI」切换：与 radio 卡片并排、行尾一块小分段控件。
-   它必须是 radio 的兄弟节点（ARIA：radio 的 descendants 是 presentational，里面嵌 button
-   读屏不会报），所以外层包一个 .ns-tool-row 做布局。 */
+/* 多客户端工具（OpenCode）的「桌面版 / CLI」切换：叠放在卡片内部右侧的分段控件。
+   DOM 上它仍是 radio 的**兄弟节点**（ARIA：radio 的 descendants 是 presentational，嵌 button
+   读屏不会报），视觉上用绝对定位放进卡片里，所以卡片保持整行等宽。 */
 .ns-switch {
   display: inline-flex;
   align-items: center;
@@ -2111,19 +2111,29 @@ button.sheet-row:hover {
   color: var(--metal-text);
 }
 
-/* 工具行：radio 卡片 + 行尾的入口切换器。卡片占「切换器之外的剩余宽度」——
-   带切换器的行会比其它行窄约 90px（trailing control 布局），行高不变。 */
+/* 工具行：整行宽度的 radio 卡片，行内右侧叠放入口切换器（切换器是兄弟节点，见上）。
+   .ns-tool-row 只做定位上下文；卡片本身铺满整行，所有工具卡片等宽。 */
 .ns-tool-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  position: relative;
   flex: none;
 }
 
 .ns-tool-row > .ns-tool {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
+  width: 100%;
+}
+
+/* 带切换器的卡片右侧留出切换器的位置（80px 控件 + 8px 右内边距 + 8px 间隙）。 */
+.ns-tool-row > .ns-tool.has-switch {
+  padding-right: 96px;
+}
+
+/* 卡片内的切换器：垂直居中、贴右侧，z-index 保证叠在卡片之上可点。 */
+.ns-tool-row > .ns-switch {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .ns-tool {
@@ -2162,7 +2172,7 @@ button.sheet-row:hover {
 
 .ns-tool-name {
   flex: 1;
-  /* 行尾多一个切换器时卡片会变窄：名字允许收缩并省略，不要顶出卡片 */
+  /* 卡片右侧可能叠着切换器（卡片已有 padding-right 让位）：名字允许收缩并省略 */
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -2844,7 +2854,7 @@ button.sheet-row:hover {
 
 /* ---------- 选中态：工具行 / 项目行 / 筛选 chip / 顶栏开关 ---------- */
 /* 工具行唯一一处 .ns-tool.on（上面主题段的同名规则已合并到这里）：浅色玻璃下用一层
-   半透明白填充 + 墨色内描边表达选中；不用深色填充（会被读成禁用，也会把行尾的
+   半透明白填充 + 墨色内描边表达选中；不用深色填充（会被读成禁用，也会把卡片内
    「桌面版 / CLI」切换器一起压暗）。 */
 .ns-tool.on {
   background: rgba(255, 255, 255, 0.5);
