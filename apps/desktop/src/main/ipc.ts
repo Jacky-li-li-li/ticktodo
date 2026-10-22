@@ -4,6 +4,7 @@
  */
 
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import type { IpcMainInvokeEvent } from 'electron'
 import type {
   AppSettings,
   ChatState,
@@ -22,6 +23,7 @@ import type {
   TodoPatch,
   TodoSessionView,
   ToolStatus,
+  UpdateState,
 } from '@tick/shared'
 import {
   ChatIpc,
@@ -35,6 +37,7 @@ import {
   TodosIpc,
   ToolsIpc,
   toolDisplayName,
+  UpdateIpc,
   UsageIpc,
   WindowIpc,
 } from '@tick/shared'
@@ -53,6 +56,7 @@ import type { ProviderConfigService } from './services/provider-config'
 import type { SessionService } from './services/sessions'
 import type { ExportService } from './services/export'
 import type { McpConnectionService } from './services/mcp-connection'
+import type { UpdateService } from './services/update'
 import { detectWithTimeout } from './services/detect'
 
 export interface IpcWindows {
@@ -74,6 +78,7 @@ export interface IpcServices {
   /** 凭据来源切换后重建面板对话（durable 历史不受影响） */
   reloadChat: () => Promise<void>
   mcp: McpConnectionService
+  update: UpdateService
 }
 
 export function registerIpc(
@@ -100,11 +105,35 @@ export function registerIpc(
   ipcMain.handle(SettingsIpc.get, (): AppSettings => services.settings.get())
   ipcMain.handle(SettingsIpc.update, (_e, patch: Partial<AppSettings>): AppSettings => {
     const next = services.settings.update(patch)
+    // 只在这个字段真的变了时重排定时器，避免改其它设置反复推迟自动检查
+    if (patch.autoUpdateCheck !== undefined) {
+      services.update.setAutoCheck(next.autoUpdateCheck !== false)
+    }
     windows.panel()?.webContents.send(SettingsIpc.changed, next)
     return next
   })
   ipcMain.handle(SettingsIpc.openDataDir, async (): Promise<void> => {
     await shell.openPath(services.dataDir)
+  })
+
+  // ---------- 应用内更新 ----------
+  // 四个命令都没有业务参数：feed 只能来自 app-update.yml，renderer 传不了 URL/channel。
+  // sender 不是当前面板时只回状态（install 直接 return），避免别的 webContents 触发退出。
+  const fromPanel = (e: IpcMainInvokeEvent): boolean => e.sender === windows.panel()?.webContents
+
+  ipcMain.handle(UpdateIpc.getState, (): Promise<UpdateState> => services.update.ready())
+
+  ipcMain.handle(UpdateIpc.check, async (e): Promise<UpdateState> => {
+    return fromPanel(e) ? services.update.check('manual') : services.update.getState()
+  })
+
+  ipcMain.handle(UpdateIpc.download, async (e): Promise<UpdateState> => {
+    return fromPanel(e) ? services.update.download() : services.update.getState()
+  })
+
+  ipcMain.handle(UpdateIpc.install, async (e): Promise<void> => {
+    if (!fromPanel(e)) return
+    await services.update.install()
   })
 
   // ---------- MCP「Agent 连接」 ----------

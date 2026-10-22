@@ -25,6 +25,7 @@ import type {
   TodoPatch,
   TodoSessionView,
   ToolStatus,
+  UpdateState,
 } from '@tick/shared'
 import {
   ChatIpc,
@@ -37,6 +38,7 @@ import {
   SettingsIpc,
   TodosIpc,
   ToolsIpc,
+  UpdateIpc,
   UsageIpc,
   WindowIpc,
 } from '@tick/shared'
@@ -167,6 +169,21 @@ const api = {
     info: () => ipcRenderer.invoke(McpIpc.info),
     copy: (text: string): Promise<void> => ipcRenderer.invoke(McpIpc.copy, text),
   },
+  update: {
+    /** main 先完成 dev/签名/feed 探测，首帧就能显示 unsupported */
+    state: (): Promise<UpdateState> => ipcRenderer.invoke(UpdateIpc.getState),
+    /** 无参数：feed 只能来自 app-update.yml，renderer 永远传不了 URL */
+    check: (): Promise<UpdateState> => ipcRenderer.invoke(UpdateIpc.check),
+    /** 用户确认后才下载 */
+    download: (): Promise<UpdateState> => ipcRenderer.invoke(UpdateIpc.download),
+    /** 会退出应用；renderer 不需要处理返回值 */
+    install: (): Promise<void> => ipcRenderer.invoke(UpdateIpc.install),
+    onState: (cb: (state: UpdateState) => void): (() => void) => {
+      const listener = (_e: unknown, state: UpdateState): void => cb(state)
+      ipcRenderer.on(UpdateIpc.changed, listener)
+      return () => ipcRenderer.removeListener(UpdateIpc.changed, listener)
+    },
+  },
   window: {
     hide: (): void => ipcRenderer.send(WindowIpc.hide),
     getPinned: (): Promise<boolean> => ipcRenderer.invoke(WindowIpc.getPinned),
@@ -177,6 +194,12 @@ const api = {
       const listener = (): void => cb()
       ipcRenderer.on(WindowIpc.newTodo, listener)
       return () => ipcRenderer.removeListener(WindowIpc.newTodo, listener)
+    },
+    /** Tray 点「检查更新 / 下载更新」：main 让面板打开设置页 */
+    onOpenSettings: (cb: () => void): (() => void) => {
+      const listener = (): void => cb()
+      ipcRenderer.on(WindowIpc.openSettings, listener)
+      return () => ipcRenderer.removeListener(WindowIpc.openSettings, listener)
     },
   },
 } as const

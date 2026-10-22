@@ -7,12 +7,14 @@
  */
 
 import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeImage, shell, Tray } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc, toolDisplayName } from '@tick/shared'
+import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc, UpdateIpc, toolDisplayName } from '@tick/shared'
+import type { UpdateState } from '@tick/shared'
 import { AiToolRegistry, canonicalPath, gitRootOf } from '@tick/ai-core'
 import { PiAdapter } from '@tick/ai-pi'
 import { ClaudeAdapter } from '@tick/ai-claude'
@@ -39,6 +41,8 @@ import { SessionService } from './services/sessions'
 import { ExportService } from './services/export'
 import { McpConnectionService } from './services/mcp-connection'
 import { cleanupLaunchCache, createTerminalLauncher } from './services/terminal-launch'
+import { probeDeveloperIdSignature, UpdateService } from './services/update'
+import type { UpdaterLike } from './services/update'
 import { TodoStore } from './store'
 import {
   createPanelWindow,
@@ -69,6 +73,8 @@ if (!app.isPackaged) {
 let panel: BrowserWindow | null = null
 let chat: ChatAgentHost | undefined
 let tray: Tray | null = null
+// before-quit 与 UpdateService 的 prepareQuit 共用同一个标志（安装更新时要让退出直接放行）
+let quitting = false
 
 app.on('second-instance', () => {
   if (panel) {
@@ -306,6 +312,44 @@ app.whenReady().then(() => {
     await chat.init()
   }
 
+  // ---------- 应用内更新（M6）：创建时机必须在 reloadChat 之后、registerIpc 之前 ----------
+  // 生产入口在这里拿 electron-updater 的运行时单例；update.ts 只 import type，selftest 才能不依赖它。
+  // electron-updater 是 CJS，autoUpdater 的声明类型与 UpdaterLike 窄接口不重合，用 unknown 转一次。
+  const appBundlePath = path.resolve(process.execPath, '../../..')
+  const updateService = new UpdateService({
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appBundlePath,
+    execPath: process.execPath,
+    updater: autoUpdater as unknown as UpdaterLike,
+    probeSignature: () => probeDeveloperIdSignature(appBundlePath),
+    hasUpdateConfig: () => fs.existsSync(path.join(process.resourcesPath, 'app-update.yml')),
+    autoCheckEnabled: () => settingsStore.get().autoUpdateCheck !== false,
+    onState: (state) => panel?.webContents.send(UpdateIpc.changed, state),
+    prepareQuit: async () => {
+      // Squirrel 的安装退出不能被 chat flush 拦下：先关 chat，再让 before-quit 直接放行。
+      // 顺序反过来时 before-quit 的 preventDefault 会把安装退出改成异步 app.quit()。
+      quitting = true
+      if (panel) (panel as unknown as { __willClose?: boolean }).__willClose = true
+      try {
+        await Promise.race([
+          chat ? chat.close() : Promise.resolve(),
+          new Promise<void>((resolve) => setTimeout(resolve, 1_500)),
+        ])
+      } catch (e) {
+        // 关 chat 失败不能挡住安装；原始异常只进 main 日志
+        console.warn('[tick] 安装前关闭面板对话失败:', e)
+      }
+      // 安装没启动时由 service 调用：恢复退出标志并重建面板对话，用户不用重启应用
+      return () => {
+        quitting = false
+        if (panel) (panel as unknown as { __willClose?: boolean }).__willClose = false
+        void reloadChat().catch((e) => console.error('[tick] 安装取消后重建面板对话失败:', e))
+      }
+    },
+  })
+
   registerIpc(
     store,
     {
@@ -325,9 +369,13 @@ app.whenReady().then(() => {
       providerConfig,
       reloadChat,
       mcp: mcpConnection,
+      update: updateService,
     },
     adapters,
   )
+
+  // 启动定时器放在 registerIpc 之后：首帧 IPC 已经能拿到状态，自动检查不抢启动资源
+  updateService.start()
 
   // ---------- 全局快捷键（M3 / PRD F1） ----------
   const showPanel = (): void => {
@@ -345,6 +393,62 @@ app.whenReady().then(() => {
     panel?.webContents.send(WindowIpc.newTodo)
   }
 
+  // ---------- Tray 的更新入口：动作执行前先让面板打开设置页，否则点完看不到任何结果 ----------
+  const revealUpdateInSettings = (): void => {
+    showPanel()
+    panel?.webContents.send(WindowIpc.openSettings)
+  }
+  const updateTrayCheck = (): void => {
+    revealUpdateInSettings()
+    void updateService.check('manual').catch((e) => console.error('[tick-update] 检查失败:', e))
+  }
+  const updateTrayDownload = (): void => {
+    revealUpdateInSettings()
+    void updateService.download().catch((e) => console.error('[tick-update] 下载失败:', e))
+  }
+  const updateTrayInstall = (): void => {
+    // 安装不先 showPanel：面板闪一下又退出没有意义
+    void updateService.install().catch((e) => console.error('[tick-update] 安装失败:', e))
+  }
+  /** A §5.4 表：菜单是原生静态菜单，打开期间进度不刷新，下次打开时状态是准的 */
+  const describeTrayUpdate = (
+    state: UpdateState,
+  ): { label: string; enabled: boolean; action?: () => void } => {
+    switch (state.phase) {
+      case 'idle':
+        return { label: '检查更新…', enabled: true, action: updateTrayCheck }
+      case 'checking':
+        return { label: '正在检查更新…', enabled: false }
+      case 'available':
+        return { label: `下载 v${state.version}`, enabled: true, action: updateTrayDownload }
+      case 'downloading':
+        return { label: `正在下载 v${state.version} · ${state.percent}%`, enabled: false }
+      case 'ready':
+        return { label: `重启并更新到 v${state.version}`, enabled: true, action: updateTrayInstall }
+      case 'up-to-date':
+        return { label: `已是最新版本（v${state.currentVersion}）`, enabled: false }
+      case 'unsupported':
+        return { label: '自动更新不可用', enabled: false }
+      case 'error':
+        // 可重试的错误走一次新检查；不可重试（签名/feed）不给动作，避免无意义循环
+        return state.retryable
+          ? { label: '检查更新失败，重试', enabled: true, action: updateTrayCheck }
+          : { label: '自动更新失败，请手动下载', enabled: false }
+    }
+  }
+  // 每次右键按最新状态重建：模块加载时构建一次会让「下载完成」永远看不到
+  const buildTrayMenu = (): Menu => {
+    const updateItem = describeTrayUpdate(updateService.getState())
+    return Menu.buildFromTemplate([
+      { label: '显示 / 隐藏面板', click: () => togglePanel() },
+      { label: '新建线索', click: () => newTodo() },
+      { type: 'separator' },
+      { label: updateItem.label, enabled: updateItem.enabled, click: updateItem.action },
+      { type: 'separator' },
+      { label: '退出 Ticktodo', click: () => app.quit() },
+    ])
+  }
+
   // ---------- macOS 菜单栏常驻（Tray） ----------
   // 模板图标（trayTemplate.png/@2x）只保留 alpha，系统会自动适配浅色/深色菜单栏。
   const trayIconPath = app.isPackaged
@@ -359,12 +463,6 @@ app.whenReady().then(() => {
     if (process.platform === 'darwin') trayImage.setTemplateImage(true)
     tray = new Tray(trayImage)
     updateTrayTooltip(store.list().filter((t) => t.status === 'open').length)
-    const trayMenu = Menu.buildFromTemplate([
-      { label: '显示 / 隐藏面板', click: () => togglePanel() },
-      { label: '新建线索', click: () => newTodo() },
-      { type: 'separator' },
-      { label: '退出 Ticktodo', click: () => app.quit() },
-    ])
     // 左键切换面板；右键弹菜单（不把左键变成菜单，保持“点一下显隐”的直觉）。
     // 鼠标在 Tray 上时抑制「失焦自动隐藏」：否则点菜单栏会先 blur 隐藏、再被 click 显示。
     tray.on('mouse-enter', () => setBlurHideSuppressed(true))
@@ -372,8 +470,9 @@ app.whenReady().then(() => {
     tray.on('click', () => togglePanel())
     tray.on('right-click', () => {
       setBlurHideSuppressed(true)
-      trayMenu.once('menu-will-close', () => setBlurHideSuppressed(false))
-      tray?.popUpContextMenu(trayMenu)
+      const menu = buildTrayMenu()
+      menu.once('menu-will-close', () => setBlurHideSuppressed(false))
+      tray?.popUpContextMenu(menu)
     })
     console.log('[tick] 菜单栏图标已创建')
   } else {
@@ -395,6 +494,7 @@ app.whenReady().then(() => {
   }
   app.on('will-quit', () => {
     globalShortcut.unregisterAll()
+    updateService.stop()
     tray?.destroy()
     tray = null
   })
@@ -561,7 +661,6 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-let quitting = false
 app.on('before-quit', (event) => {
   if (panel) (panel as unknown as { __willClose?: boolean }).__willClose = true
   if (quitting || !chat) return
