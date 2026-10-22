@@ -2,10 +2,11 @@
  * 应用内更新的纯逻辑 / 编排 selftest（无测试框架；由 scripts/selftest-update.mjs 打包执行）。
  *
  * 覆盖：
- *  1. update-state 全链路与阶段守卫（含迟到/非法事件、percent 钳制与去重、install-failed 保留 ready）；
+ *  1. update-state 全链路与阶段守卫（含迟到/非法事件、percent 钳制与去重、ready→handoff 失败、install-failed 保留 ready）；
  *  2. 错误分类与文案白名单（原始 message / URL / 绝对路径绝不进入状态）；
  *  3. SettingsStore 对旧 settings.json 的兼容（autoUpdateCheck 默认开）；
- *  4. UpdateService 编排（fake UpdaterLike + 注入 probe/hasUpdateConfig/prepareQuit/now）。
+ *  4. UpdateService 编排（fake UpdaterLike + 注入 probe/hasUpdateConfig/prepareQuit/now）：
+ *     检查/下载/交接失败、check 与下载停滞超时、自动检查的启动延迟与 stop 清理。
  *
  * 不依赖 Electron、electron-updater、codesign 或任何真实 feed；不碰真实数据。
  */
@@ -21,6 +22,7 @@ import {
   INITIAL_UPDATE_STATE,
   INSTALL_FAILED_MESSAGE,
   classifyUpdateError,
+  isRetryable,
   reduceUpdateState,
   unsupportedMessage,
   updateErrorMessage,
@@ -130,6 +132,46 @@ await check('reducer: 下载错误→download-started 可原地重试', () => {
   assert.equal(s.phase === 'downloading' ? s.version : '', '0.2.2')
 })
 
+await check('reducer: ready + handoff-failed → error(scope=download, code=handoff, 保留 version)', () => {
+  const ready = readyState()
+  const s = reduceUpdateState(ready, { type: 'handoff-failed' }, NOW)
+  assert.equal(s.phase, 'error')
+  assert.equal(s.phase === 'error' ? s.scope : '', 'download')
+  assert.equal(s.phase === 'error' ? s.code : '', 'handoff')
+  assert.equal(s.phase === 'error' ? s.version : '', '0.2.2')
+  assert.equal(s.phase === 'error' ? s.retryable : false, true)
+  assert.equal(s.phase === 'error' ? s.checkedAt : '', NOW)
+  assert.equal(s.phase === 'error' ? s.message : '', updateErrorMessage('handoff'))
+  assert.ok((s.phase === 'error' ? s.message.length : 0) > 0)
+  // handoff 可重试，但恢复通道是「重试下载」；isRetryable 与状态里的 retryable 保持同口径
+  assert.equal(isRetryable('handoff'), true)
+})
+
+await check('reducer: 非 ready 阶段的 handoff-failed 返回原对象（双报只收口一次）', () => {
+  const idle = INITIAL_UPDATE_STATE('0.2.1')
+  assert.equal(reduceUpdateState(idle, { type: 'handoff-failed' }, NOW), idle)
+
+  const checking = reduceUpdateState(idle, { type: 'check-started', trigger: 'manual' }, NOW)
+  assert.equal(reduceUpdateState(checking, { type: 'handoff-failed' }, NOW), checking)
+
+  const available = reduceUpdateState(checking, { type: 'check-available', version: '0.2.2' }, NOW)
+  assert.equal(reduceUpdateState(available, { type: 'handoff-failed' }, NOW), available)
+
+  const downloading = downloadingState(50)
+  assert.equal(reduceUpdateState(downloading, { type: 'handoff-failed' }, NOW), downloading)
+
+  // 第一次收口后再来一次同事件：error 不是 handoff 的起点，必须保持同一个 error 对象
+  const errored = reduceUpdateState(readyState(), { type: 'handoff-failed' }, NOW)
+  assert.equal(reduceUpdateState(errored, { type: 'handoff-failed' }, NOW), errored)
+
+  const upToDate = reduceUpdateState(
+    reduceUpdateState(INITIAL_UPDATE_STATE('0.2.1'), { type: 'check-started', trigger: 'auto' }, NOW),
+    { type: 'check-none' },
+    NOW,
+  )
+  assert.equal(reduceUpdateState(upToDate, { type: 'handoff-failed' }, NOW), upToDate)
+})
+
 await check('reducer: install-failed 保留 ready 且 installError 有值', () => {
   const ready = readyState()
   const failedInstall = reduceUpdateState(ready, { type: 'install-failed' }, NOW)
@@ -227,7 +269,7 @@ await check('文案：只来自白名单，不含原始 message / URL / 绝对�
   const dirty = new Error(
     'GET https://evil.example/secret?token=1 failed; file:///Users/jacky/Library/Application Support/Tick/x',
   )
-  const codes = ['offline', 'http', 'feed', 'signature', 'timeout', 'install', 'unknown'] as const
+  const codes = ['offline', 'http', 'feed', 'signature', 'timeout', 'install', 'handoff', 'unknown'] as const
   for (const code of codes) {
     const text = updateErrorMessage(code)
     assert.ok(text.length > 0)
@@ -355,8 +397,6 @@ function makeHarness(overrides: Partial<UpdateServiceDeps> = {}): Harness {
   const deps: UpdateServiceDeps = {
     currentVersion: '0.2.1',
     isPackaged: true,
-    resourcesPath: '/tmp/tick-resources',
-    appBundlePath: '/Applications/Tick.app',
     execPath: '/Applications/Tick.app/Contents/MacOS/Tick',
     updater: fake,
     probeSignature: async () => 'signed',
@@ -539,6 +579,139 @@ await check('service: 下载失败后 download() 可再次调用并成功', asyn
   const retried = await h.service.download()
   assert.equal(retried.phase, 'ready')
   assert.equal(h.fake.downloadCount, 2)
+})
+
+await check('service: 交接失败（error 事件 + promise reject 双报）只收口一次 handoff', async () => {
+  const h = makeHarness()
+  h.fake.checkImpl = async () => {
+    h.fake.emit('update-available', { version: '0.2.2' })
+  }
+  await h.service.check('manual')
+
+  const gate = deferred<unknown>()
+  h.fake.downloadImpl = () => gate.promise
+  const p = h.service.download()
+  assert.equal(h.service.getState().phase, 'downloading')
+
+  // MacUpdater 先 dispatch update-downloaded（此刻状态已 ready、downloading 已清），
+  // 之后才把 zip 交给 Squirrel.Mac；Squirrel 失败时库发 error 且 downloadUpdate() reject。
+  h.fake.emit('update-downloaded', { version: '0.2.2' })
+  assert.equal(h.service.getState().phase, 'ready')
+
+  const raw = new Error('Squirrel.Mac: code signature invalid on downloaded zip')
+  h.fake.emit('error', raw)
+  gate.reject(raw)
+
+  const state = await p
+  assert.equal(state.phase, 'error')
+  assert.equal(state.phase === 'error' ? state.scope : '', 'download')
+  assert.equal(state.phase === 'error' ? state.code : '', 'handoff')
+  assert.equal(state.phase === 'error' ? state.version : '', '0.2.2')
+  assert.equal(state.phase === 'error' ? state.message : '', updateErrorMessage('handoff'))
+  const handoffBroadcasts = h.states.filter((s) => s.phase === 'error')
+  assert.equal(handoffBroadcasts.length, 1, 'error 事件与 promise reject 只能广播一次 error')
+
+  // 重试下载：已下载版本还在，fake 改成功后能重新回到 ready，不需要重新检查
+  h.fake.downloadImpl = async () => {
+    h.fake.emit('update-downloaded', { version: '0.2.2' })
+  }
+  const retried = await h.service.download()
+  assert.equal(retried.phase, 'ready')
+  assert.equal(retried.phase === 'ready' ? retried.version : '', '0.2.2')
+  assert.equal(h.fake.downloadCount, 2)
+})
+
+await check('service: 只有 downloadUpdate() reject（error 事件缺失/迟到）也收口成 handoff', async () => {
+  const h = makeHarness()
+  h.fake.checkImpl = async () => {
+    h.fake.emit('update-available', { version: '0.2.2' })
+  }
+  await h.service.check('manual')
+
+  const gate = deferred<unknown>()
+  h.fake.downloadImpl = () => gate.promise
+  const p = h.service.download()
+  h.fake.emit('update-downloaded', { version: '0.2.2' })
+  gate.reject(new Error('handoff to Squirrel failed'))
+
+  const state = await p
+  assert.equal(state.phase, 'error')
+  assert.equal(state.phase === 'error' ? state.code : '', 'handoff')
+  assert.equal(state.phase === 'error' ? state.version : '', '0.2.2')
+
+  // 迟到的 error 事件：状态已不是 ready，不许造第二个 error
+  const before = h.states.length
+  h.fake.emit('error', new Error('late error event'))
+  assert.equal(h.states.length, before)
+  assert.equal(h.states.filter((s) => s.phase === 'error').length, 1)
+})
+
+await check('service: check 超时（checkTimeoutMs）→ error(scope=check, code=timeout)', async () => {
+  const h = makeHarness({ checkTimeoutMs: 20 })
+  // 永不 resolve、也不发事件：只能靠 check 自己的超时收口
+  h.fake.checkImpl = () => new Promise<unknown>(() => {})
+  // withTimeout 的 timer 是 unref 的（生产里不能拖住 Electron 退出）；测试进程没有别的句柄，
+  // 需要一个 ref 的 timer 把事件循环撑到超时触发，否则 node 会以「unsettled top-level await」退出
+  const keepAlive = setTimeout(() => {}, 200)
+  try {
+    const state = await h.service.check('manual')
+    assert.equal(h.fake.checkCount, 1)
+    assert.equal(state.phase, 'error')
+    assert.equal(state.phase === 'error' ? state.scope : '', 'check')
+    assert.equal(state.phase === 'error' ? state.code : '', 'timeout')
+    assert.equal(state.phase === 'error' ? state.retryable : false, true)
+  } finally {
+    clearTimeout(keepAlive)
+  }
+})
+
+await check('service: 下载停滞（downloadStallMs）→ error(scope=download, code=timeout)', async () => {
+  const h = makeHarness({ downloadStallMs: 20 })
+  h.fake.checkImpl = async () => {
+    h.fake.emit('update-available', { version: '0.2.2' })
+  }
+  await h.service.check('manual')
+
+  // 永不 resolve、也不发进度：不能 await download()，否则测试会跟着挂住
+  h.fake.downloadImpl = () => new Promise<unknown>(() => {})
+  void h.service.download()
+  assert.equal(h.service.getState().phase, 'downloading')
+  await new Promise((resolve) => setTimeout(resolve, 50))
+
+  const state = h.service.getState()
+  assert.equal(state.phase, 'error')
+  assert.equal(state.phase === 'error' ? state.scope : '', 'download')
+  assert.equal(state.phase === 'error' ? state.code : '', 'timeout')
+  assert.equal(state.phase === 'error' ? state.retryable : false, true)
+  assert.equal(state.phase === 'error' ? state.version : '', '0.2.2')
+})
+
+await check('service: autoCheckEnabled=false 时 start() 不排自动检查', async () => {
+  const h = makeHarness({ autoCheckEnabled: () => false, startupDelayMs: 10 })
+  h.fake.checkImpl = async () => {}
+  h.service.start()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(h.fake.checkCount, 0)
+  h.service.stop()
+})
+
+await check('service: startupDelayMs 内自动检查一次；stop() 清掉未触发的 timer', async () => {
+  const on = makeHarness({ autoCheckEnabled: () => true, startupDelayMs: 10 })
+  on.fake.checkImpl = async () => {}
+  on.service.start()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  assert.equal(on.fake.checkCount, 1, 'startupDelayMs 后应恰好自动检查一次')
+  on.service.stop()
+
+  // stop 在 startup timer 触发之前调用：之后一次都不能再检查
+  const off = makeHarness({ autoCheckEnabled: () => true, startupDelayMs: 60 })
+  off.fake.checkImpl = async () => {}
+  off.service.start()
+  // 先让 start() 里 ready() 的微任务把 timer 排上，再 stop
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  off.service.stop()
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  assert.equal(off.fake.checkCount, 0)
 })
 
 await check('service: install 抛错时调用 cancel，状态仍是 ready + installError', async () => {

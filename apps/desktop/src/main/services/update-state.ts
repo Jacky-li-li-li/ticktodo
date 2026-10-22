@@ -28,6 +28,8 @@ export type UpdateEvent =
   | { type: 'download-progress'; percent: number; bytesPerSecond?: number }
   | { type: 'download-done'; version: string }
   | { type: 'download-failed'; code: UpdateErrorCode; httpStatus?: number }
+  /** 包已下好（ready），但 MacUpdater 把它交给 Squirrel.Mac 时失败 */
+  | { type: 'handoff-failed' }
   | { type: 'install-started' }
   | { type: 'install-failed' }
   | { type: 'unsupported'; reason: UpdateUnsupportedReason }
@@ -58,6 +60,8 @@ export function updateErrorMessage(code: UpdateErrorCode, httpStatus?: number): 
       return '更新请求超时，请稍后重试。'
     case 'install':
       return '安装更新失败，请手动下载新版本。'
+    case 'handoff':
+      return '更新包未能交给系统安装器，请重试下载，或手动下载新版本。'
     case 'unknown':
       return '检查更新失败，请稍后重试。'
   }
@@ -78,8 +82,19 @@ export function unsupportedMessage(reason: UpdateUnsupportedReason): string {
   }
 }
 
+/**
+ * 只描述「重新检查」是否能解决问题。handoff 的恢复动作是「重试下载」而不是「重新检查」，
+ * 所以它单独归在 download scope 的两个动作里；这里返回 true 只为与 reducer 显式写入的
+ * retryable=true 保持一致（用户确实可以重试，只是不走 check 通道）。
+ */
 export function isRetryable(code: UpdateErrorCode): boolean {
-  return code === 'offline' || code === 'http' || code === 'timeout' || code === 'unknown'
+  return (
+    code === 'offline' ||
+    code === 'http' ||
+    code === 'timeout' ||
+    code === 'handoff' ||
+    code === 'unknown'
+  )
 }
 
 /**
@@ -178,6 +193,23 @@ export function reduceUpdateState(
         retryable: isRetryable(event.code),
         checkedAt: now,
         // 保留已发现版本：error(scope=download) 的「重试下载」不需要再检查一遍
+        version: state.version,
+      }
+
+    case 'handoff-failed':
+      // 只有 ready 能交接：库的 error 事件与 downloadUpdate() 的 reject 会双报同一个失败，
+      // 第一次收口后状态已离开 ready，第二次必须返回原对象（service 据此只广播一次）。
+      if (state.phase !== 'ready') return state
+      return {
+        phase: 'error',
+        currentVersion: state.currentVersion,
+        // 交接失败发生在下载之后，复用 download scope：UI/Tray 给「重试下载」而不是「重新检查」
+        scope: 'download',
+        code: 'handoff',
+        message: updateErrorMessage('handoff'),
+        retryable: true,
+        checkedAt: now,
+        // 保留已下载版本，重试下载不必重新走一次检查
         version: state.version,
       }
 

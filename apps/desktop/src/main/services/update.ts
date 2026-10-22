@@ -46,8 +46,6 @@ export interface UpdaterLike {
 export interface UpdateServiceDeps {
   currentVersion: string
   isPackaged: boolean
-  resourcesPath: string
-  appBundlePath: string
   /** 判 translocated */
   execPath: string
   /** 注入点：生产传 electron-updater 的 autoUpdater；selftest 传 fake */
@@ -68,6 +66,12 @@ export interface UpdateServiceDeps {
   log?: (message: string, error?: unknown) => void
   /** 测试注入：安装后等进程退出的上限；生产默认 15s */
   installStartTimeoutMs?: number
+  /** 测试注入：检查请求的超时上限；生产默认 45s */
+  checkTimeoutMs?: number
+  /** 测试注入：下载无进度多久后判超时；生产默认 90s */
+  downloadStallMs?: number
+  /** 测试注入：启动后首次自动检查的延迟；生产默认 10s */
+  startupDelayMs?: number
 }
 
 const STARTUP_DELAY_MS = 10_000
@@ -114,6 +118,9 @@ export class UpdateService {
   private readonly now: () => string
   private readonly log: (message: string, error?: unknown) => void
   private readonly installStartTimeoutMs: number
+  private readonly checkTimeoutMs: number
+  private readonly downloadStallMs: number
+  private readonly startupDelayMs: number
 
   constructor(private readonly deps: UpdateServiceDeps) {
     this.state = INITIAL_UPDATE_STATE(deps.currentVersion)
@@ -125,6 +132,10 @@ export class UpdateService {
         else console.warn('[tick-update]', message, error)
       })
     this.installStartTimeoutMs = deps.installStartTimeoutMs ?? DEFAULT_INSTALL_START_TIMEOUT_MS
+    // 三个超时都有生产默认值；注入只服务 selftest（不传时行为与常量一致）
+    this.checkTimeoutMs = deps.checkTimeoutMs ?? CHECK_TIMEOUT_MS
+    this.downloadStallMs = deps.downloadStallMs ?? DOWNLOAD_STALL_MS
+    this.startupDelayMs = deps.startupDelayMs ?? STARTUP_DELAY_MS
   }
 
   /** 同步读当前状态，不触发任何 IO */
@@ -144,7 +155,7 @@ export class UpdateService {
     void this.ready()
       .then((state) => {
         if (state.phase === 'unsupported') return
-        this.refreshAutoCheck(STARTUP_DELAY_MS)
+        this.refreshAutoCheck(this.startupDelayMs)
       })
       // ready() 设计上不 reject；这里兜底，避免探测的意外异常变成 unhandledRejection
       .catch((e) => this.log('支持探测失败', e))
@@ -191,7 +202,7 @@ export class UpdateService {
       // 放进 try：库初始化/打包问题也要收口成 error 状态，不能把 reject 漏给 renderer
       this.ensureConfigured()
       // 超时只 reject 我们的 race；底层 promise 仍挂着，由 withTimeout 的 then 吞掉它的迟到拒绝
-      await this.withTimeout(this.deps.updater.checkForUpdates(), CHECK_TIMEOUT_MS)
+      await this.withTimeout(this.deps.updater.checkForUpdates(), this.checkTimeoutMs)
       // 正常情况下结果已经由事件推进状态。仍停在 checking 说明库没发事件，按失败收口
       if (this.checking) this.fail('check', { code: 'unknown' })
     } catch (err) {
@@ -227,6 +238,10 @@ export class UpdateService {
       if (this.downloading) {
         this.log('下载更新失败', err)
         this.fail('download', classifyUpdateError(err))
+      } else if (this.state.phase === 'ready') {
+        // MacUpdater 先 dispatch update-downloaded（状态已 ready），再把 zip 交给 Squirrel.Mac；
+        // 拉取/验签失败只会让 downloadUpdate() reject，这里不能因为 downloading=false 就丢掉。
+        this.failHandoff(err)
       }
     }
     return this.state
@@ -377,8 +392,13 @@ export class UpdateService {
     })
 
     updater.on('error', (err: unknown) => {
+      // 下载完成后还有一个不在 checking/downloading 里的阶段：包已 ready，MacUpdater 正在交给
+      // Squirrel.Mac。这一步失败只发 error 事件，漏掉会永远显示「已下载」且连日志都没有。
+      if (!this.checking && !this.downloading) {
+        if (this.state.phase === 'ready') this.failHandoff(err)
+        return
+      }
       // 同一个 error 事件可能在 check 或 download 阶段到达，按当前进行中的阶段归档
-      if (!this.checking && !this.downloading) return
       this.log('更新库错误', err)
       this.fail(this.downloading ? 'download' : 'check', classifyUpdateError(err))
     })
@@ -412,13 +432,24 @@ export class UpdateService {
     this.apply({ type: 'download-done', version })
   }
 
+  /**
+   * 包已下好、交给系统安装器失败。原生 Squirrel.Mac 的失败与网络/HTTP 无关，
+   * 所以不复用 classifyUpdateError（否则会被归成 unknown，文案也误导）。
+   * 不清空 version：状态里的已下载版本让「重试下载」不必先重新检查。
+   * error 事件与 promise reject 会先后调用这里，重复收口由 reducer 的 ready 守卫丢掉。
+   */
+  private failHandoff(err: unknown): void {
+    this.log('更新包交给系统安装器失败', err)
+    this.apply({ type: 'handoff-failed' })
+  }
+
   private armStallTimer(): void {
     this.clearStallTimer()
     this.stallTimer = setTimeout(() => {
       if (!this.downloading) return
       // 没有取消 API。这里只把 UI 收口成可重试，底层请求可能仍在，属于已知限制
       this.fail('download', { code: 'timeout' })
-    }, DOWNLOAD_STALL_MS)
+    }, this.downloadStallMs)
     this.stallTimer.unref?.()
   }
 

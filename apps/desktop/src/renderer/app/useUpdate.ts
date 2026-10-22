@@ -20,9 +20,13 @@ export function useUpdate(): {
     // dev 下 preload 未重建时 window.tick.update 可能不存在：不要炸整个设置页
     if (!window.tick.update) return
     let alive = true
-    void window.tick.update.state().then((next) => {
-      if (alive) setState(next)
-    })
+    void window.tick.update
+      .state()
+      .then((next) => {
+        if (alive) setState(next)
+      })
+      // preload/main 版本错配（旧 preload 没有这个 handler）时 IPC 会 reject：保持 null 不炸页面
+      .catch(() => {})
     const off = window.tick.update.onState((next) => {
       if (alive) setState(next)
     })

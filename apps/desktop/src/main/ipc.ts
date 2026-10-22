@@ -105,7 +105,7 @@ export function registerIpc(
   ipcMain.handle(SettingsIpc.get, (): AppSettings => services.settings.get())
   ipcMain.handle(SettingsIpc.update, (_e, patch: Partial<AppSettings>): AppSettings => {
     const next = services.settings.update(patch)
-    // 只在这个字段真的变了时重排定时器，避免改其它设置反复推迟自动检查
+    // 只判字段是否存在（不比较值）：patch 里带了 autoUpdateCheck 就按最终值重排定时器
     if (patch.autoUpdateCheck !== undefined) {
       services.update.setAutoCheck(next.autoUpdateCheck !== false)
     }

@@ -319,8 +319,6 @@ app.whenReady().then(() => {
   const updateService = new UpdateService({
     currentVersion: app.getVersion(),
     isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    appBundlePath,
     execPath: process.execPath,
     updater: autoUpdater as unknown as UpdaterLike,
     probeSignature: () => probeDeveloperIdSignature(appBundlePath),
@@ -430,6 +428,10 @@ app.whenReady().then(() => {
       case 'unsupported':
         return { label: '自动更新不可用', enabled: false }
       case 'error':
+        // 下载完成但交给 Squirrel 失败：已下载版本还在，直接给「重新下载」而不是重新检查
+        if (state.scope === 'download' && state.version !== undefined) {
+          return { label: `重新下载 v${state.version}`, enabled: true, action: updateTrayDownload }
+        }
         // 可重试的错误走一次新检查；不可重试（签名/feed）不给动作，避免无意义循环
         return state.retryable
           ? { label: '检查更新失败，重试', enabled: true, action: updateTrayCheck }

@@ -2,7 +2,7 @@
  * UpdateSettings：设置页的「应用更新」区块。
  *
  * 口径：
- *  - main 是唯一状态源；这里只把 UpdateState 映射成文案 + 一个动作，不做状态迁移；
+ *  - main 是唯一状态源；这里只把 UpdateState 映射成文案 + 动作，不做状态迁移；
  *  - 能力判定（dev/未签名/缺 feed/从 DMG 运行）全部在 main 完成，UI 只如实显示原因；
  *  - 「自动检查」只是偏好，关掉后手动检查仍可用；下载完成后的普通退出也会安装。
  */
@@ -21,38 +21,40 @@ type UpdateAction = {
 function describeUpdate(
   state: UpdateState | null,
   installing: boolean,
-): { text: string; tone: '' | 'ok' | 'bad'; action?: UpdateAction } {
-  if (!state) return { text: '正在读取版本…', tone: '' }
+): { text: string; tone: '' | 'ok' | 'bad'; actions: UpdateAction[] } {
+  if (!state) return { text: '正在读取版本…', tone: '', actions: [] }
 
   switch (state.phase) {
     case 'idle':
       return {
         text: `当前 v${state.currentVersion}`,
         tone: '',
-        action: { kind: 'check', label: '检查更新', variant: 'primary' },
+        actions: [{ kind: 'check', label: '检查更新', variant: 'primary' }],
       }
     case 'checking':
       return {
         text: state.trigger === 'auto' ? '正在自动检查更新…' : '正在检查更新…',
         tone: '',
-        action: { kind: 'check', label: '检查中…', disabled: true, variant: 'primary' },
+        actions: [{ kind: 'check', label: '检查中…', disabled: true, variant: 'primary' }],
       }
     case 'available':
       return {
         text: `发现新版本 v${state.version}（当前 v${state.currentVersion}）`,
         tone: '',
-        action: { kind: 'download', label: `下载 v${state.version}`, variant: 'primary' },
+        actions: [{ kind: 'download', label: `下载 v${state.version}`, variant: 'primary' }],
       }
     case 'downloading':
       return {
         text: `正在下载 v${state.version} · ${state.percent}%`,
         tone: '',
-        action: {
-          kind: 'download',
-          label: `下载中 ${state.percent}%`,
-          disabled: true,
-          variant: 'primary',
-        },
+        actions: [
+          {
+            kind: 'download',
+            label: `下载中 ${state.percent}%`,
+            disabled: true,
+            variant: 'primary',
+          },
+        ],
       }
     case 'ready':
       // 安装失败时包已经下好了：保留 ready，原地重试安装，不要退回「检查更新」
@@ -60,47 +62,55 @@ function describeUpdate(
         return {
           text: `v${state.version} 已下载，但${state.installError}`,
           tone: 'bad',
-          action: {
-            kind: 'install',
-            label: installing ? '正在重启…' : '重试安装',
-            disabled: installing,
-            variant: 'primary',
-          },
+          actions: [
+            {
+              kind: 'install',
+              label: installing ? '正在重启…' : '重试安装',
+              disabled: installing,
+              variant: 'primary',
+            },
+          ],
         }
       }
       return {
         text: `v${state.version} 已下载，重启后完成安装`,
         tone: 'ok',
-        action: {
-          kind: 'install',
-          label: installing ? '正在重启…' : '重启并更新',
-          disabled: installing,
-          variant: 'primary',
-        },
+        actions: [
+          {
+            kind: 'install',
+            label: installing ? '正在重启…' : '重启并更新',
+            disabled: installing,
+            variant: 'primary',
+          },
+        ],
       }
     case 'up-to-date':
       return {
         text: `已是最新版本 v${state.currentVersion}`,
         tone: 'ok',
-        action: { kind: 'check', label: '重新检查', variant: 'secondary' },
+        actions: [{ kind: 'check', label: '重新检查', variant: 'secondary' }],
       }
     case 'unsupported':
       // dev / 未签名 / 缺 feed / 从 DMG 运行：只说明原因，不给无效按钮
-      return { text: state.message, tone: '' }
+      return { text: state.message, tone: '', actions: [] }
     case 'error':
       if (state.scope === 'download' && state.version !== undefined) {
+        // 下载类错误（含 Squirrel 交接失败）保留了两条恢复路径：原地重试下载，或整体重新检查
         return {
           text: state.message,
           tone: 'bad',
-          action: { kind: 'download', label: '重试下载', variant: 'primary' },
+          actions: [
+            { kind: 'download', label: '重试下载', variant: 'primary' },
+            { kind: 'check', label: '重新检查', variant: 'secondary' },
+          ],
         }
       }
       return {
         text: state.message,
         tone: 'bad',
-        action: state.retryable
-          ? { kind: 'check', label: '重试检查', variant: 'primary' }
-          : undefined,
+        actions: state.retryable
+          ? [{ kind: 'check', label: '重试检查', variant: 'primary' }]
+          : [],
       }
   }
 }
@@ -122,7 +132,6 @@ export function UpdateSettings({
   }, [state])
 
   const described = describeUpdate(state, installing)
-  const action = described.action
 
   const run = (next: UpdateAction): void => {
     if (next.disabled) return
@@ -147,15 +156,18 @@ export function UpdateSettings({
           {described.text}
         </div>
 
-        {action && (
+        {described.actions.length > 0 && (
           <div className="provider-actions">
-            <button
-              className={`pill ${action.variant}`}
-              disabled={action.disabled}
-              onClick={() => run(action)}
-            >
-              {action.label}
-            </button>
+            {described.actions.map((action) => (
+              <button
+                key={`${action.kind}:${action.label}`}
+                className={`pill ${action.variant}`}
+                disabled={action.disabled}
+                onClick={() => run(action)}
+              >
+                {action.label}
+              </button>
+            ))}
           </div>
         )}
 

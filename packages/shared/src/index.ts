@@ -530,6 +530,8 @@ export type UpdateErrorCode =
   | 'signature'
   | 'timeout'
   | 'install'
+  /** 下载完成，但把安装包交给系统安装器（macOS Squirrel.Mac）失败 */
+  | 'handoff'
   | 'unknown'
 
 /**
