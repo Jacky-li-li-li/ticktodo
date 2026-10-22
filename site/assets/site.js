@@ -109,11 +109,16 @@
     });
     const tag = $('#pillTag');
     const txt = $('#pillText');
+    if (txt) {
+      txt.title = SHIPPED
+        ? L('已发布的版本包含这 15 个工具', 'The released build ships all 15 tools')
+        : L('v0.2.1 安装包含其中 3 个，其余 12 个随下一版发布', 'v0.2.1 ships 3 of them; the other 12 land in the next release');
+    }
     if (tag) tag.textContent = `v${SHIPPED ? CFG.nextShippedIn : CFG.version}`;
     if (txt) {
       txt.textContent = SHIPPED
         ? L('已发布：支持 15 个 AI 工具与应用内更新', 'is out: 15 AI tools and in-app updates')
-        : L('已发布 · 下一版接入 15 个 AI 工具', 'is out · Next: 15 AI tools');
+        : L('15 个 AI 工具已接入', '15 AI tools integrated');
     }
     const rel = $('#relLine');
     if (rel) rel.textContent = `v${REL_VERSION}`;
