@@ -256,8 +256,8 @@ async function main() {
 
   check('initialize: serverInfo.name === tick', client.serverInfo?.name === 'tick', JSON.stringify(client.serverInfo))
   check(
-    'initialize: version 为 0.3.0+mcp.<n>',
-    /^0\.3\.0\+mcp\.\d+$/.test(client.serverInfo?.version ?? ''),
+    'initialize: version 为 0.3.1+mcp.<n>',
+    /^0\.3\.1\+mcp\.\d+$/.test(client.serverInfo?.version ?? ''),
     client.serverInfo?.version,
   )
   check(
