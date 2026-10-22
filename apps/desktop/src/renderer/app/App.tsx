@@ -114,6 +114,20 @@ export default function App(): React.JSX.Element {
     [],
   )
 
+  // Tray 点「检查更新 / 下载更新」：main 让面板打开设置页（先清掉其它浮层/整页视图）
+  useEffect(
+    () =>
+      window.tick.window.onOpenSettings(() => {
+        setView('threads')
+        setDetailId(null)
+        setPicker(null)
+        setSessionPicker(null)
+        setMenuOpen(false)
+        setSettingsOpen(true)
+      }),
+    [],
+  )
+
   const archive = useCallback(
     (todo: Todo) => {
       void setStatus(todo.id, 'done')
