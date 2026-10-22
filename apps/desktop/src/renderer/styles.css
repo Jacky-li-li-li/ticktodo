@@ -2035,21 +2035,26 @@ button.sheet-row:hover {
   flex-direction: column;
   gap: 6px;
   /* 工具字段吃满剩余高度（列表铺到底部按钮上方，footer 固定不动）。
-     min-height 取 2 行（88px）而不是 3 行：默认 360×520 窗口下，3 行（132px）会让外层
-     .content 溢出 ~28px，而外层滚动条是隐藏的（.content::-webkit-scrollbar width:0），
-     列表最后一行反而更难滚到；flex:1 在窗口更高时会自然铺满并显示更多行。 */
+     min-height 取 2 行（88px）：窗口再矮也至少露两行，剩下的靠列表自己滚；
+     flex:1 在窗口更高时会自然铺满并显示更多行。 */
   flex: 1;
   min-height: 88px;
   max-height: none;
   overflow-y: auto;
-  /* 列表是内层滚动区：滚到底不要把滚动传给外层 .content（避免嵌套滚动乱跳） */
+  /* 列表是内层滚动区：滚到底不要把滚动传给外层 .content（避免嵌套滚动乱跳）。
+     注意它只在列表**真的能滚**时才有意义；列表不能滚时 contain 会把滚轮事件吞掉，
+     外层页面（.content 溢出时）从这块区域完全滚不动 —— 见下面 .ns-field-tools 的约束。 */
   overscroll-behavior: contain;
 }
 
 /* 工具字段吃满剩余高度（新建会话页最后一组字段，下面就是固定高度的 footer）。
-   不写 min-height:0：让字段至少容纳列表的 2 行，而不是把列表压成 0 高度后溢出到 footer 上。 */
+   min-height:0 必须写：flex 项的自动最小尺寸 = 内容高度，不写的话字段会被 13+ 个工具撑到
+   内容高（约 612px），列表永远拿不到「剩余高度」、自己做不了内层滚动，而是把外层 .content
+   撑溢出（滚动条又是隐藏的），鼠标停在列表上滚轮还会被 overscroll-behavior:contain 吃掉。
+   列表本身有 min-height:88px 兜底，所以字段收缩也不会把列表压成 0。 */
 .new-session > .ns-field-tools {
   flex: 1;
+  min-height: 0;
 }
 
 /* 细滚动条常显：列表可能滚（15 个工具）而之前完全隐藏滚动条，看不出还有更多 */
