@@ -48,6 +48,9 @@ bash scripts/release-local.sh          # 正式发版（签名 + 公证 + SHA256
 5. Cmd+Q 才真正退出；关窗只是隐藏，退出前要 await `chat.close()`。
 6. `scripts/install.sh` 与 `site/install.sh` 必须逐字节一致。
 7. 发版时根 `package.json` 与 `apps/desktop/package.json` 版本必须一致，tag 为 `v<version>`。
+8. 安装版与 dev 实例共用 `~/Library/Application Support/Tick` 的单实例锁：装包/验收前先退出 dev 实例
+   （`osascript -e 'tell application id "com.github.Electron" to quit'`）。**不要用删 SingletonLock 的方式强行并行**——
+   两个实例共用同一份 userData 会争 `todos.json` 与面板会话存储。
 
 ## 官网（`site/`）
 
