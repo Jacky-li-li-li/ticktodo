@@ -128,6 +128,8 @@ Ticktodo reads the first-line header of each tool's session file to get the real
 
 Lives in the menu bar. The panel is pinned by default, or can auto-hide when it loses focus. Window position and size are remembered.
 
+The installed app checks for updates on its own. When a new version is found, **Settings → App update** and the menu-bar menu offer it; it downloads only after you confirm, and installs on restart. Dev and unsigned builds say so instead of pretending.
+
 ### Optional usage and export
 
 - Usage is off by default; when enabled, each session shows tokens / cost (shown with `≥` when a provider does not report cost).
