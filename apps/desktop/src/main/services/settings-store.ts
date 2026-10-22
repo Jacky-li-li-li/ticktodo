@@ -83,6 +83,7 @@ export class SettingsStore {
     if (patch.customProvider !== undefined) next.customProvider = normalizeProvider(patch.customProvider)
     if (patch.mcpReadOnly !== undefined) next.mcpReadOnly = Boolean(patch.mcpReadOnly)
     if (patch.mcpScan !== undefined) next.mcpScan = Boolean(patch.mcpScan)
+    if (patch.autoUpdateCheck !== undefined) next.autoUpdateCheck = Boolean(patch.autoUpdateCheck)
     if (patch.toolClients !== undefined) {
       // 整表替换（renderer 发的是完整表）：删掉最后一个偏好时也要能落盘
       const clients = normalizeToolClients(patch.toolClients)
@@ -123,6 +124,8 @@ function normalize(raw: Partial<AppSettings> | undefined): AppSettings {
   if (raw?.customProvider !== undefined) s.customProvider = normalizeProvider(raw.customProvider)
   if (typeof raw?.mcpReadOnly === 'boolean') s.mcpReadOnly = raw.mcpReadOnly
   if (typeof raw?.mcpScan === 'boolean') s.mcpScan = raw.mcpScan
+  // 旧 settings.json 没有这个字段：按默认值（开）处理，不把老配置当成「关」
+  if (typeof raw?.autoUpdateCheck === 'boolean') s.autoUpdateCheck = raw.autoUpdateCheck
   const clients = normalizeToolClients(raw?.toolClients)
   if (clients) s.toolClients = clients
   return s

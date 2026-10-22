@@ -242,6 +242,11 @@ export interface AppSettings {
    * 这里只决定「打开 / 回到会话」走哪个入口；不影响会话读取。
    */
   toolClients?: Record<string, ToolClientId>
+  /**
+   * 启动后自动检查更新（默认开）。dev（未打包）和未签名构建无论如何都不会检查，
+   * 因为 macOS 的应用内替换只接受签名包；UI 会如实显示不可用原因。
+   */
+  autoUpdateCheck?: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -251,6 +256,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   customProvider: null,
   mcpReadOnly: false,
   mcpScan: true,
+  autoUpdateCheck: true,
 }
 
 /** MCP「Agent 连接」设置页（普通用户复制配置，不自动改客户端配置） */
@@ -313,6 +319,8 @@ export const WindowIpc = {
   /** 置顶开关：开启时 alwaysOnTop；关闭时失焦自动隐藏 */
   getPinned: 'window:get-pinned',
   setPinned: 'window:set-pinned',
+  /** Tray 点「检查更新 / 下载更新」时先打开设置页（main → renderer） */
+  openSettings: 'window:open-settings',
 } as const
 
 /** 项目索引（M1）：list=首帧取缓存；refresh=手动重扫；updated=main 后台扫完推送 */
@@ -503,4 +511,77 @@ export const LaunchIpc = {
   resolveCwd: 'launch:resolve-cwd',
   /** 桌面工具：打开 GUI 新建页并预填（不自动发送/不绑定） */
   prefillNewSession: 'launch:prefill-new-session',
+} as const
+
+// ---------- 应用内更新（electron-updater） ----------
+
+export type UpdateTrigger = 'auto' | 'manual'
+/** 为什么不能更新：所有原因都在 main 侧探测一次，renderer 不猜 */
+export type UpdateUnsupportedReason =
+  | 'dev' // !app.isPackaged
+  | 'unsigned' // 无 Developer ID Application 签名
+  | 'no-feed' // 缺 Contents/Resources/app-update.yml（--dir / 坏打包）
+  | 'translocated' // 从 DMG / App Translocation 运行，Squirrel 无法替换
+  | 'probe-failed' // codesign 探测失败，不猜
+export type UpdateErrorCode =
+  | 'offline'
+  | 'http'
+  | 'feed'
+  | 'signature'
+  | 'timeout'
+  | 'install'
+  | 'unknown'
+
+/**
+ * 更新状态：互斥联合（docs/release-playbook.md §5.5）。
+ * 为什么不拆成 isChecking / hasUpdate / isDownloading 几个布尔：它们互斥，
+ * 拆开会造出「下载中 + 已下载」同时为真的假状态，UI 只能靠互相打架的 if 兜。
+ * currentVersion 放进每个状态，renderer 拿到的就是一份完整快照，不做拼接。
+ */
+export type UpdateState =
+  | { phase: 'idle'; currentVersion: string }
+  | { phase: 'checking'; currentVersion: string; trigger: UpdateTrigger }
+  | { phase: 'available'; currentVersion: string; version: string; checkedAt: string }
+  | {
+      phase: 'downloading'
+      currentVersion: string
+      version: string
+      percent: number
+      bytesPerSecond?: number
+    }
+  | {
+      phase: 'ready'
+      currentVersion: string
+      version: string
+      checkedAt: string
+      /** 安装动作失败时保留 ready（包已下载），UI 可原地重试；成功安装后进程退出 */
+      installError?: string
+    }
+  | { phase: 'up-to-date'; currentVersion: string; checkedAt: string }
+  | {
+      phase: 'unsupported'
+      currentVersion: string
+      reason: UpdateUnsupportedReason
+      message: string
+    }
+  | {
+      phase: 'error'
+      currentVersion: string
+      scope: 'check' | 'download'
+      code: UpdateErrorCode
+      httpStatus?: number
+      message: string
+      retryable: boolean
+      checkedAt: string
+      /** scope='download' 时保留已发现版本，允许原地重试下载 */
+      version?: string
+    }
+
+export const UpdateIpc = {
+  getState: 'update:get-state',
+  check: 'update:check',
+  download: 'update:download',
+  install: 'update:install',
+  /** main → renderer：状态变化（检查/进度/错误都由 main 推完整快照） */
+  changed: 'update:changed',
 } as const
