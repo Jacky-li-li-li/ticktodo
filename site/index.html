@@ -130,8 +130,8 @@
       <div class="hero-copy">
         <img class="mascot" src="mascot.png" alt="Ticktodo 吉祥物：一颗别着图钉的云朵豆" data-en-alt="Ticktodo mascot: a cloud bean with a pin" width="108" height="108">
         <a class="pill" href="#status">
-          <span class="pill-tag" id="pillTag">v0.3.0</span>
-          <span class="pill-text" id="pillText" title="v0.3.0 已包含全部 15 个工具" data-en-title="v0.3.0 ships all 15 tools">15 个 AI 工具已接入</span>
+          <span class="pill-tag" id="pillTag">v0.3.1</span>
+          <span class="pill-text" id="pillText" title="v0.3.1 已包含全部 15 个工具" data-en-title="v0.3.1 ships all 15 tools">15 个 AI 工具已接入</span>
           <svg aria-hidden="true"><use href="#i-arrow"/></svg>
         </a>
         <h1 data-en="Every AI session <br>for one todo, <br><span class=&quot;mark&quot;>at a glance</span>">一个 todo 的<br>所有 AI 会话，<br><span class="mark">一眼看全</span></h1>
@@ -153,7 +153,7 @@
         <ul class="hero-meta">
           <li data-en="macOS · menu bar">macOS · 常驻菜单栏</li>
           <li data-en="15 AI tools">15 个 AI 工具</li>
-          <li id="relLine">v0.3.0</li>
+          <li id="relLine">v0.3.1</li>
           <li><a href="#download-placeholder" data-dl-alt aria-label="下载 Intel 版本" data-en-label="Download the Intel build">Intel (x64)</a></li>
         </ul>
       </div>
@@ -657,8 +657,8 @@
         <button type="button" aria-pressed="false" data-f="none" data-en="Read-only">只读</button>
       </div>
       <div class="legend">
-        <span><span class="badge is-shipped" data-since="0.3.0">v0.3.0</span><em data-en="added in this release">本版新增</em></span>
-        <span><span class="badge is-shipped" data-since="0.2.1">v0.2.1</span><em data-en="already supported">已有</em></span>
+        <span><span class="badge is-shipped" data-since="0.3.0">v0.3.0</span><em data-en="added in 0.3.0">0.3.0 新增</em></span>
+        <span><span class="badge is-shipped" data-since="0.2.1">v0.2.1</span><em data-en="supported from the start">首发</em></span>
         <span><span class="badge is-planned" data-since="planned">规划中</span></span>
       </div>
     </div>
@@ -684,12 +684,13 @@
     <div class="status-grid">
       <div class="scol is-shipped is-latest reveal">
         <div class="scol-head">
-          <span class="badge is-shipped" data-since="0.3.0">v0.3.0</span>
+          <span class="badge is-shipped" data-since="0.3.1">v0.3.1</span>
           <h3 data-en="Shipped">已发布</h3>
           <p class="scol-meta" data-en="2026-10-23 · latest release">2026-10-23 · 最新版本</p>
         </div>
         <ul class="slist">
-          <li data-en="12 more adapters: Claude Code, Claude Desktop, Codex, Cline, Grok, omp, Kimi Code, OpenCode, Qoder / Qoder CN, ZCode, DeepSeek Harness">再接入 12 个适配器：Claude Code、Claude Desktop、Codex、Cline、Grok、omp、Kimi Code、OpenCode、Qoder / Qoder CN、ZCode、DeepSeek Harness</li>
+          <li data-en="Fixed: Cline and OpenCode tool icons showed as broken images in the installed build (CSP did not allow inlined images)">修复：Cline / OpenCode 的工具图标在安装版里显示为破图（CSP 未允许内联图片）</li>
+          <li data-en="15 adapters in total, incl. Claude Code, Claude Desktop, Codex, Cline, Grok, omp, Kimi Code, OpenCode, Qoder / Qoder CN, ZCode, DeepSeek Harness">共 15 个适配器，含 Claude Code、Claude Desktop、Codex、Cline、Grok、omp、Kimi Code、OpenCode、Qoder / Qoder CN、ZCode、DeepSeek Harness</li>
           <li data-en="Claude Code prefills its native input; pi and Claude Code pre-generate session ids, the other CLIs open with the prompt on the clipboard">Claude Code 用原生 <code class="ic">--prefill</code> 预填；pi 与 Claude Code 预生成会话 id，其余 CLI 打开工具并把文案放进剪贴板</li>
           <li data-en="In-app updates: check, download after confirmation, install on restart; dev and unsigned builds say so honestly">应用内更新：检查、确认后下载、重启安装；开发模式与未签名构建如实显示不可更新</li>
           <li data-en="Multi-client tools: OpenCode desktop and CLI share one index; the CLI resumes precisely">多客户端工具：OpenCode 桌面版与 CLI 共用一个索引，回到会话时 CLI 能精确恢复</li>
@@ -700,17 +701,16 @@
 
       <div class="scol is-prev reveal">
         <div class="scol-head">
-          <span class="badge is-shipped" data-since="0.2.1">v0.2.1</span>
+          <span class="badge is-shipped" data-since="0.3.0">v0.3.0</span>
           <h3 data-en="Previous release">上一个版本</h3>
-          <p class="scol-meta" data-en="2026-10-19">2026-10-19</p>
+          <p class="scol-meta" data-en="2026-10-23 · 3 → 15 tools">2026-10-23 · 3 → 15 个工具</p>
         </div>
         <ul class="slist">
-          <li data-en="pi, WorkBuddy (China) and WorkBuddy AI (International) adapters">pi、WorkBuddy（国内版）与 WorkBuddy AI（国际版）三个适配器</li>
-          <li data-en="MCP server: create_todo / list_todos / link_session, plus Settings → Agent connection">MCP server：create_todo / list_todos / link_session，含设置页「Agent 连接」</li>
-          <li data-en="Todo-centric panel, import past sessions, panel chat, usage and export">以 todo 为中心的面板、倒入历史会话、面板 Chat、用量与导出</li>
-          <li data-en="One-line install with SHA256 verification; menu bar only, no Dock icon">带 SHA256 校验的一行安装脚本；只驻菜单栏，不占 Dock</li>
+          <li data-en="Jumped from 3 to 15 adapters (pi / WorkBuddy / WorkBuddy AI plus 12 new ones)">从 3 个适配器扩到 15 个（pi / WorkBuddy / WorkBuddy AI 之外新增 12 个）</li>
+          <li data-en="In-app updates: check, download after confirmation, install on restart">应用内自动更新：检查、确认后下载、重启安装</li>
+          <li data-en="Multi-client entry for OpenCode (desktop + CLI)">OpenCode 的桌面版 / CLI 两个入口</li>
         </ul>
-        <p class="scol-note" data-en="Installed from v0.2.1? The app will offer this update in Settings → App update.">从 v0.2.1 装起的用户，会在「设置 → 应用更新」里收到这一版的提示。</p>
+        <p class="scol-note" data-en="On an older build? Settings → App update will offer 0.3.1.">还在更早版本的用户，会在「设置 → 应用更新」里收到 0.3.1 的提示。</p>
       </div>
 
       <div class="scol is-planned reveal">
@@ -882,7 +882,7 @@
     nextDate              可选，新版本的发布日期
 -->
 <script>
-  window.TICK_SITE = { version: '0.3.0', date: '2026-10-23', nextShippedIn: null, nextDate: '' };
+  window.TICK_SITE = { version: '0.3.1', date: '2026-10-23', nextShippedIn: null, nextDate: '' };
 </script>
 <script src="assets/site.js" defer></script>
 
