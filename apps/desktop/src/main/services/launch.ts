@@ -21,12 +21,14 @@ import type {
   LaunchOutcome,
   LaunchRequest,
   ResumeRequest,
-  SessionBinding,
 } from '@tick/shared'
 import { newCliSessionId, type Todo } from '@tick/shared'
 import { canonicalPath } from '@tick/ai-core'
 import type { PiAdapter } from '@tick/ai-pi'
 import type { TodoStore } from '../store'
+
+/** pending 绑定的对账寿命：超过后不再扫文件系统（绑定保留，用户可手动 resume 收敛） */
+const PENDING_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 export type CwdSource = 'bound-session' | 'last-launch' | 'home' | 'explicit' | 'recent'
 export type CwdDegraded = 'bound-session-missing' | 'last-launch-missing' | 'explicit-missing'
@@ -123,6 +125,10 @@ export class LaunchService {
   async launch(req: LaunchRequest): Promise<LaunchOutcome> {
     const todo = this.todoOf(req.todoId)
     const resolved = await this.resolveCwd(req.todoId, req.projectPath)
+    // 「每次必问」在 main 侧强制：renderer 的按钮禁用只是 UI 态，不能是信任边界
+    if (resolved.mustAsk) {
+      return { ok: false, projectPath: resolved.projectPath, delivered: req.deliver, reason: '设置里选了「每次必问」：先选择一个项目再打开' }
+    }
     const sessionId = newCliSessionId(randomUUID())
     const promptText = (req.promptText ?? todo.title).trim()
 
@@ -144,33 +150,40 @@ export class LaunchService {
       }
     }
 
-    // 终端已打开 = 成功；session 文件晚一点出现（剪贴板模式下要等用户发送）→ pending 绑定
-    const state: SessionBinding['state'] = result.verified ? 'verified' : 'pending'
-    const info = result.verified
-      ? await this.adapter.describeSession(result.sessionId, { withName: false }).catch(() => undefined)
-      : undefined
-    this.store.update(todo.id, {
-      addBinding: {
-        toolId: 'pi',
+    // 终端已打开 = 成功；session 文件要等用户发送第一条消息才出现 → pending 绑定，
+    // 由 reconcilePending() 对账转 verified（adapter.launch 对新造 UUID 即时 verify 必然 false）。
+    try {
+      this.store.update(todo.id, {
+        addBinding: {
+          toolId: 'pi',
+          sessionId: result.sessionId,
+          boundAt: new Date().toISOString(),
+          state: 'pending',
+        },
+        primarySessionId: result.sessionId,
+        lastLaunch: {
+          toolId: 'pi',
+          projectPath: resolved.projectPath,
+          launchedAt: new Date().toISOString(),
+        },
+      })
+    } catch (err) {
+      // 终端已经开了：诚实报告「会话开了但绑定没写上」，用户至少知道去 pi 里看
+      return {
+        ok: false,
         sessionId: result.sessionId,
-        boundAt: new Date().toISOString(),
-        state,
-        filePath: info?.filePath,
-      },
-      primarySessionId: result.sessionId,
-      lastLaunch: {
-        toolId: 'pi',
         projectPath: resolved.projectPath,
-        launchedAt: new Date().toISOString(),
-      },
-    })
+        delivered: result.delivered,
+        reason: `pi 已在终端打开，但绑定写入失败：${(err as Error).message}`,
+      }
+    }
 
     return {
       ok: true,
       sessionId: result.sessionId,
       projectPath: resolved.projectPath,
       delivered: result.delivered,
-      pending: !result.verified,
+      pending: true,
     }
   }
 
@@ -202,6 +215,9 @@ export class LaunchService {
         }
       }
       const resolved = await this.resolveCwd(todo.id, req.projectPath)
+      if (resolved.mustAsk) {
+        return { ok: false, sessionId: req.sessionId, delivered: 'none', reason: '设置里选了「每次必问」：先选择一个项目再打开' }
+      }
       try {
         await this.adapter.launch({
           promptText: '',
@@ -219,16 +235,26 @@ export class LaunchService {
           reason: (err as Error).message,
         }
       }
-      this.store.update(todo.id, {
-        addBinding: {
-          toolId: 'pi',
+      try {
+        this.store.update(todo.id, {
+          addBinding: {
+            toolId: 'pi',
+            sessionId: req.sessionId,
+            boundAt: new Date().toISOString(),
+            state: 'pending',
+          },
+          primarySessionId: req.sessionId,
+          lastLaunch: { toolId: 'pi', projectPath: resolved.projectPath, launchedAt: new Date().toISOString() },
+        })
+      } catch (err) {
+        return {
+          ok: false,
           sessionId: req.sessionId,
-          boundAt: new Date().toISOString(),
-          state: 'pending',
-        },
-        primarySessionId: req.sessionId,
-        lastLaunch: { toolId: 'pi', projectPath: resolved.projectPath, launchedAt: new Date().toISOString() },
-      })
+          projectPath: resolved.projectPath,
+          delivered: 'none',
+          reason: `pi 已在终端打开，但绑定写入失败：${(err as Error).message}`,
+        }
+      }
       return {
         ok: true,
         sessionId: req.sessionId,
@@ -257,17 +283,27 @@ export class LaunchService {
         deliver: 'none',
       })
       if (todo) {
-        this.store.update(todo.id, {
-          addBinding: {
-            toolId: 'pi',
+        try {
+          this.store.update(todo.id, {
+            addBinding: {
+              toolId: 'pi',
+              sessionId: req.sessionId,
+              boundAt: new Date().toISOString(),
+              state: 'verified',
+              filePath: info.filePath,
+            },
+            primarySessionId: req.sessionId,
+            lastLaunch: { toolId: 'pi', projectPath: cwd, launchedAt: new Date().toISOString() },
+          })
+        } catch (err) {
+          return {
+            ok: false,
             sessionId: req.sessionId,
-            boundAt: new Date().toISOString(),
-            state: 'verified',
-            filePath: info.filePath,
-          },
-          primarySessionId: req.sessionId,
-          lastLaunch: { toolId: 'pi', projectPath: cwd, launchedAt: new Date().toISOString() },
-        })
+            projectPath: cwd,
+            delivered: 'none',
+            reason: `pi 已在终端打开，但绑定写入失败：${(err as Error).message}`,
+          }
+        }
       }
       return { ok: true, sessionId: result.sessionId, projectPath: cwd, delivered: 'none' }
     } catch (err) {
@@ -283,13 +319,19 @@ export class LaunchService {
 
   /**
    * pending 绑定对账：终端里的 pi 产生会话文件后，把绑定从 pending 改成 verified。
+   * 只对账本 adapter 的 pending（别的工具接入后各自有对账路径）；
+   * 超过 30 天仍 pending 的不再扫（用户大概率没发消息）——绑定保留，UI 空心点语义不变。
    * 返回本次改动的条数（0 = 没有 pending 或都还没产生）。
    */
   async reconcilePending(): Promise<number> {
     let changed = 0
+    const now = Date.now()
     for (const todo of this.store.list()) {
       for (const binding of todo.bindings) {
         if (binding.state !== 'pending') continue
+        if (binding.toolId !== this.adapter.id) continue
+        const age = now - Date.parse(binding.boundAt)
+        if (Number.isFinite(age) && age > PENDING_MAX_AGE_MS) continue
         let verified = false
         try {
           verified = await this.adapter.verify(binding.sessionId, { retries: 0, intervalMs: 0 })

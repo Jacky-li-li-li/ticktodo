@@ -1,7 +1,10 @@
 /**
- * storage — 数据根 ~/.ticktodo（TICK_HOME 可覆盖）的层级初始化与安全写。
+ * storage — 数据根 ~/.ticktodo 的层级初始化（分层语义见 PRD §7 / TECH-ARCH §9）。
  *
- * 分层语义（PRD §7 / TECH-ARCH §9）：
+ * 锁、原子写、TICK_HOME 解析、jsonc 等跨运行时原语在 @tick/storage（Main 与
+ * pi extension 共用一份实现，防漂移）；这里只管 Tick 自己的目录布局。
+ *
+ * 分层语义：
  *   data/     ✅ 可同步 · 关键（几十 KB，丢了致命）——永不自动删
  *   sessions/ ⚠️ 不建议同步 · 含对话正文（MB 级，丢了可承受）
  *   cache/    ❌ 无需同步 · 可再生（删了自动重建）
@@ -11,9 +14,8 @@
  */
 
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { resolveTickHome } from '@tick/storage'
 
 export interface TickDirs {
   root: string
@@ -25,7 +27,7 @@ export interface TickDirs {
 }
 
 export function resolveDirs(): TickDirs {
-  const root = process.env.TICK_HOME || path.join(os.homedir(), '.ticktodo')
+  const root = resolveTickHome()
   return {
     root,
     data: path.join(root, 'data'),
@@ -75,93 +77,5 @@ export function ensureDirs(dirs: TickDirs): void {
     }
   } catch {
     /* README 写失败不阻塞启动 */
-  }
-}
-
-// ---------- 原子写 + 文件锁 ----------
-// todos.json 会被 CLI（extension，M2）与面板并发写（PRD F5）。
-// 锁 = 同目录 O_EXCL 独占文件；陈旧锁（>5s）视为持有者已死，强夺。
-//
-// ⚠️ 锁文件名必须与 packages/tick-extension/src/todos-file.ts 完全一致（`<file>.lock`）：
-// 两个运行时各写各的锁 = 没有互斥，会静默丢写（实测 240 次写丢 117 条）。
-// 锁内容 = `<pid>:<uuid>` token，release 只删自己持有的锁，避免被强夺后误删别人的锁。
-
-export function lockPathFor(file: string): string {
-  return `${file}.lock`
-}
-
-export class FileLock {
-  private file: string
-  private token = ''
-
-  constructor(file: string) {
-    this.file = file
-  }
-
-  acquire(): boolean {
-    const lock = lockPathFor(this.file)
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const token = `${process.pid}:${randomUUID()}`
-      try {
-        fs.writeFileSync(lock, token, { flag: 'wx', mode: 0o600 })
-        this.token = token
-        return true
-      } catch (e: unknown) {
-        const err = e as NodeJS.ErrnoException
-        if (err.code !== 'EEXIST') throw err
-        try {
-          // 陈旧锁检测：>5s 强夺
-          const age = Date.now() - fs.statSync(lock).mtimeMs
-          if (age > 5_000) {
-            fs.rmSync(lock, { force: true })
-            continue
-          }
-        } catch {
-          continue
-        }
-        spin(10 + attempt * 2)
-      }
-    }
-    return false
-  }
-
-  release(): void {
-    const lock = lockPathFor(this.file)
-    try {
-      // 只删自己持有的锁：被 >5s 强夺后不能再误删下一个持有者的锁
-      if (fs.readFileSync(lock, 'utf8') !== this.token) return
-      fs.rmSync(lock, { force: true })
-    } catch {
-      /* 忽略 */
-    }
-  }
-}
-
-function spin(ms: number): void {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    /* 短 busy-wait：避免 setTimer 把下一次写让给其它进程的交错窗口 */
-  }
-}
-
-/** 原子写 JSON： tmp 同目录 + fsync + rename（同 FS rename 原子） */
-export function atomicWriteJson(file: string, value: unknown): void {
-  const tmp = `${file}.${process.pid}.tmp`
-  const data = JSON.stringify(value, null, 2)
-  const fd = fs.openSync(tmp, 'w', 0o600)
-  try {
-    fs.writeFileSync(fd, data)
-    fs.fsyncSync(fd)
-  } finally {
-    fs.closeSync(fd)
-  }
-  fs.renameSync(tmp, file)
-}
-
-export function readJson<T>(file: string): T | undefined {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as T
-  } catch {
-    return undefined
   }
 }

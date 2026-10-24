@@ -14,6 +14,7 @@ import crypto from 'node:crypto'
 import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc } from '@tick/shared'
 import { AiToolRegistry, canonicalPath, gitRootOf } from '@tick/ai-core'
 import { PiAdapter } from '@tick/ai-pi'
+import { cleanStaleTmp } from '@tick/storage'
 import { ensureDirs, resolveDirs } from './services/storage'
 import { ProjectIndexService } from './services/project-index'
 import { ChatAgentHost } from './services/chat-host'
@@ -104,6 +105,8 @@ app.whenReady().then(() => {
 
   const dirs = resolveDirs()
   ensureDirs(dirs)
+  // 崩溃残留的写盘 tmp（rename 没跑完）不清理会一直躺在 data/（同步层）
+  cleanStaleTmp(dirs.data)
 
   const store = new TodoStore(path.join(dirs.data, 'todos.json'))
   store.ensureFile()
@@ -167,12 +170,19 @@ app.whenReady().then(() => {
   chat = createChat()
   void chat.init()
 
-  const reloadChat = async (): Promise<void> => {
-    const old = chat
-    chat = undefined
-    await old?.close()
-    chat = createChat()
-    await chat.init()
+  // 串行化重建：并发触发（快速保存+清除）时后来者排队，不会把上一个 host 的 close 与
+  // 下一个的 init 交错出「无人持有的双活 host」。
+  let chatRebuild: Promise<void> = Promise.resolve()
+  const reloadChat = (): Promise<void> => {
+    const next = chatRebuild.then(async () => {
+      const old = chat
+      chat = undefined
+      await old?.close()
+      chat = createChat()
+      await chat.init()
+    })
+    chatRebuild = next.catch(() => {})
+    return next
   }
 
   registerIpc(
@@ -334,6 +344,16 @@ app.whenReady().then(() => {
     }
     return { action: 'deny' }
   })
+  // 同窗口导航不受 setWindowOpenHandler 管：location.href 到外站会让 preload API 落进外部页面。
+  // 一律拦下；https 交给系统浏览器，其余静默丢弃。
+  panel.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault()
+    if (url.startsWith('https://')) void shell.openExternal(url)
+  })
+  // renderer 不需要任何 web 权限（通知/摄像头/剪贴板读…）：默认拒绝，收窄 Electron 默认策略
+  panel.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => {
+    callback(false)
+  })
 
   if (app.isPackaged) {
     // 打包后：dist/renderer/index.html（__dirname = app.asar/dist-electron）
@@ -401,7 +421,8 @@ function watchTodosFile(store: TodoStore, dataDir: string): void {
   let timer: NodeJS.Timeout | undefined
   try {
     const watcher = fs.watch(dataDir, (_event, filename) => {
-      if (filename !== 'todos.json') return
+      // macOS 上 filename 可能为 null（目录级事件）：当 todos.json 变化处理，下个事件自愈
+      if (filename !== null && filename !== 'todos.json') return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         const todos = store.list()

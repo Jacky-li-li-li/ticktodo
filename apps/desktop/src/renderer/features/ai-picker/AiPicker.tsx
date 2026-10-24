@@ -23,6 +23,8 @@ interface Resolved {
   projectPath: string
   projectName: string
   source: string
+  /** 非空 = 记忆/指定的目录已失效，已退回主目录（main 侧 resolveCwd 产出） */
+  degraded?: string
 }
 
 interface ToolStatus {
@@ -63,22 +65,44 @@ export function AiPicker({
   const [tools, setTools] = useState<ToolStatus[] | null>(null)
   const [tool, setTool] = useState<string | null>(null)
   const [rechecking, setRechecking] = useState(false)
-  const [bound, setBound] = useState(todo.bindings.length)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const cwdLabel = (p: string): string =>
     home && p === home.projectPath ? '~' : p.replace(/^\/Users\/[^/]+/, '~')
 
+  // 主目录是 os.homedir()：resolveCwd() 不带 todoId 恒返回 home（与 ChatPanel 同口径）。
+  // 此前误把「已推导项目」写进 home，导致列表首项「主目录 ~」实际指向项目目录、真 home 被过滤掉。
+  useEffect(() => {
+    let alive = true
+    void window.tick.launch
+      .resolveCwd()
+      .then((r) => {
+        if (alive) setHome({ projectPath: r.projectPath, projectName: r.projectName, source: r.source })
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
   // 项目三级推导（launch:resolve-cwd）：绑定会话 cwd → lastLaunch → home
   useEffect(() => {
     let alive = true
-    void window.tick.launch.resolveCwd(todo.id).then((r) => {
-      if (!alive) return
-      const resolved = { projectPath: r.projectPath, projectName: r.projectName, source: r.source }
-      setResolved(resolved)
-      setHome({ projectPath: r.projectPath, projectName: '~', source: 'home' })
-      setMustAsk(Boolean(r.mustAsk))
-    })
+    void window.tick.launch
+      .resolveCwd(todo.id)
+      .then((r) => {
+        if (!alive) return
+        setResolved({
+          projectPath: r.projectPath,
+          projectName: r.projectName,
+          source: r.source,
+          degraded: r.degraded,
+        })
+        setMustAsk(Boolean(r.mustAsk))
+      })
+      .catch(() => {
+        /* IPC 失败：resolved 保持 null，项目行显示 … */
+      })
     return () => {
       alive = false
     }
@@ -135,7 +159,6 @@ export function AiPicker({
         promptText: prompt.trim() || todo.title,
       })
       if (outcome.ok) {
-        if (outcome.pending) setBound((n) => n + 1)
         onResult(
           outcome.pending
             ? outcome.delivered === 'clipboard'
@@ -151,11 +174,29 @@ export function AiPicker({
         setBusy(false)
       }
     } catch {
+      onResult('打开失败：Tick 与主进程的通信出了问题，可重试一次')
       setBusy(false)
     }
   }
 
   const installedTools = (tools ?? []).filter((t) => t.installed)
+  const boundCount = todo.bindings.length
+
+  /** 推导来源的一句解释（source 语义与文案此前错位：home 恰恰是三级全落空的兜底） */
+  const derivationNote = (r: Resolved): string | undefined => {
+    switch (r.source) {
+      case 'bound-session':
+        return '推导自绑定会话的项目；打开后可在 pi 里切换目录'
+      case 'last-launch':
+        return '推导自上次项目；打开后可在 pi 里切换目录'
+      case 'recent':
+        return '推导自最近使用的项目；打开后可在 pi 里切换目录'
+      case 'home':
+        return '没有更具体的项目，默认在主目录打开'
+      default:
+        return undefined
+    }
+  }
 
   return (
     <div className="panel-inner">
@@ -185,7 +226,9 @@ export function AiPicker({
         </div>
 
         <div className="ns-field">
-          <span className="ns-label">用哪个工具</span>
+          <span className="ns-label">
+            用哪个工具{tools ? ` · 检测到 ${installedTools.length} 个` : ''}
+          </span>
           {installedTools.length > 0 ? (
             <div className="ns-tools">
               {installedTools.map((t) => (
@@ -207,7 +250,11 @@ export function AiPicker({
               <div className="tool-card-title">没有可用的 agent 工具</div>
               <div className="tool-card-hint">Tick 只做索引、不内置模型…记线索不受影响</div>
               <div className="tool-card-scan">
-                已扫描本机：pi · claude code · codex —— 均未检测到会话目录
+                {tools === null
+                  ? '正在检测本机工具…'
+                  : tools.length === 0
+                    ? '工具检测失败，可点「重新检测」再试'
+                    : `已扫描本机：${tools.map((t) => t.toolId).join(' · ')} —— 均未检测到会话目录`}
               </div>
               <button
                 className="tool-card-retry"
@@ -219,6 +266,9 @@ export function AiPicker({
                     .then((list) => {
                       setTools(list)
                       setTool((prev) => prev ?? list.filter((t) => t.installed)[0]?.toolId ?? null)
+                    })
+                    .catch(() => {
+                      onResult('工具检测失败')
                     })
                     .finally(() => setRechecking(false))
                 }}
@@ -239,8 +289,10 @@ export function AiPicker({
             <span className="ns-project-path">{resolved ? cwdLabel(resolved.projectPath) : ''}</span>
             <span className="chevron">改</span>
           </button>
-          {resolved?.source === 'home' && !mustAsk && (
-            <div className="ns-note">推导自上次项目；打开后可在 pi 里切换目录</div>
+          {/* degraded 必须提示（验收 4.2）：目录失效被静默退回 home，用户要知道这件事 */}
+          {resolved?.degraded && <div className="ns-note warn">原目录已不存在，已退回主目录</div>}
+          {resolved && !resolved.degraded && !mustAsk && derivationNote(resolved) && (
+            <div className="ns-note">{derivationNote(resolved)}</div>
           )}
           {mustAsk && resolved?.source === 'home' && (
             <div className="ns-note warn">设置里选了「每次必问」：先选一个项目再打开</div>
@@ -381,8 +433,8 @@ export function AiPicker({
               : `复制文案并打开 ${tool ?? 'pi'}`}
         </button>
         <div className="ns-note center">
-          {bound > 0
-            ? `这条线索已有 ${bound} 个会话；这次会再开一个`
+          {boundCount > 0
+            ? `这条线索已有 ${boundCount} 个会话；这次会再开一个`
             : settings.deliver === 'argv'
               ? '文案会直接发给 AI —— 不自动发送只适用于剪贴板'
               : '文案先进剪贴板，你确认后再发 —— 不自动发送'}

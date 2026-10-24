@@ -17,7 +17,8 @@ export function useTodos(): {
   refresh: () => Promise<void>
   create: (title: string, body?: string) => Promise<Todo | undefined>
   patch: (id: string, p: TodoPatch) => Promise<Todo | undefined>
-  setStatus: (id: string, status: Todo['status']) => Promise<void>
+  /** false = main 拒绝/写盘失败（锁占用等），调用方必须给用户反馈而不是谎报成功 */
+  setStatus: (id: string, status: Todo['status']) => Promise<boolean>
   remove: (id: string) => Promise<boolean>
 } {
   const [todos, setTodos] = useState<Todo[]>([])
@@ -61,7 +62,7 @@ export function useTodos(): {
 
   const setStatus = useCallback(
     async (id: string, status: Todo['status']) => {
-      await patch(id, { status })
+      return (await patch(id, { status })) !== undefined
     },
     [patch],
   )

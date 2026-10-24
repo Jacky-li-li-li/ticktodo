@@ -138,11 +138,14 @@ export function TodoDetail({
   const save = async (): Promise<void> => {
     if (!title.trim() || saving) return
     setSaving(true)
-    const ok = await onSave({ title: title.trim(), body: body.trim() || undefined })
+    // body 传空串 = 清空正文（main 侧 trim 后归一成 undefined）；传 undefined 则根本不更新该字段
+    const ok = await onSave({ title: title.trim(), body: body.trim() })
     setSaving(false)
     if (ok) {
       setEditing(false)
       onToast('已保存')
+    } else {
+      onToast('保存失败：todos.json 可能被占用')
     }
   }
 

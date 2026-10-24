@@ -29,7 +29,7 @@ pnpm typecheck      # 全仓 tsc --noEmit
 | Electron | 44.8.0（内置 **Node 24.22.0 ≥ 22.19**，满足 pi-durable 硬约束，无需 sidecar 预案） |
 | pi | 1.3.0（已从 1.2.0 升级；CLI flags 与 RESEARCH-pi 基线一致） |
 | 语言/运行时 | 全仓 TypeScript + Node（D13 决定：面板 Chat 进程内跑 pi-durable → 运行时必是 Node） |
-| 数据根 | `~/.ticktodo`（`TICK_HOME` 可覆盖），`data/` 0700/0600，含自动生成 README.md |
+| 数据根 | `~/.ticktodo`（`TICK_HOME` 可覆盖，Main / extension / 终端 pi 三侧解析一致；自定义根会 export 进拉起的终端脚本），`data/` 0700/0600，含自动生成 README.md |
 | 终端 | macOS Terminal.app（`open` 走 LaunchServices，不需要「自动化」权限）；拉起 pi 的 TUI 必须有终端 |
 
 ## 里程碑进度
@@ -50,11 +50,12 @@ tick/
 │       ├── preload/            # contextBridge 白名单
 │       └── renderer/           # React：panel · capture-line · thread-row（UI-SPEC 第二轮 Calm Panel）
 ├── packages/
-│   ├── shared/                 # Todo / SessionBinding / CliSessionId / IPC 通道（防漂移的单一来源）
+│   ├── shared/                 # Todo / SessionBinding / CliSessionId / IPC 通道（防漂移的单一来源）+ todos.json 解析校验 / TodoPatch 白名单
 │   ├── ai/core/                # adapter 合同 + mergeProjects + canonicalPath + session-ns（M1 实装）
 │   ├── ai/pi/                  # PiAdapter（M0: detect→M1 实装 launch/resume/verify）
 │   ├── tick-extension/         # pi extension create_todo/list_todos（M2）
-│   └── storage/                # 预留
+│   ├── storage/                # 跨运行时存储原语：FileLock(PID 存活判陈旧) / writeFileAtomic / resolveTickHome / parseJsonc
+│   └── ui/                     # 共享 UI
 ├── docs/已对齐/                # PRD / TECH-ARCH / REVIEW / RESEARCH-*/ UI-SPEC
 └── scripts/
 ```
@@ -75,14 +76,13 @@ tick/
 
 ### 1. `create_todo` 扩展（pi CLI 里也能建线索）
 
-- 实现只有一份领域逻辑：`packages/tick-extension/src/todos-file.ts`（原子写 + O_EXCL 锁，和 Main 共用同一份 `todos.json`）。
-  **锁文件名必须两边一致（`todos.json.lock`）**：之前 Main 用 `.todos.json.lock`、extension 用 `todos.json.lock`，
-  两个运行时各锁各的，并发写实测 240 次丢 117 条；现在统一并带 `<pid>:<uuid>` 属主 token。
+- 锁 / 原子写 / TICK_HOME 解析只有一份实现：`packages/storage`（Main 与 extension 同一 import；含 `<pid>:<uuid>` token、按「持有者 PID 存活」判定陈旧锁、tmp+fsync+rename+目录 fsync）。此前手抄两份，先后漂移出两个真 bug：锁名不一致（并发 240 次丢 117 条）、TICK_HOME trim 不一致（两个根各写各的）。
+  领域逻辑在 `packages/tick-extension/src/todos-file.ts`；Todo 模型与 todos.json 解析校验与 Main 共用 `@tick/shared`。
   两个运行时各一层薄适配：`src/index.ts`（pi coding-agent `registerTool`）与 `src/durable.ts`（pi-durable `defineTool`）。
-  > 实测发现：两套扩展 API 并不通用（`registerTool` vs `defineTool`），所以"一份实现"指的是领域逻辑，不是注册代码。
+  > 实测发现：两套扩展 API 并不通用（`registerTool` vs `defineTool`），所以"一份实现"指的是存储原语与领域逻辑，不是注册代码。
 - 打包：`pnpm --filter @tick/tick-extension build` → `dist/index.js`（esbuild 单文件，typebox 一起打进去）
 - 安装：App 启动时按内容 hash 幂等写入 `~/.pi/agent/extensions/tick/index.js`（pi 自动发现目录，默认启用，不改用户 settings）
-- 幂等：同一 pi 会话重复调用只返回既有那条；`requestId` 命中同理、且命中时不重写文件
+- 幂等：同一 pi 会话重复调用只返回既有那条（CLI 侧靠 sessionId 绑定去重，没有 requestId 路径）；面板侧用 `conversationId:callId` 作 `requestId`、命中时不重写文件
 - 面板侧 `create_todo` 显式 `replay: 'unsafe'`（durable 的 `safe` 含义是「崩溃后允许重跑」= 重复建单），
   并用 `conversationId:callId` 作为 `requestId`，重试同一个工具调用不会建出第二条
 
@@ -122,7 +122,7 @@ tick/
 - **Todo**：点整行在当前行位置**原地展开**为线索卡片（焦点卡材质：白 10%→3% + Accent 8%，§3.3；不再统一挪到列表顶部），点卡片头/标题或卡片外空白折叠——卡片头可勾选归档、
   「上次停在哪」显示主会话最后一条 user 消息（adapter 流式扫描，按文件 (mtime,size) 缓存元数据；卡片打开时窗口聚焦/15s 刷新）、动作三态（0 会话=新建会话；
   1 会话=「在 <项目> 中打开 pi」；N 会话=接着做 + 查看列表带角标）；卡片内可编辑标题/正文（标题必填）；
-  点卡片头/标题或卡片外空白折叠；首页默认 5 条，超过可「展开全部」；⋯ 菜单进归档页。
+  点卡片头/标题或卡片外空白折叠；首页按最近改动排序（updatedAt 降序），默认 5 条，超过可「展开全部」；⋯ 菜单进归档页。
 - **会话浮层（§4.5）**：查看列表 → 触发按钮正下方右对齐浮层，标签「这条线上的对话」，实心点=已落盘会话 /
   空心点=待发送，每行两行文字（时间+状态 / 上次停在哪），footer「＋ 新建会话 · 认领历史会话」。
 - **新建会话页（§6.4 整页）**：← 顶栏 → 线索名 → 可编辑的发送内容 → 工具胶囊（检测到 N 个，由用户选；
@@ -172,5 +172,20 @@ bash scripts/install.sh                 # 退出旧实例 → 覆盖 /Applicatio
 | `lastLaunchedAt` 失效 | 新增 `lastLaunch.launchedAt`；canonical + git 根映射后再 overlay |
 | todos.json 损坏静默清空 | 解析失败先备份 `todos.json.corrupt-<ts>` 再继续（可人工恢复） |
 | 其余 | 项目缓存 prune、settings.json 按 jsonc 解析、IME 回车、退出 await chat.close、无 pi 不写 `~/.pi`、tsconfig 校正 |
+
+### 7. 2026-10-24 全面修复（可复核）
+
+审查发现 3 个 P1 / 8 个 P2 / 约 30 个 P3 后的修复轮。全部改动有 `pnpm typecheck` + `pnpm test`（28 例行为测试）+ `pnpm build` 兜底。
+
+| 类别 | 内容 |
+|---|---|
+| 存储 | 锁/原子写/TICK_HOME/jsonc 下沉 `packages/storage` 单一实现；陈旧锁按 token 里 PID 存活判定（崩溃残留立即可抢、活锁绝不强夺，等待用 Atomics.wait）；写盘补目录 fsync、启动清理残留 `.tmp`；导出时间戳精确到毫秒（同秒导出不再互覆） |
+| 并发 | 业务规则 4 改在 TodoStore **锁内**强制（bind/resume 双击/并发不再产生双绑定）；reloadChat 串行化（不再泄漏双活 chat host）；pending 对账只认 pi、超 30 天不再扫、会话树扫描全部异步（main 不再被 5s 轮询的同步 walk 卡顿） |
+| 边界 | todos.json 逐条校验 + version 检查（坏条目丢弃不整体报废、结构坏先备份）；`todos:update`/`create` IPC 白名单归一化（未知 status/任意 addBinding 不再落盘）；`export:reveal` 限 exports/ 内 |
+| 拉起 | `mustAsk`（每次必问）在 main 强制；launch 半失败（终端已开但绑定写入失败）如实回报；剪贴板在终端打开成功后才写；TICK_HOME export 进 `.command`（自定义根不再 split-brain）；窗口恢复坐标校验屏幕边界（拔外接屏不再丢面板） |
+| 打包 | extraResources 补 tick-extension（修复打包版永远装不上扩展、CLI `create_todo` 不可用） |
+| 功能 | 首页按 updatedAt 降序排序（新线索不再沉底不可见）；卡片正文可清空（空串保存）；归档/保存失败有 toast 不再谎报成功；`degraded` 退回主目录在 UI 提示；AiPicker 推导注释按真实来源显示、工具胶囊带检测数、空态卡不再虚报扫描 claude code/codex；Escape 不误伤 IME 组词；「这轮失败：」错误消息不再被 Markdown 渲染 |
+| 安全 | 补 `will-navigate` 拦截 + `setPermissionRequestHandler` 全拒（同窗口导航曾可把 preload API 带去外站） |
+| 清理 | 死代码移除（`lastTest`、`lastUserText`、CLI `cwd` 入参、launch 即时 verify）；settings.json 手编注释不再导致整份设置被重置 |
 
 自检小工具：dev 期 main 进程开 CDP（`127.0.0.1:9223`），可用 `curl http://127.0.0.1:9223/json` 连上后 `Runtime.evaluate` 直接驱动 UI；renderer 的 console 也会转发到终端。

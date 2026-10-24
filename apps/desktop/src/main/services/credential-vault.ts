@@ -13,7 +13,7 @@
 import { safeStorage } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { atomicWriteJson, readJson } from './storage'
+import { atomicWriteJson, readJson } from '@tick/storage'
 
 interface VaultFile {
   version: 1
@@ -37,11 +37,8 @@ export class CredentialVault {
     }
   }
 
-  hasKey(): boolean {
-    return fs.existsSync(this.file)
-  }
-
-  /** 读出明文 key；没有/解密失败一律 undefined（失败不留半个可用状态） */
+  /** 读出明文 key；没有/解密失败一律 undefined（失败不留半个可用状态）。
+   *  「有没有 key」一律用 readKey() !== undefined 判定——文件存在但密文损坏必须算没有。 */
   readKey(): string | undefined {
     if (!this.isAvailable()) return undefined
     try {

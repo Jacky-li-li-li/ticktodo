@@ -213,12 +213,6 @@ export function ProviderSettings({
           {!formError && testResult && (
             <div className={`provider-status ${testResult.ok ? 'ok' : 'bad'}`}>{testResult.message}</div>
           )}
-          {!formError && !testResult && config?.lastTest && (
-            <div className={`provider-status ${config.lastTest.ok ? 'ok' : 'bad'}`}>
-              {config.lastTest.ok ? '上次测试通过：' : '上次测试：'}
-              {config.lastTest.message}
-            </div>
-          )}
 
           <div className="sheet-note">
             Key 只经系统钥匙串加密存储（~/.ticktodo 与同步层里永远不出现 Key）；Endpoint 与模型名存

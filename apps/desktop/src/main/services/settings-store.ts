@@ -5,9 +5,10 @@
  * 只做白名单字段合并，避免 renderer/旧版本写入未知字段把文件搞坏。
  */
 
+import fs from 'node:fs'
 import type { AppSettings, CustomProviderConfig, DefaultProjectSetting, LaunchDeliverSetting } from '@tick/shared'
 import { DEFAULT_SETTINGS } from '@tick/shared'
-import { atomicWriteJson, readJson } from './storage'
+import { atomicWriteJson, parseJsonc } from '@tick/storage'
 
 interface SettingsFile {
   version: 1
@@ -28,13 +29,6 @@ function normalizeProvider(raw: CustomProviderConfig | null | undefined): Custom
     keyStored: raw.keyStored === true,
   }
   if (typeof raw.name === 'string' && raw.name.trim()) config.name = raw.name.trim()
-  if (raw.lastTest && typeof raw.lastTest === 'object') {
-    config.lastTest = {
-      ok: raw.lastTest.ok === true,
-      message: typeof raw.lastTest.message === 'string' ? raw.lastTest.message : '',
-      at: typeof raw.lastTest.at === 'string' ? raw.lastTest.at : new Date().toISOString(),
-    }
-  }
   return config
 }
 
@@ -42,7 +36,19 @@ export class SettingsStore {
   private settings: AppSettings
 
   constructor(private file: string) {
-    this.settings = normalize(readJson<SettingsFile>(file)?.settings)
+    this.settings = normalize(SettingsStore.read(file)?.settings)
+  }
+
+  /**
+   * settings.json 允许手编（jsonc：注释/尾逗号都能容），解析失败 = undefined → 走默认值。
+   * 用户手编加了注释不应导致整份设置被「重置成默认」再覆盖回去。
+   */
+  private static read(file: string): SettingsFile | undefined {
+    try {
+      return parseJsonc(fs.readFileSync(file, 'utf8')) as SettingsFile | undefined
+    } catch {
+      return undefined
+    }
   }
 
   get(): AppSettings {

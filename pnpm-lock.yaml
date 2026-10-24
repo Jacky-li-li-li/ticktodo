@@ -28,6 +28,9 @@ importers:
       '@tick/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@tick/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@tick/tick-extension':
         specifier: workspace:*
         version: link:../../packages/tick-extension
@@ -96,6 +99,9 @@ importers:
       '@tick/shared':
         specifier: workspace:*
         version: link:../../shared
+      '@tick/storage':
+        specifier: workspace:*
+        version: link:../../storage
     devDependencies:
       typescript:
         specifier: ^5.6.0
@@ -114,6 +120,13 @@ importers:
         version: 5.9.3
 
   packages/tick-extension:
+    dependencies:
+      '@tick/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@tick/storage':
+        specifier: workspace:*
+        version: link:../storage
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 1.3.0

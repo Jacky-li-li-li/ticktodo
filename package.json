@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "pnpm --filter @tick/tick-extension build && pnpm --filter @tick/desktop dev",
     "build": "pnpm -r --if-present build",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "node --test --experimental-strip-types --experimental-transform-types \"packages/**/test/*.test.ts\" \"packages/ai/*/test/*.test.ts\" \"apps/desktop/test/*.test.mts\""
   },
   "engines": {
     "node": ">=22.19.0"

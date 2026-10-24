@@ -183,7 +183,9 @@ export function computeUsageFromFile(file: string, inheritedEntries = 0): Sessio
   }
 }
 
-/** 从文件 header 的 parentSession 推算继承段条数（源文件不在本机 → 0） */
+/** 从文件 header 的 parentSession 推算继承段条数（源文件不在本机 → 0）。
+ *  口径 = 源文件**非 header 条目数**（与 scripts/session-usage.mjs 的「行数 - 1」在完好文件上等价，
+ *  但对坏行更稳：坏行既不算继承条目，也不算本文件的条目） */
 export function inheritedEntriesOf(parentSessionPath: string | undefined): number {
   if (!parentSessionPath || !existsSync(parentSessionPath)) return 0
   try {

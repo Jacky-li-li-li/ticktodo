@@ -4,6 +4,7 @@
  */
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import path from 'node:path'
 import type {
   AppSettings,
   ChatState,
@@ -20,6 +21,7 @@ import type {
   TodoPatch,
   TodoSessionView,
 } from '@tick/shared'
+import { sanitizeTodoPatch } from '@tick/shared'
 import {
   ChatIpc,
   ExportIpc,
@@ -77,11 +79,15 @@ export function registerIpc(
   ipcMain.handle(TodosIpc.list, (): Todo[] => store.list())
 
   ipcMain.handle(TodosIpc.create, (_e, input: TodoCreateInput): Todo => {
+    if (typeof input?.title !== 'string') throw new Error('标题必须是字符串')
     return store.create(input)
   })
 
+  // patch 在边界白名单归一化：非法形状（未知 status/任意 addBinding）不进 store、不落盘
   ipcMain.handle(TodosIpc.update, (_e, args: { id: string; patch: TodoPatch }): Todo => {
-    return store.update(args.id, args.patch)
+    const patch = sanitizeTodoPatch(args?.patch)
+    if (!patch) throw new Error('没有可应用的合法更新字段')
+    return store.update(args.id, patch)
   })
 
   ipcMain.handle(TodosIpc.remove, (_e, id: string): void => {
@@ -176,7 +182,11 @@ export function registerIpc(
     return services.exportService.run(req)
   })
   ipcMain.handle(ExportIpc.reveal, async (_e, filePath: string): Promise<void> => {
-    shell.showItemInFolder(filePath)
+    // 只允许定位导出产物：renderer 被攻破时也不能拿它当任意文件的 Finder 探针
+    if (!services.exportService.isInsideExports(filePath)) {
+      throw new Error('只能定位 exports/ 里的导出产物')
+    }
+    shell.showItemInFolder(path.resolve(filePath))
   })
 
   // ---------- 用量（F6-b；默认关） ----------

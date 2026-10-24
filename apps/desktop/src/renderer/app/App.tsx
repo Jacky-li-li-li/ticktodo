@@ -34,8 +34,10 @@ export default function App(): React.JSX.Element {
   const { todos, create, patch, setStatus, remove, refresh: refreshTodos } = useTodos()
   const { projects, refresh: refreshProjects } = useProjects()
   const { settings, update: updateSettings } = useSettings()
-  const open = todos.filter((t) => t.status === 'open')
-  const done = todos.filter((t) => t.status === 'done')
+  // 最近改动/拉起的在前（updatedAt 降序）：新建线索不再沉底，默认 5 条看到的总是正在发生的
+  const byRecency = (a: Todo, b: Todo): number => b.updatedAt.localeCompare(a.updatedAt)
+  const open = todos.filter((t) => t.status === 'open').sort(byRecency)
+  const done = todos.filter((t) => t.status === 'done').sort(byRecency)
 
   const [view, setView] = useState<View>('threads')
   const [toast, setToast] = useState<{ text: string; onUndo?: () => void } | null>(null)
@@ -112,8 +114,12 @@ export default function App(): React.JSX.Element {
   )
 
   const archive = useCallback(
-    (todo: Todo) => {
-      void setStatus(todo.id, 'done')
+    async (todo: Todo) => {
+      const ok = await setStatus(todo.id, 'done')
+      if (!ok) {
+        showToast('归档失败：todos.json 可能被占用')
+        return
+      }
       showToast(`已归档「${todo.title}」`, () => {
         void setStatus(todo.id, 'open')
         setToast(null)
@@ -123,9 +129,9 @@ export default function App(): React.JSX.Element {
   )
 
   const restore = useCallback(
-    (todo: Todo) => {
-      void setStatus(todo.id, 'open')
-      showToast(`已恢复「${todo.title}」`)
+    async (todo: Todo) => {
+      const ok = await setStatus(todo.id, 'open')
+      showToast(ok ? `已恢复「${todo.title}」` : '恢复失败：todos.json 可能被占用')
     },
     [setStatus, showToast],
   )
@@ -150,17 +156,22 @@ export default function App(): React.JSX.Element {
         return Boolean(updated)
       }}
       onSetStatus={(status) => {
-        void setStatus(todo.id, status)
-        setDetail(null)
-        // §4.3：归档 toast 必须带撤销（列表勾选与卡片勾选同口径）
-        if (status === 'done') {
-          showToast(`已归档「${todo.title}」`, () => {
-            void setStatus(todo.id, 'open')
-            setToast(null)
-          })
-        } else {
-          showToast('已恢复')
-        }
+        void setStatus(todo.id, status).then((ok) => {
+          if (!ok) {
+            showToast('操作失败：todos.json 可能被占用')
+            return
+          }
+          setDetail(null)
+          // §4.3：归档 toast 必须带撤销（列表勾选与卡片勾选同口径）
+          if (status === 'done') {
+            showToast(`已归档「${todo.title}」`, () => {
+              void setStatus(todo.id, 'open')
+              setToast(null)
+            })
+          } else {
+            showToast('已恢复')
+          }
+        })
       }}
       onDelete={() => {
         void remove(todo.id).then((ok) => {

@@ -18,7 +18,7 @@ import type { ProjectEntry, ProjectSource } from '@tick/ai-core'
 import { canonicalPath, mergeProjects, sortEntries } from '@tick/ai-core'
 import type { PiAdapter } from '@tick/ai-pi'
 import { collectJsonlFiles, readFirstLineHeader, type SessionRoot } from '@tick/ai-pi'
-import { atomicWriteJson, readJson } from './storage'
+import { atomicWriteJson, readJson } from '@tick/storage'
 
 interface CachedFileMeta {
   size: number
@@ -95,7 +95,7 @@ export class ProjectIndexService {
         const seen = new Set<string>()
 
         for (const root of this.sessionRoots()) {
-          for (const file of collectJsonlFiles(root.dir)) {
+          for (const file of await collectJsonlFiles(root.dir)) {
             seen.add(file)
             let st
             try {

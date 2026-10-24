@@ -8,65 +8,27 @@
  *    - 面板 Chat → src/durable.ts（pi-durable defineTool）
  *
  * 与 Main 侧的契约（TECH-ARCH §7）：同一份 todos.json、原子写、文件锁。
+ * 锁 / 原子写 / TICK_HOME 解析 / Todo 模型 / 解析校验都在共享包
+ * （@tick/storage、@tick/shared）——两边手抄合同的时代已经证明会漂移出丢写 bug。
  */
 
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-
-export interface TodoBinding {
-  toolId: string
-  sessionId: string
-  boundAt: string
-  state?: 'pending' | 'verified'
-}
-
-export interface LastLaunchRecord {
-  toolId: string
-  projectPath: string
-  launchedAt?: string
-}
-
-export interface TodoRecord {
-  id: string
-  title: string
-  body?: string
-  status: 'open' | 'done'
-  createdAt: string
-  updatedAt: string
-  bindings: TodoBinding[]
-  primarySessionId?: string
-  lastLaunch?: LastLaunchRecord
-  source?: 'panel' | 'pi'
-  requestId?: string
-}
-
-interface TodosFile {
-  version: 1
-  todos: TodoRecord[]
-}
+import type { SessionBinding, Todo } from '@tick/shared'
+import { newCliSessionId, parseTodosFile } from '@tick/shared'
+import { FileLock, resolveTickHome, todosFilePath, writeFileAtomic } from '@tick/storage'
 
 export interface CreateTodoInput {
   title: string
   body?: string
   /** 当前 pi 会话 id（有则绑定；一个 session 最多绑一个 todo） */
   sessionId?: string
-  /** 当前工作目录（仅记录在 body 里，不当作项目主键写入） */
-  cwd?: string
   source?: 'panel' | 'pi'
   requestId?: string
 }
 
-export function resolveTickHome(): string {
-  return process.env.TICK_HOME?.trim() || path.join(os.homedir(), '.ticktodo')
-}
-
-export function todosFilePath(home = resolveTickHome()): string {
-  return path.join(home, 'data', 'todos.json')
-}
-
-function backupCorrupt(file: string): string | undefined {
+export function backupCorrupt(file: string): string | undefined {
   try {
     const backup = `${file}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`
     fs.copyFileSync(file, backup)
@@ -86,15 +48,11 @@ function backupCorrupt(file: string): string | undefined {
  * 数据层是「致命」层，不能静默把用户数据覆盖掉（至少留一份可人工恢复的原件）。
  * 只读路径（listTodos）不触发备份，避免读操作产生副作用。
  */
-function readFile(file: string, backupOnCorrupt = false): TodosFile {
+function readFile(file: string, backupOnCorrupt = false): { version: 1; todos: Todo[] } {
   if (!fs.existsSync(file)) return { version: 1, todos: [] }
+  let raw: unknown
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as TodosFile
-    if (!parsed || !Array.isArray(parsed.todos)) {
-      if (backupOnCorrupt) console.error(`[tick] todos.json 结构非法：${backupCorrupt(file) ?? file}`)
-      return { version: 1, todos: [] }
-    }
-    return { version: 1, todos: parsed.todos }
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'))
   } catch (err) {
     if (backupOnCorrupt) {
       const backup = backupCorrupt(file)
@@ -102,85 +60,30 @@ function readFile(file: string, backupOnCorrupt = false): TodosFile {
     }
     return { version: 1, todos: [] }
   }
-}
-
-/** 原子写：tmp + fsync + rename（与 Main 侧 storage.ts 同款语义） */
-function writeFileAtomic(file: string, data: TodosFile): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
-  const fd = fs.openSync(tmp, 'w', 0o600)
-  try {
-    fs.writeFileSync(fd, JSON.stringify(data, null, 2) + '\n')
-    fs.fsyncSync(fd)
-  } finally {
-    fs.closeSync(fd)
+  const parsed = parseTodosFile(raw)
+  if (!parsed) {
+    if (backupOnCorrupt) console.error(`[tick] todos.json 结构非法：${backupCorrupt(file) ?? file}`)
+    return { version: 1, todos: [] }
   }
-  fs.renameSync(tmp, file)
-  try {
-    fs.chmodSync(file, 0o600)
-  } catch {
-    /* 忽略 */
-  }
-}
-
-/**
- * O_EXCL 目录锁；5s 视为陈旧锁（进程崩了留下的）。
- *
- * ⚠️ 锁文件名必须与 Main 的 services/storage.ts 完全一致（`<file>.lock`），
- * 否则两套运行时各锁各的 = 没有互斥（实测 Main/extension 并发 240 次写丢 117 条）。
- * 锁内容 = `<pid>:<uuid>` token；释放只删自己持有的锁。
- */
-function acquireLock(lockPath: string, timeoutMs = 5000): string {
-  const start = Date.now()
-  for (;;) {
-    const token = `${process.pid}:${randomUUID()}`
-    try {
-      fs.writeFileSync(lockPath, token, { flag: 'wx', mode: 0o600 })
-      return token
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code
-      if (code !== 'EEXIST') throw err
-      try {
-        const st = fs.statSync(lockPath)
-        if (Date.now() - st.mtimeMs > timeoutMs) {
-          fs.rmSync(lockPath, { force: true })
-          continue
-        }
-      } catch {
-        continue
-      }
-      if (Date.now() - start > timeoutMs) throw new Error(`todos.json 被锁定超过 ${timeoutMs}ms`)
-      // 同步等待一小段（extension 里不能 await 一个纯同步 API）
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15)
-    }
-  }
-}
-
-function releaseLock(lockPath: string, token: string): void {
-  try {
-    if (fs.readFileSync(lockPath, 'utf8') !== token) return
-    fs.rmSync(lockPath, { force: true })
-  } catch {
-    /* 忽略 */
-  }
+  return parsed
 }
 
 /** 锁内读改写；`dirty=false` 时不写文件（命中幂等键时避免无谓写 + 触发 watcher） */
 function withLockedFile<T>(
   file: string,
-  fn: (data: TodosFile) => { result: T; dirty: boolean },
+  fn: (data: { version: 1; todos: Todo[] }) => { result: T; dirty: boolean },
 ): T {
   // 锁文件要和 data 目录同生：首次运行时目录还不存在（ENOENT 不是"抢不到锁"）
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
-  const lockPath = `${file}.lock`
-  const token = acquireLock(lockPath)
+  const lock = new FileLock(file)
+  if (!lock.acquire()) throw new Error(`todos.json 被其他进程持有超过预算（${file}）`)
   try {
     const data = readFile(file, true)
     const { result, dirty } = fn(data)
-    if (dirty) writeFileAtomic(file, data)
+    if (dirty) writeFileAtomic(file, `${JSON.stringify(data, null, 2)}\n`)
     return result
   } finally {
-    releaseLock(lockPath, token)
+    lock.release()
   }
 }
 
@@ -188,12 +91,15 @@ function withLockedFile<T>(
  * 建一条线索。
  * 幂等：requestId 命中或同一 session 已绑过 todo → 直接返回既有那条（不重复建）。
  */
-export function createTodo(input: CreateTodoInput, home = resolveTickHome()): { todo: TodoRecord; created: boolean } {
+export function createTodo(
+  input: CreateTodoInput,
+  home = resolveTickHome(),
+): { todo: Todo; created: boolean } {
   const title = (input.title ?? '').trim()
   if (!title) throw new Error('标题为空不可保存')
 
   const file = todosFilePath(home)
-  return withLockedFile<{ todo: TodoRecord; created: boolean }>(file, (data) => {
+  return withLockedFile<{ todo: Todo; created: boolean }>(file, (data) => {
     const now = new Date().toISOString()
 
     const existing = data.todos.find(
@@ -204,17 +110,23 @@ export function createTodo(input: CreateTodoInput, home = resolveTickHome()): { 
     // 命中幂等键 / 同会话：直接返回既有那条，且不写文件（避免无谓 write 触发 Main 的 fs.watch）
     if (existing) return { result: { todo: existing, created: false }, dirty: false }
 
-    const todo: TodoRecord = {
+    const binding: SessionBinding | undefined = input.sessionId
+      ? {
+          toolId: 'pi',
+          sessionId: newCliSessionId(input.sessionId),
+          boundAt: now,
+          state: 'verified',
+        }
+      : undefined
+    const todo: Todo = {
       id: randomUUID(),
       title,
       body: (input.body ?? '').trim() || undefined,
       status: 'open',
       createdAt: now,
       updatedAt: now,
-      bindings: input.sessionId
-        ? [{ toolId: 'pi', sessionId: input.sessionId, boundAt: now, state: 'verified' }]
-        : [],
-      primarySessionId: input.sessionId,
+      bindings: binding ? [binding] : [],
+      primarySessionId: binding?.sessionId,
       source: input.source ?? 'pi',
       requestId: input.requestId,
     }
@@ -226,7 +138,7 @@ export function createTodo(input: CreateTodoInput, home = resolveTickHome()): { 
 export function listTodos(
   options: { status?: 'open' | 'done' | 'all'; limit?: number } = {},
   home = resolveTickHome(),
-): TodoRecord[] {
+): Todo[] {
   const status = options.status ?? 'open'
   const all = readFile(todosFilePath(home)).todos
   const filtered = status === 'all' ? all : all.filter((t) => t.status === status)
@@ -234,7 +146,7 @@ export function listTodos(
 }
 
 /** 形状校验：给 extension 的返回文案用，避免把内部字段全吐给模型 */
-export function describeTodo(t: TodoRecord): string {
+export function describeTodo(t: Todo): string {
   const bind = t.primarySessionId ? ` · 会话 ${t.primarySessionId.slice(0, 8)}` : ''
   return `${t.status === 'done' ? '[已完成] ' : ''}${t.title}${bind}`
 }

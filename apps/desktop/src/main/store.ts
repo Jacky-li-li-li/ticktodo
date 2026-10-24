@@ -4,15 +4,17 @@
  * PRD §6 业务规则落点：
  *  1. 标题为空不可保存；
  *  2. 完成只改状态（open/done），绑定不清空；删除 todo 默认解绑（M0 无绑定入口，结构先留）；
- *  3. todos.json = 原子写 + 文件锁（与 M2 的 CLI extension 共写同一份）；
- *  4. 数据格式带 version，缺失目录启动按需创建。
+ *  3. todos.json = 原子写 + 文件锁（与 M2 的 CLI extension 共写同一份；锁/原子写在 @tick/storage）；
+ *  4. 数据格式带 version；业务规则 4（一个 session 最多绑一个 todo）在**锁内**强制，
+ *     不依赖调用方先查后写（先查后写跨 await 会被并发 IPC 穿透）。
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Todo, TodoCreateInput, TodoPatch } from '@tick/shared'
-import { atomicWriteJson, FileLock } from './services/storage'
+import { parseTodosFile } from '@tick/shared'
+import { FileLock, atomicWriteJson } from '@tick/storage'
 
 interface TodosFile {
   version: 1
@@ -27,22 +29,25 @@ export class TodoStore {
   }
 
   /**
-   * 读 todos.json。解析失败 = 数据层坏了（PRD 把 data/ 定为「致命」层）：
+   * 读 todos.json。整体结构坏（解析失败/version 不支持）= 数据层坏了：
    * 先把原文件备份成 `<file>.corrupt-<ts>` 再返回空表，避免下一次写入把用户数据静默覆盖掉。
+   * 个别坏条目由 parseTodosFile 丢弃（标题类数据不整体报废）。
    */
   private load(): TodosFile {
     if (!fs.existsSync(this.file)) return { version: 1, todos: [] }
+    let raw: unknown
     try {
-      const parsed = JSON.parse(fs.readFileSync(this.file, 'utf8')) as TodosFile
-      if (!parsed || !Array.isArray(parsed.todos)) {
-        this.backupCorrupt()
-        return { version: 1, todos: [] }
-      }
-      return { version: 1, todos: parsed.todos }
+      raw = JSON.parse(fs.readFileSync(this.file, 'utf8'))
     } catch (err) {
       this.backupCorrupt(err)
       return { version: 1, todos: [] }
     }
+    const parsed = parseTodosFile(raw)
+    if (!parsed) {
+      this.backupCorrupt()
+      return { version: 1, todos: [] }
+    }
+    return parsed
   }
 
   private backupCorrupt(err?: unknown): void {
@@ -114,8 +119,12 @@ export class TodoStore {
       if (patch.lastLaunch !== undefined) found.lastLaunch = patch.lastLaunch
       if (patch.primarySessionId !== undefined) found.primarySessionId = patch.primarySessionId
       if (patch.addBinding) {
-        // 业务规则 4：一个 session 最多绑一个 todo（M0 只成长结构，去重校验靠 M3 的绑定 UI）
         const b = patch.addBinding
+        // 业务规则 4（锁内强制）：该 session 已归属其它 todo 时拒绝，不靠调用方先查后写
+        const owner = data.todos.find(
+          (t) => t.id !== found.id && t.bindings.some((x) => x.sessionId === b.sessionId),
+        )
+        if (owner) throw new Error(`这条会话已绑定到「${owner.title}」`)
         const existing = found.bindings.find((x) => x.sessionId === b.sessionId && x.toolId === b.toolId)
         if (existing) {
           // pending → verified 对账 / S5 绑定会重复走 patch；已有绑定只更新状态与 filePath 提示

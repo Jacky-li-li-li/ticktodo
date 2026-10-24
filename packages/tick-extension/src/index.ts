@@ -49,7 +49,6 @@ export default function tickExtension(pi: ExtensionAPI): void {
         title: params.title,
         body: params.body ?? (ctx.cwd ? `工作目录：${ctx.cwd}` : undefined),
         sessionId,
-        cwd: ctx.cwd,
         source: 'pi',
       })
       return {

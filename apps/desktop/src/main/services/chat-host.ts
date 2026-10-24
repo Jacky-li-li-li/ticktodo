@@ -50,7 +50,6 @@ export class ChatAgentHost {
   private root?: Conversation
   private view?: AttachedView
   private state: ChatState = { status: 'unavailable', messages: [] }
-  private lastUserText = ''
   private closed = false
 
   constructor(private deps: ChatHostDeps) {}
@@ -186,7 +185,6 @@ export class ChatAgentHost {
     if (!this.root) throw new Error(this.state.reason ?? '面板对话尚未就绪')
     const content = text.trim()
     if (!content) return
-    this.lastUserText = content
     const submission = await this.root.submit({ type: 'input', content, requestId }, BACKGROUND_CONTEXT)
 
     // 失败必须有反馈：模型/网络/凭据问题在 durable 里是 unanswered，不抛异常
@@ -232,7 +230,6 @@ export class ChatAgentHost {
   async reset(): Promise<void> {
     if (!this.root) return
     await this.root.reset(undefined, BACKGROUND_CONTEXT)
-    this.lastUserText = ''
     this.publish({ messages: [], status: 'idle' })
   }
 

@@ -48,6 +48,10 @@
       {
         "from": "build/trayTemplate@2x.png",
         "to": "trayTemplate@2x.png"
+      },
+      {
+        "from": "../tick-extension/dist/index.js",
+        "to": "tick-extension/index.js"
       }
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}",
@@ -66,6 +70,7 @@
     "@tick/ai-core": "workspace:*",
     "@tick/ai-pi": "workspace:*",
     "@tick/shared": "workspace:*",
+    "@tick/storage": "workspace:*",
     "@tick/tick-extension": "workspace:*",
     "@tick/ui": "workspace:*",
     "openai": "7.19.0",

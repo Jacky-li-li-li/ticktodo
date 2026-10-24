@@ -9,7 +9,7 @@
 import type { CliSessionId, SessionView, Todo, TodoSessionView } from '@tick/shared'
 import { newCliSessionId } from '@tick/shared'
 import type { SessionSummary } from '@tick/ai-core'
-import { canonicalPath } from '@tick/ai-core'
+import { canonicalPath, gitRootOf } from '@tick/ai-core'
 import type { PiAdapter } from '@tick/ai-pi'
 import type { TodoStore } from '../store'
 
@@ -77,9 +77,17 @@ export class SessionService {
       for (const b of todo.bindings) bound.set(b.sessionId, todo)
     }
     const wantProject = opts.projectPath ? canonicalPath(opts.projectPath) : undefined
+    // 项目过滤与项目索引同口径：cwd 是仓库子目录（monorepo）的会话要上卷到 git 根再比
+    const gitRoots = new Map<string, string | undefined>()
+    const matchesProject = (cwd: string): boolean => {
+      const canonical = canonicalPath(cwd)
+      if (canonical === wantProject) return true
+      if (!gitRoots.has(canonical)) gitRoots.set(canonical, gitRootOf(canonical) ?? undefined)
+      return gitRoots.get(canonical) === wantProject
+    }
     const views: SessionView[] = []
     for (const s of summaries) {
-      if (wantProject && canonicalPath(s.cwd) !== wantProject) continue
+      if (wantProject && !matchesProject(s.cwd)) continue
       const owner = bound.get(s.sessionId)
       if (opts.unboundOnly && owner) continue
       views.push({
@@ -145,17 +153,22 @@ export class SessionService {
     const title = (s.name ?? s.firstMessage ?? `会话 ${sessionId.slice(0, 8)}`).trim()
     const todo = this.store.create({ title })
     const now = new Date().toISOString()
-    this.store.update(todo.id, {
-      addBinding: {
-        toolId: s.toolId,
-        sessionId,
-        boundAt: now,
-        state: 'verified',
-        filePath: s.filePath,
-      },
-      primarySessionId: sessionId,
-      lastLaunch: { toolId: s.toolId, projectPath: s.cwd, launchedAt: now },
-    })
+    try {
+      this.store.update(todo.id, {
+        addBinding: {
+          toolId: s.toolId,
+          sessionId,
+          boundAt: now,
+          state: 'verified',
+          filePath: s.filePath,
+        },
+        primarySessionId: sessionId,
+        lastLaunch: { toolId: s.toolId, projectPath: s.cwd, launchedAt: now },
+      })
+    } catch (err) {
+      // create 与 update 是两次加锁：中间被并发抢先绑定时，store 会拒绝（规则 4）而不是产生双绑定
+      return { ok: false, reason: (err as Error).message }
+    }
     this.cache = undefined
     return { ok: true, todo: this.store.list().find((t) => t.id === todo.id) }
   }
@@ -173,17 +186,22 @@ export class SessionService {
     if (!s) return { ok: false, reason: '会话已不在本机' }
 
     const now = new Date().toISOString()
-    this.store.update(todoId, {
-      addBinding: {
-        toolId: s.toolId,
-        sessionId,
-        boundAt: now,
-        state: 'verified',
-        filePath: s.filePath,
-      },
-      primarySessionId: sessionId,
-      lastLaunch: { toolId: s.toolId, projectPath: s.cwd, launchedAt: now },
-    })
+    try {
+      this.store.update(todoId, {
+        addBinding: {
+          toolId: s.toolId,
+          sessionId,
+          boundAt: now,
+          state: 'verified',
+          filePath: s.filePath,
+        },
+        primarySessionId: sessionId,
+        lastLaunch: { toolId: s.toolId, projectPath: s.cwd, launchedAt: now },
+      })
+    } catch (err) {
+      // store 在锁内查重（规则 4）：并发 bind 的后到者在这里被拒，而不是双写
+      return { ok: false, reason: (err as Error).message }
+    }
     this.cache = undefined
     return { ok: true, todo: this.store.list().find((t) => t.id === todoId) }
   }

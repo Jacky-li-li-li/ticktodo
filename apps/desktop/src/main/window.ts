@@ -14,7 +14,7 @@ import { app, BrowserWindow, Menu, screen } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import type { TickDirs } from './services/storage'
-import { readJson } from './services/storage'
+import { readJson } from '@tick/storage'
 
 export const DEFAULT_W = 360
 export const DEFAULT_H = 520
@@ -95,8 +95,22 @@ export function createPanelWindow(dirs: TickDirs): BrowserWindow {
   // 无记忆时的默认位：右上角，避菜单栏 + 距边 16
   const defaultX = wa.x + wa.width - state.width - EDGE
   const defaultY = wa.y + EDGE
-  const x = state.x === undefined ? defaultX : state.x
-  const y = state.y === undefined ? defaultY : state.y
+  // 恢复的坐标必须落在当前任一 display 的 workArea 里：拔掉外接屏后旧坐标会把
+  // 面板送出屏幕（纯菜单栏应用没有 Dock 图标，用户唯一的自救是删 window-state.json）
+  const onScreen =
+    state.x !== undefined &&
+    state.y !== undefined &&
+    screen.getAllDisplays().some((d) => {
+      const a = d.workArea
+      return (
+        state.x! >= a.x &&
+        state.x! < a.x + a.width &&
+        state.y! >= a.y &&
+        state.y! < a.y + a.height
+      )
+    })
+  const x = onScreen ? state.x : defaultX
+  const y = onScreen ? state.y : defaultY
 
   const win = new BrowserWindow({
     width: state.width,

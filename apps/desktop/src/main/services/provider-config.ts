@@ -62,7 +62,8 @@ export class ProviderConfigService {
 
     if (input.apiKey !== undefined && input.apiKey.trim() !== '') {
       this.vault.saveKey(input.apiKey.trim())
-    } else if (!this.vault.hasKey()) {
+    } else if (this.vault.readKey() === undefined) {
+      // 用 readKey 判定而不是「文件存在」：密文损坏时也能在这里给出明确指引，而不是存完才发现面板不可用
       throw new Error('还没有保存过 API Key（首次保存需要填写）')
     }
 
@@ -71,11 +72,10 @@ export class ProviderConfigService {
       baseUrl,
       model,
       name: input.name?.trim() || prev?.name || undefined,
-      keyStored: this.vault.hasKey(),
-      lastTest: prev?.lastTest ?? null,
+      keyStored: this.vault.readKey() !== undefined,
     }
     this.settings.update({ customProvider: config })
-    return this.get() as CustomProviderConfig
+    return config
   }
 
   /** 清除自配：key 与配置一起删，回到 pi 凭据 */

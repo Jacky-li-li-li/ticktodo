@@ -65,6 +65,8 @@ export interface TerminalOpenSpec {
   cwd: string
   executable: string
   args: string[]
+  /** 需要随脚本 export 的环境变量（如 TICK_HOME：Tick 用自定义数据根时 extension 必须看到同一个根） */
+  env?: Record<string, string>
 }
 
 export interface PiAdapterDeps {
@@ -195,7 +197,7 @@ export class PiAdapter implements AiToolAdapter {
       { sessionCount: number; lastUsedAt?: number; exists: boolean }
     >()
     for (const root of this.roots()) {
-      for (const file of collectJsonlFiles(root.dir)) {
+      for (const file of await collectJsonlFiles(root.dir)) {
         let st
         try {
           st = statSync(file)
@@ -230,7 +232,7 @@ export class PiAdapter implements AiToolAdapter {
     const wantCwd = cwd ? canonicalPath(cwd) : undefined
     const out: { ref: SessionRef; mtime: number }[] = []
     for (const root of this.roots()) {
-      for (const file of collectJsonlFiles(root.dir)) {
+      for (const file of await collectJsonlFiles(root.dir)) {
         try {
           if (statSync(file).size === 0) continue
         } catch {
@@ -258,7 +260,7 @@ export class PiAdapter implements AiToolAdapter {
   async listSessionInfos(): Promise<SessionSummary[]> {
     const out: SessionSummary[] = []
     for (const root of this.roots()) {
-      for (const file of collectJsonlFiles(root.dir)) {
+      for (const file of await collectJsonlFiles(root.dir)) {
         let st
         try {
           st = statSync(file)
@@ -292,14 +294,20 @@ export class PiAdapter implements AiToolAdapter {
   private async sessionMeta(file: string, mtimeMs: number, size: number): Promise<SessionMeta> {
     const cached = this.metaCache.get(file)
     if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached.meta
-    const meta = await readSessionMeta(file).catch(() => ({}))
-    this.metaCache.set(file, { mtimeMs, size, meta })
-    return meta
+    try {
+      const meta = await readSessionMeta(file)
+      this.metaCache.set(file, { mtimeMs, size, meta })
+      return meta
+    } catch {
+      // 读失败（文件正被截断/重写）不缓存：缓存空 meta 会让 name/lastMessage 在文件
+      // 下次变化前一直是空的（缓存投毒）
+      return {}
+    }
   }
 
   /** 单会话元数据（含 name/lastMessage —— 流式扫，按 mtime 缓存） */
   async describeSession(id: string, opts: { withName?: boolean } = {}): Promise<SessionInfo | undefined> {
-    const file = this.findFile(id)
+    const file = await this.findFile(id)
     if (!file) return undefined
     let st
     try {
@@ -336,7 +344,7 @@ export class PiAdapter implements AiToolAdapter {
 
   /** 单会话用量（F6-b；默认关，UI 打开且设置开启时才调） */
   async computeUsage(id: string): Promise<SessionUsage | undefined> {
-    const file = this.findFile(id)
+    const file = await this.findFile(id)
     if (!file) return undefined
     let st
     try {
@@ -364,7 +372,7 @@ export class PiAdapter implements AiToolAdapter {
     const retries = opts.retries ?? 4
     const intervalMs = opts.intervalMs ?? 700
     for (let i = 0; i <= retries; i++) {
-      const file = this.findFile(sessionId)
+      const file = await this.findFile(sessionId)
       if (file) {
         try {
           if (statSync(file).size > 0) return true
@@ -377,8 +385,8 @@ export class PiAdapter implements AiToolAdapter {
     return false
   }
 
-  private findFile(sessionId: string): string | undefined {
-    const hits = findSessionFilesById(sessionId, this.roots())
+  private async findFile(sessionId: string): Promise<string | undefined> {
+    const hits = await findSessionFilesById(sessionId, this.roots())
     return hits[0]
   }
 
@@ -413,23 +421,23 @@ export class PiAdapter implements AiToolAdapter {
     argv.push('--session-id', sessionId)
     if (ctx.name?.trim()) argv.push('--name', ctx.name.trim().slice(0, 80))
 
-    if (deliver === 'clipboard') this.deps.clipboardWrite?.(prompt)
-
     await this.openTerminal(cwd, exe, argv)
-    // 只做一次即时检查：剪贴板模式下这里必然 false（正常），由 LaunchService 的 pending 对账接手
-    const verified = await this.verify(sessionId, { retries: 0, intervalMs: 0 })
+    // 剪贴板在终端确实打开后才写：open 失败时不清掉用户剪贴板里的原内容
+    if (deliver === 'clipboard') this.deps.clipboardWrite?.(prompt)
+    // 新造的 UUID 此刻不可能已有会话文件，不做即时 verify（死代码）；
+    // 剪贴板/argv 两种投递都靠 LaunchService 的 pending 绑定 + 后台对账收敛
     return {
       toolId: this.id,
       sessionId: newCliSessionId(sessionId),
       cwd,
       delivered: deliver,
-      verified,
+      verified: false,
     }
   }
 
   async resume(sessionId: string, ctx: LaunchContext): Promise<LaunchResult> {
     // resume 前确认文件还在（业务规则：删除 todo 保留绑定，但会话文件可能已被手删）
-    const file = this.findFile(sessionId)
+    const file = await this.findFile(sessionId)
     if (!file) {
       throw new Error(`无法 resume：session 文件不存在（${sessionId}）`)
     }
