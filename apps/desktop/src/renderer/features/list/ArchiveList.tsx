@@ -1,6 +1,6 @@
 /**
  * ArchiveList — 归档页（PRD F2：完成只改状态；恢复 = 改回 open，绑定不清空）。
- * 与首页同构：点行进详情，悬停「恢复」，双击标题可改名。
+ * 与首页同构：点行进详情，悬停「恢复」。改名入口在详情页标题。
  */
 
 import React from 'react'
@@ -11,12 +11,10 @@ export function ArchiveList({
   todos,
   onRestore,
   onEnter,
-  onRename,
 }: {
   todos: Todo[]
   onRestore: (todo: Todo) => void
   onEnter: (todo: Todo) => void
-  onRename: (todo: Todo, title: string) => void
 }): React.JSX.Element {
   if (todos.length === 0) {
     return (
@@ -29,14 +27,7 @@ export function ArchiveList({
   return (
     <>
       {todos.map((todo) => (
-        <TodoRow
-          key={todo.id}
-          todo={todo}
-          done
-          onRestore={onRestore}
-          onEnter={onEnter}
-          onRename={onRename}
-        />
+        <TodoRow key={todo.id} todo={todo} done onRestore={onRestore} onEnter={onEnter} />
       ))}
     </>
   )

@@ -6,7 +6,7 @@
  * 常驻语义：关窗 = 隐藏（app 不退）；Cmd+Q 退出。
  */
 
-import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeImage, shell, Tray } from 'electron'
+import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -116,6 +116,10 @@ function applyTodoWindowMetrics(win: BrowserWindow | null, openCount: number): v
 }
 
 app.whenReady().then(() => {
+  // 单一浅色玻璃主题（黑字令牌，无深色适配）：把外观钉在 light，
+  // 避免系统深色模式下 fullscreen-ui vibrancy 把面板压暗、黑字失效。
+  nativeTheme.themeSource = 'light'
+
   // 纯菜单栏模式：不在 Dock 显示，只保留菜单栏 Tray 与全局快捷键。
   // 打包版另外在 electron-builder 的 mac.extendInfo 里写了 LSUIElement=true，
   // 避免启动瞬间先闪一下 Dock 图标；dev 下用 app.dock.hide() 等价处理。

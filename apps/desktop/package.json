@@ -33,7 +33,7 @@
         "zip"
       ],
       "identity": "Developer ID Application",
-      "darkModeSupport": true,
+      "darkModeSupport": false,
       "extendInfo": {
         "LSUIElement": true
       },
