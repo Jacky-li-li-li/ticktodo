@@ -180,17 +180,22 @@ export class SessionService {
     const title = (summary.name ?? summary.firstMessage ?? `会话 ${sessionId.slice(0, 8)}`).trim()
     const todo = this.store.create({ title })
     const now = new Date().toISOString()
-    this.store.update(todo.id, {
-      addBinding: {
-        toolId: summary.toolId,
-        sessionId,
-        boundAt: now,
-        state: 'verified',
-        filePath: summary.filePath,
-      },
-      primarySessionId: sessionId,
-      lastLaunch: { toolId: summary.toolId, projectPath: summary.cwd, launchedAt: now },
-    })
+    try {
+      this.store.update(todo.id, {
+        addBinding: {
+          toolId: summary.toolId,
+          sessionId,
+          boundAt: now,
+          state: 'verified',
+          filePath: summary.filePath,
+        },
+        primarySessionId: sessionId,
+        lastLaunch: { toolId: summary.toolId, projectPath: summary.cwd, launchedAt: now },
+      })
+    } catch (err) {
+      // create 与 update 两次加锁：中间被并发抢先绑定时，todo-core 会拒绝（规则 4）而不是产生双绑定
+      return { ok: false, reason: (err as Error).message }
+    }
     this.cache = undefined
     return { ok: true, todo: this.store.list().find((t) => t.id === todo.id) }
   }
@@ -206,17 +211,22 @@ export class SessionService {
       return { ok: false, todo: owner, reason: `这条会话已绑定到「${owner.title}」` }
     }
     const now = new Date().toISOString()
-    this.store.update(todoId, {
-      addBinding: {
-        toolId: summary.toolId,
-        sessionId,
-        boundAt: now,
-        state: 'verified',
-        filePath: summary.filePath,
-      },
-      primarySessionId: sessionId,
-      lastLaunch: { toolId: summary.toolId, projectPath: summary.cwd, launchedAt: now },
-    })
+    try {
+      this.store.update(todoId, {
+        addBinding: {
+          toolId: summary.toolId,
+          sessionId,
+          boundAt: now,
+          state: 'verified',
+          filePath: summary.filePath,
+        },
+        primarySessionId: sessionId,
+        lastLaunch: { toolId: summary.toolId, projectPath: summary.cwd, launchedAt: now },
+      })
+    } catch (err) {
+      // todo-core 在锁内查重（规则 4）：并发 bind 的后到者在这里被拒，而不是双写
+      return { ok: false, reason: (err as Error).message }
+    }
     this.cache = undefined
     return { ok: true, todo: this.store.list().find((t) => t.id === todoId) }
   }

@@ -101,6 +101,109 @@ export interface TodoPatch {
   lastLaunch?: LastLaunch
 }
 
+// ---------- 边界解析（外部数据 → 领域类型的唯一入口） ----------
+
+/**
+ * todos.json 是外部数据（手编/网盘合并/旧版本都可能写坏）：逐条校验后再进内存。
+ * 核心字段坏的条目丢弃；条目里个别坏 binding 丢弃、todo 本身保留（标题是最值钱的数据）。
+ * 返回 undefined = 整体结构坏（非对象/缺数组/version 不支持）→ 调用方走 corrupt 备份路径。
+ */
+export function parseTodosFile(raw: unknown): { version: 1; todos: Todo[] } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  if (r.version !== 1) return undefined // 未来版本按「结构非法」处理，上层备份原件
+  if (!Array.isArray(r.todos)) return undefined
+  const todos: Todo[] = []
+  for (const item of r.todos) {
+    const todo = coerceTodo(item)
+    if (todo) todos.push(todo)
+  }
+  return { version: 1, todos }
+}
+
+function coerceTodo(v: unknown): Todo | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const t = v as Record<string, unknown>
+  if (typeof t.id !== 'string' || !t.id) return undefined
+  if (typeof t.title !== 'string') return undefined
+  if (t.status !== 'open' && t.status !== 'done') return undefined
+  if (typeof t.createdAt !== 'string' || typeof t.updatedAt !== 'string') return undefined
+  const bindings = Array.isArray(t.bindings) ? t.bindings.map(coerceBinding).filter((b) => b) : []
+  const todo: Todo = {
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+    bindings: bindings as SessionBinding[],
+  }
+  if (typeof t.body === 'string') todo.body = t.body
+  if (typeof t.primarySessionId === 'string' && t.primarySessionId) {
+    todo.primarySessionId = newCliSessionId(t.primarySessionId)
+  }
+  if (isLastLaunch(t.lastLaunch)) todo.lastLaunch = t.lastLaunch
+  if (t.source === 'panel' || t.source === 'pi' || t.source === 'mcp') todo.source = t.source
+  if (typeof t.requestId === 'string') todo.requestId = t.requestId
+  if (isMcpOrigin(t.mcpOrigin)) todo.mcpOrigin = t.mcpOrigin
+  return todo
+}
+
+function coerceBinding(v: unknown): SessionBinding | undefined {
+  if (!isBindingShape(v)) return undefined
+  return v
+}
+
+function isBindingShape(v: unknown): v is SessionBinding {
+  if (!v || typeof v !== 'object') return false
+  const b = v as Record<string, unknown>
+  if (typeof b.toolId !== 'string' || !b.toolId) return false
+  if (typeof b.sessionId !== 'string' || !b.sessionId) return false
+  if (typeof b.boundAt !== 'string') return false
+  if (b.state !== undefined && b.state !== 'pending' && b.state !== 'verified') return false
+  if (b.filePath !== undefined && typeof b.filePath !== 'string') return false
+  if (b.origin !== undefined && b.origin !== 'mcp') return false
+  return true
+}
+
+function isLastLaunch(v: unknown): v is LastLaunch {
+  if (!v || typeof v !== 'object') return false
+  const l = v as Record<string, unknown>
+  if (typeof l.toolId !== 'string' || !l.toolId) return false
+  if (typeof l.projectPath !== 'string' || !l.projectPath) return false
+  if (l.launchedAt !== undefined && typeof l.launchedAt !== 'string') return false
+  return true
+}
+
+function isMcpOrigin(v: unknown): v is NonNullable<Todo['mcpOrigin']> {
+  if (!v || typeof v !== 'object') return false
+  const m = v as Record<string, unknown>
+  if (typeof m.toolId !== 'string' || !m.toolId) return false
+  if (typeof m.at !== 'string') return false
+  if (m.clientInfo !== undefined && typeof m.clientInfo !== 'string') return false
+  if (m.cwd !== undefined && typeof m.cwd !== 'string') return false
+  if (m.transcriptPath !== undefined && typeof m.transcriptPath !== 'string') return false
+  return true
+}
+
+/**
+ * IPC 边界的 TodoPatch 白名单归一化：renderer 传来的对象只保留合法字段。
+ * body 传空串合法（= 清空正文）；全部字段不合法时返回 undefined（调用方报错）。
+ */
+export function sanitizeTodoPatch(raw: unknown): TodoPatch | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const patch: TodoPatch = {}
+  if (typeof r.title === 'string') patch.title = r.title
+  if (typeof r.body === 'string') patch.body = r.body
+  if (r.status === 'open' || r.status === 'done') patch.status = r.status
+  if (isBindingShape(r.addBinding)) patch.addBinding = r.addBinding
+  if (typeof r.primarySessionId === 'string' && r.primarySessionId) {
+    patch.primarySessionId = newCliSessionId(r.primarySessionId)
+  }
+  if (isLastLaunch(r.lastLaunch)) patch.lastLaunch = r.lastLaunch
+  return Object.keys(patch).length > 0 ? patch : undefined
+}
+
 // ---------- 会话（S5 / 多会话绑定 UI） ----------
 
 /** 会话列表项（adapter 元数据 + Tick 侧绑定关系） */
