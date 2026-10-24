@@ -22,7 +22,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { SessionBinding, Todo, TodoPatch, TodoStatus } from '@tick/shared'
-import { newCliSessionId } from '@tick/shared'
+import { newCliSessionId, parseTodosFile } from '@tick/shared'
 
 // ---------- 类型 ----------
 
@@ -104,9 +104,71 @@ export function todosFilePath(home = resolveTickHome()): string {
   return path.join(home, 'data', 'todos.json')
 }
 
+/**
+ * 清理崩溃残留的写盘 `.tmp`（进程被 kill 后 rename 没跑完留下的）。
+ * data/ 是「建议同步」层，垃圾不清会被一起同步走。只删超龄 tmp；corrupt 备份与正式文件不动。
+ */
+export function cleanStaleTmp(dir: string, maxAgeMs = 60 * 60 * 1000): number {
+  let names: string[]
+  try {
+    names = fs.readdirSync(dir)
+  } catch {
+    return 0
+  }
+  let removed = 0
+  for (const name of names) {
+    if (!name.endsWith('.tmp')) continue
+    const file = path.join(dir, name)
+    try {
+      if (Date.now() - fs.statSync(file).mtimeMs > maxAgeMs) {
+        fs.rmSync(file, { force: true })
+        removed++
+      }
+    } catch {
+      /* 忽略 */
+    }
+  }
+  return removed
+}
+
 // ---------- 锁 / 原子写 ----------
 
 const STALE_LOCK_MS = 5_000
+
+function pidAlive(pid: number): boolean {
+  if (pid === process.pid) return true
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    // EPERM = 进程存在但属于其他用户；ESRCH = 不存在
+    return (e as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/**
+ * 陈旧判定（按证据收敛，不按等待时间猜）：
+ *  - token 里的 PID 已死 → 陈旧（崩溃残留立即可抢，不用干等 5s）；
+ *  - token 不可解析 → 退回文件年龄 > STALE_LOCK_MS（跨机器同步场景 PID 无意义）；
+ *  - PID 还活着 → 不陈旧。绝不抢活锁：抢活锁 = 两个写方同时读改写（丢写重现）。
+ */
+function lockIsStale(lockPath: string): boolean {
+  let token: string
+  try {
+    token = fs.readFileSync(lockPath, 'utf8').trim()
+  } catch {
+    return true // 锁刚被释放/消失 → 回到重试
+  }
+  const pid = Number.parseInt(token.split(':')[0] ?? '', 10)
+  if (!Number.isInteger(pid) || pid <= 0) {
+    try {
+      return Date.now() - fs.statSync(lockPath).mtimeMs > STALE_LOCK_MS
+    } catch {
+      return true
+    }
+  }
+  return !pidAlive(pid)
+}
 
 function acquireLock(lockPath: string, timeoutMs: number): string {
   const start = Date.now()
@@ -119,13 +181,8 @@ function acquireLock(lockPath: string, timeoutMs: number): string {
       const code = (e as NodeJS.ErrnoException).code
       if (code !== 'EEXIST') throw e
     }
-    try {
-      const st = fs.statSync(lockPath)
-      if (Date.now() - st.mtimeMs > STALE_LOCK_MS) {
-        fs.rmSync(lockPath, { force: true })
-        continue
-      }
-    } catch {
+    if (lockIsStale(lockPath)) {
+      fs.rmSync(lockPath, { force: true })
       continue
     }
     if (Date.now() - start > timeoutMs) {
@@ -169,12 +226,13 @@ function backupCorrupt(file: string): string | undefined {
 function readTodosFile(file: string, policy: { backup: boolean; onCorrupt: CorruptPolicy }): TodosFile {
   if (!fs.existsSync(file)) return { version: 1, todos: [] }
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as TodosFile).todos)) {
-      throw new Error('结构非法（缺少 todos 数组）')
-    }
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown
+    // version 不支持 / 缺 todos 数组 = 结构非法 → 走 corrupt 策略（备份原件，不能拿空表覆盖）
+    const parsed = parseTodosFile(raw)
+    if (!parsed) throw new Error('结构非法（version 不支持或缺少 todos 数组）')
     corruptBackupDone.delete(file)
-    return { version: 1, todos: (parsed as TodosFile).todos }
+    // 坏条目已被逐条丢弃（标题保住）；文件里的垃圾在下次 dirty 写时自然消失
+    return parsed
   } catch (e) {
     const backup = policy.backup ? backupCorrupt(file) : undefined
     if (policy.onCorrupt === 'throw') {

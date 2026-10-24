@@ -31,6 +31,8 @@ interface Resolved {
   projectPath: string
   projectName: string
   source: string
+  /** 非空 = 记忆/指定的目录已失效，已退回主目录（main 侧 resolveCwd 产出，UI 必须提示） */
+  degraded?: string
 }
 
 /**
@@ -175,16 +177,39 @@ export function AiPicker({
   const cwdLabel = (p: string): string =>
     home && p === home.projectPath ? '~' : p.replace(/^\/Users\/[^/]+/, '~')
 
+  // 主目录是 os.homedir()：resolveCwd() 不带 todoId 恒返回 home（与 ChatPanel 同口径）。
+  // 此前误把「已推导项目」写进 home，导致列表首项「主目录 ~」实际指向项目目录、真 home 被过滤掉。
+  useEffect(() => {
+    let alive = true
+    void window.tick.launch
+      .resolveCwd()
+      .then((r) => {
+        if (alive) setHome({ projectPath: r.projectPath, projectName: r.projectName, source: r.source })
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
   // 项目三级推导（launch:resolve-cwd）：绑定会话 cwd → lastLaunch → home
   useEffect(() => {
     let alive = true
-    void window.tick.launch.resolveCwd(todo.id).then((r) => {
-      if (!alive) return
-      const resolved = { projectPath: r.projectPath, projectName: r.projectName, source: r.source }
-      setResolved(resolved)
-      setHome({ projectPath: r.projectPath, projectName: '~', source: 'home' })
-      setMustAsk(Boolean(r.mustAsk))
-    })
+    void window.tick.launch
+      .resolveCwd(todo.id)
+      .then((r) => {
+        if (!alive) return
+        setResolved({
+          projectPath: r.projectPath,
+          projectName: r.projectName,
+          source: r.source,
+          degraded: r.degraded,
+        })
+        setMustAsk(Boolean(r.mustAsk))
+      })
+      .catch(() => {
+        /* IPC 失败：resolved 保持 null，项目行显示 … */
+      })
     return () => {
       alive = false
     }
@@ -342,9 +367,11 @@ export function AiPicker({
             <span className="ns-project-path">{resolved ? cwdLabel(resolved.projectPath) : ''}</span>
             <span className="chevron">改</span>
           </button>
-          {resolved?.source === 'home' && !mustAsk && (
+          {/* degraded 必须提示（验收 4.2）：目录失效被静默退回 home，用户要知道这件事 */}
+          {resolved?.degraded && <div className="ns-note warn">原目录已不存在，已退回主目录</div>}
+          {!resolved?.degraded && !mustAsk && resolved?.source === 'home' && (
             <div className="ns-note">
-              推导自上次项目{toolName ? `；打开后可在 ${toolName} 里切换目录` : ''}
+              没有更具体的项目，默认在主目录打开{toolName ? `；打开后可在 ${toolName} 里切换目录` : ''}
             </div>
           )}
           {mustAsk && resolved?.source === 'home' && (

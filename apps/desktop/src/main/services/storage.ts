@@ -84,9 +84,14 @@ export function ensureDirs(dirs: TickDirs): void {
 
 /** 原子写 JSON： tmp 同目录 + fsync + rename（同 FS rename 原子） */
 export function atomicWriteJson(file: string, value: unknown): void {
-  const tmp = `${file}.${process.pid}.tmp`
-  const data = JSON.stringify(value, null, 2)
-  const fd = fs.openSync(tmp, 'w', 0o600)
+  writeFileAtomic(file, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+/** 原子写文本/二进制：tmp 带 pid+时间戳防碰撞；掉电时 rename 本身的持久化由调用方语义兜底 */
+export function writeFileAtomic(file: string, data: string | Uint8Array, mode = 0o600): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
+  const fd = fs.openSync(tmp, 'w', mode)
   try {
     fs.writeFileSync(fd, data)
     fs.fsyncSync(fd)

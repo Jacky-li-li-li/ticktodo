@@ -186,7 +186,7 @@ export class PiAdapter implements AiToolAdapter {
       { sessionCount: number; lastUsedAt?: number; exists: boolean }
     >()
     for (const root of this.roots()) {
-      for (const file of collectJsonlFiles(root.dir)) {
+      for (const file of await collectJsonlFiles(root.dir)) {
         let st
         try {
           st = statSync(file)
@@ -221,7 +221,7 @@ export class PiAdapter implements AiToolAdapter {
     const wantCwd = cwd ? canonicalPath(cwd) : undefined
     const out: { ref: SessionRef; mtime: number }[] = []
     for (const root of this.roots()) {
-      for (const file of collectJsonlFiles(root.dir)) {
+      for (const file of await collectJsonlFiles(root.dir)) {
         try {
           if (statSync(file).size === 0) continue
         } catch {
@@ -249,7 +249,7 @@ export class PiAdapter implements AiToolAdapter {
   async listSessionInfos(): Promise<SessionSummary[]> {
     const out: SessionSummary[] = []
     for (const root of this.roots()) {
-      for (const file of collectJsonlFiles(root.dir)) {
+      for (const file of await collectJsonlFiles(root.dir)) {
         let st
         try {
           st = statSync(file)
@@ -283,14 +283,20 @@ export class PiAdapter implements AiToolAdapter {
   private async sessionMeta(file: string, mtimeMs: number, size: number): Promise<SessionMeta> {
     const cached = this.metaCache.get(file)
     if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached.meta
-    const meta = await readSessionMeta(file).catch(() => ({}))
-    this.metaCache.set(file, { mtimeMs, size, meta })
-    return meta
+    try {
+      const meta = await readSessionMeta(file)
+      this.metaCache.set(file, { mtimeMs, size, meta })
+      return meta
+    } catch {
+      // 读失败（文件正被截断/重写）不缓存：缓存空 meta 会让 name/lastMessage 在文件
+      // 下次变化前一直是空的（缓存投毒）
+      return {}
+    }
   }
 
   /** 单会话元数据（含 name/lastMessage —— 流式扫，按 mtime 缓存） */
   async describeSession(id: string, opts: { withName?: boolean } = {}): Promise<SessionInfo | undefined> {
-    const file = this.findFile(id)
+    const file = await this.findFile(id)
     if (!file) return undefined
     let st
     try {
@@ -327,7 +333,7 @@ export class PiAdapter implements AiToolAdapter {
 
   /** 单会话用量（F6-b；默认关，UI 打开且设置开启时才调） */
   async computeUsage(id: string): Promise<SessionUsage | undefined> {
-    const file = this.findFile(id)
+    const file = await this.findFile(id)
     if (!file) return undefined
     let st
     try {
@@ -355,7 +361,7 @@ export class PiAdapter implements AiToolAdapter {
     const retries = opts.retries ?? 4
     const intervalMs = opts.intervalMs ?? 700
     for (let i = 0; i <= retries; i++) {
-      const file = this.findFile(sessionId)
+      const file = await this.findFile(sessionId)
       if (file) {
         try {
           if (statSync(file).size > 0) return true
@@ -368,8 +374,8 @@ export class PiAdapter implements AiToolAdapter {
     return false
   }
 
-  private findFile(sessionId: string): string | undefined {
-    const hits = findSessionFilesById(sessionId, this.roots())
+  private async findFile(sessionId: string): Promise<string | undefined> {
+    const hits = await findSessionFilesById(sessionId, this.roots())
     return hits[0]
   }
 
@@ -521,7 +527,7 @@ export class PiAdapter implements AiToolAdapter {
   }
 
   async resume(sessionId: string, ctx: LaunchContext): Promise<LaunchResult> {    // resume 前确认文件还在（业务规则：删除 todo 保留绑定，但会话文件可能已被手删）
-    const file = this.findFile(sessionId)
+    const file = await this.findFile(sessionId)
     if (!file) {
       throw new Error(`无法 resume：session 文件不存在（${sessionId}）`)
     }

@@ -14,11 +14,24 @@ import type {
   ToolClientId,
 } from '@tick/shared'
 import { DEFAULT_SETTINGS } from '@tick/shared'
-import { atomicWriteJson, readJson } from './storage'
+import { parseJsonc } from '@tick/ai-pi'
+import { atomicWriteJson } from './storage'
 
 interface SettingsFile {
   version: 1
   settings: AppSettings
+}
+
+/**
+ * settings.json 允许手编（jsonc：注释/尾逗号都能容）；只有真解析失败才算损坏
+ * → 走备份 + 默认值。用户加注释不应导致整份设置被「重置成默认」再覆盖回去。
+ */
+function readSettingsFile(file: string): SettingsFile | undefined {
+  try {
+    return parseJsonc(fs.readFileSync(file, 'utf8')) as SettingsFile | undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** 设置里只暴露 prefill / argv；clipboard 仅作为旧配置/运行期降级，不再写入 settings */
@@ -63,8 +76,8 @@ export class SettingsStore {
   private settings: AppSettings
 
   constructor(private file: string) {
-    const raw = readJson<SettingsFile>(file)
-    // settings.json 损坏：先备份再按默认值继续（data/ 层的统一承诺）
+    const raw = readSettingsFile(file)
+    // 真解析失败：先备份再按默认值继续（data/ 层的统一承诺）
     if (raw === undefined && fs.existsSync(file)) backupCorruptSettings(file)
     this.settings = normalize(raw?.settings)
   }

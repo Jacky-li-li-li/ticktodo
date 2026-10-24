@@ -108,11 +108,17 @@ export function createTerminalLauncher(
     fs.mkdirSync(launchDir, { recursive: true, mode: 0o700 })
     cleanupOld(launchDir)
 
+    // Terminal 的环境来自用户 shell 而不是 Tick 进程：Tick 用自定义数据根时必须显式带过去，
+    // 否则终端里的 pi extension 会写回默认根（两侧 split-brain）。adapter 传入的 env 优先。
+    const env: Record<string, string> = { ...spec.env }
+    const tickHome = process.env.TICK_HOME?.trim()
+    if (tickHome) env.TICK_HOME = tickHome
+
     const file = path.join(
       launchDir,
       `${new Date().toISOString().replace(/[:.]/g, '-')}-${Math.random().toString(36).slice(2, 8)}.command`,
     )
-    fs.writeFileSync(file, renderTerminalScript(spec), { mode: 0o700 })
+    fs.writeFileSync(file, renderTerminalScript({ ...spec, env }), { mode: 0o700 })
     try {
       await open(file)
     } catch (err) {
