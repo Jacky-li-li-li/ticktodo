@@ -44,15 +44,18 @@
   --metal-shadow: rgba(0, 0, 0, 0.34);
 
   /* ---------- 文字层级（浅色玻璃 + 黑字） ---------- */
+  /* 对比度下限（2026-10-24）：白底上 --t-secondary ≥ 5:1（AA），
+     --t-label/--t-time/--t-weak ≥ 3.9:1 且只用于 10px+ 的元信息，
+     --t-faint 仅限纯装饰（分隔点/箭头）。再调暗请先过对比度。 */
   --t-title: rgba(0, 0, 0, 0.9);
   --t-row: rgba(0, 0, 0, 0.85);
   --t-body: rgba(0, 0, 0, 0.75);
-  --t-secondary: rgba(0, 0, 0, 0.58);
-  --t-label: rgba(0, 0, 0, 0.5);
-  --t-weak: rgba(0, 0, 0, 0.38);
-  --t-faint: rgba(0, 0, 0, 0.32);
-  --t-time: rgba(0, 0, 0, 0.42);
-  --t-done: rgba(0, 0, 0, 0.45);
+  --t-secondary: rgba(0, 0, 0, 0.64);
+  --t-label: rgba(0, 0, 0, 0.58);
+  --t-weak: rgba(0, 0, 0, 0.48);
+  --t-faint: rgba(0, 0, 0, 0.42);
+  --t-time: rgba(0, 0, 0, 0.52);
+  --t-done: rgba(0, 0, 0, 0.52);
   --danger-text: #c62828;
   --success-text: #1b7f3a;
   --warn-text: #8a5a00;

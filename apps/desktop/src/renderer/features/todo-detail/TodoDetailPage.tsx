@@ -220,7 +220,8 @@ export function TodoDetailPage({
     }
     const next = body.trim()
     if (next === (todo.body ?? '').trim()) return
-    const ok = await onSave({ body: next || undefined })
+    // body 传空串 = 清空正文（main 侧 trim 后归一成 undefined）；传 undefined 则根本不更新该字段
+    const ok = await onSave({ body: next })
     if (!ok) {
       setBody(todo.body ?? '')
       onToast('描述没保存成功')

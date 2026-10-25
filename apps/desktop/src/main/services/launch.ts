@@ -223,6 +223,15 @@ export class LaunchService {
     }
 
     const resolved = await this.resolveCwd(req.todoId, req.projectPath)
+    // 「每次必问」在 main 侧强制：renderer 的按钮禁用只是 UI 态，不能是信任边界
+    if (resolved.mustAsk) {
+      return {
+        ok: false,
+        delivered: req.deliver,
+        projectPath: resolved.projectPath,
+        reason: '设置里选了「每次必问」：先选择一个项目再打开',
+      }
+    }
     const sessionId = newCliSessionId(randomUUID())
     const promptText = (req.promptText ?? todo.title).trim()
     // 只向「更不自动」方向降级：prefill → clipboard；argv 不可用必须明确失败，
@@ -269,28 +278,39 @@ export class LaunchService {
     }
 
     // 终端已打开 = 成功；预填/剪贴板下会话文件要等用户发送才出现 → pending 绑定
-    const state: SessionBinding['state'] = result.verified ? 'verified' : 'pending'
-    const info = result.verified
-      ? await adapter
-          .describeSession?.(result.sessionId, { withName: false })
-          .catch(() => undefined)
-      : undefined
-    this.store.update(todo.id, {
-      addBinding: {
-        // 绑定属于「实际拉起它的工具」，不写死任何工具 id
-        toolId: adapter.id,
+    try {
+      const state: SessionBinding['state'] = result.verified ? 'verified' : 'pending'
+      const info = result.verified
+        ? await adapter
+            .describeSession?.(result.sessionId, { withName: false })
+            .catch(() => undefined)
+        : undefined
+      this.store.update(todo.id, {
+        addBinding: {
+          // 绑定属于「实际拉起它的工具」，不写死任何工具 id
+          toolId: adapter.id,
+          sessionId: result.sessionId,
+          boundAt: new Date().toISOString(),
+          state,
+          filePath: info?.filePath,
+        },
+        primarySessionId: result.sessionId,
+        lastLaunch: {
+          toolId: adapter.id,
+          projectPath: resolved.projectPath,
+          launchedAt: new Date().toISOString(),
+        },
+      })
+    } catch (err) {
+      // 工具已经打开了：诚实报告「会话开了但绑定没写上」，用户至少知道去工具里看
+      return {
+        ok: false,
         sessionId: result.sessionId,
-        boundAt: new Date().toISOString(),
-        state,
-        filePath: info?.filePath,
-      },
-      primarySessionId: result.sessionId,
-      lastLaunch: {
-        toolId: adapter.id,
         projectPath: resolved.projectPath,
-        launchedAt: new Date().toISOString(),
-      },
-    })
+        delivered: result.delivered,
+        reason: `已在终端打开，但绑定写入失败：${(err as Error).message}`,
+      }
+    }
 
     return {
       ok: true,
@@ -422,6 +442,14 @@ export class LaunchService {
         }
       }
       const resolved = await this.resolveCwd(todo.id, req.projectPath)
+      if (resolved.mustAsk) {
+        return {
+          ok: false,
+          sessionId: req.sessionId,
+          delivered: 'none',
+          reason: '设置里选了「每次必问」：先选择一个项目再打开',
+        }
+      }
       try {
         await adapter.launch({
           promptText: '',
@@ -439,16 +467,26 @@ export class LaunchService {
           reason: (err as Error).message,
         }
       }
-      this.store.update(todo.id, {
-        addBinding: {
-          toolId: adapter.id,
+      try {
+        this.store.update(todo.id, {
+          addBinding: {
+            toolId: adapter.id,
+            sessionId: req.sessionId,
+            boundAt: new Date().toISOString(),
+            state: 'pending',
+          },
+          primarySessionId: req.sessionId,
+          lastLaunch: { toolId: adapter.id, projectPath: resolved.projectPath, launchedAt: new Date().toISOString() },
+        })
+      } catch (err) {
+        return {
+          ok: false,
           sessionId: req.sessionId,
-          boundAt: new Date().toISOString(),
-          state: 'pending',
-        },
-        primarySessionId: req.sessionId,
-        lastLaunch: { toolId: adapter.id, projectPath: resolved.projectPath, launchedAt: new Date().toISOString() },
-      })
+          projectPath: resolved.projectPath,
+          delivered: 'none',
+          reason: `已在终端打开，但绑定写入失败：${(err as Error).message}`,
+        }
+      }
       return {
         ok: true,
         sessionId: req.sessionId,
@@ -478,17 +516,27 @@ export class LaunchService {
         ...(client ? { client } : {}),
       })
       if (todo) {
-        this.store.update(todo.id, {
-          addBinding: {
-            toolId: adapter.id,
+        try {
+          this.store.update(todo.id, {
+            addBinding: {
+              toolId: adapter.id,
+              sessionId: req.sessionId,
+              boundAt: new Date().toISOString(),
+              state: 'verified',
+              filePath: info.filePath,
+            },
+            primarySessionId: req.sessionId,
+            lastLaunch: { toolId: adapter.id, projectPath: cwd, launchedAt: new Date().toISOString() },
+          })
+        } catch (err) {
+          return {
+            ok: false,
             sessionId: req.sessionId,
-            boundAt: new Date().toISOString(),
-            state: 'verified',
-            filePath: info.filePath,
-          },
-          primarySessionId: req.sessionId,
-          lastLaunch: { toolId: adapter.id, projectPath: cwd, launchedAt: new Date().toISOString() },
-        })
+            projectPath: cwd,
+            delivered: 'none',
+            reason: `已打开会话，但绑定写入失败：${(err as Error).message}`,
+          }
+        }
       }
       return {
         ok: true,
@@ -513,13 +561,17 @@ export class LaunchService {
   /**
    * pending 绑定对账：终端里的 CLI 产生会话文件后，把绑定从 pending 改成 verified。
    * 按 `binding.toolId` 路由；桌面工具没有 `verify`（本来也不会产生 pending 绑定）→ 跳过。
+   * 超 30 天仍 pending 的不再扫（用户大概率没发消息；绑定保留，UI 空心点语义不变）。
    * 返回本次改动的条数（0 = 没有 pending 或都还没产生）。
    */
   async reconcilePending(): Promise<number> {
     let changed = 0
+    const now = Date.now()
     for (const todo of this.store.list()) {
       for (const binding of todo.bindings) {
         if (binding.state !== 'pending') continue
+        const age = now - Date.parse(binding.boundAt)
+        if (Number.isFinite(age) && age > PENDING_MAX_AGE_MS) continue
         const adapter = this.adapterById(binding.toolId)
         if (!adapter) continue
         const verify = adapter.verify?.bind(adapter)
@@ -540,6 +592,9 @@ export class LaunchService {
     return changed
   }
 }
+
+/** pending 绑定的对账寿命：超过后不再扫文件系统（绑定保留，用户可手动回到会话收敛） */
+const PENDING_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 function resolveExisting(projectPath: string, source: CwdSource): ResolvedCwd {
   const canonical = canonicalPath(projectPath)

@@ -6,7 +6,7 @@
  * 常驻语义：关窗 = 隐藏（app 不退）；Cmd+Q 退出。
  */
 
-import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeImage, shell, Tray } from 'electron'
+import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -16,6 +16,7 @@ import { execFile } from 'node:child_process'
 import { ChatIpc, ProjectsIpc, TodosIpc, WindowIpc, UpdateIpc, toolDisplayName } from '@tick/shared'
 import type { UpdateState } from '@tick/shared'
 import { AiToolRegistry, canonicalPath, gitRootOf } from '@tick/ai-core'
+import { cleanStaleTmp } from '@tick/todo-core'
 import { PiAdapter } from '@tick/ai-pi'
 import { ClaudeAdapter } from '@tick/ai-claude'
 import { ClaudeDesktopAdapter } from '@tick/ai-claude-desktop'
@@ -115,6 +116,10 @@ function applyTodoWindowMetrics(win: BrowserWindow | null, openCount: number): v
 }
 
 app.whenReady().then(() => {
+  // 单一浅色玻璃主题（黑字令牌，无深色适配）：把外观钉在 light，
+  // 避免系统深色模式下 fullscreen-ui vibrancy 把面板压暗、黑字失效。
+  nativeTheme.themeSource = 'light'
+
   // 纯菜单栏模式：不在 Dock 显示，只保留菜单栏 Tray 与全局快捷键。
   // 打包版另外在 electron-builder 的 mac.extendInfo 里写了 LSUIElement=true，
   // 避免启动瞬间先闪一下 Dock 图标；dev 下用 app.dock.hide() 等价处理。
@@ -127,6 +132,8 @@ app.whenReady().then(() => {
   ensureDirs(dirs)
   // 兜底清理：上一次 pi 没启动/扩展没消费时，prefill 正文可能留在 cache/launch
   cleanupLaunchCache(path.join(dirs.cache, 'launch'))
+  // data/ 是「建议同步」层：崩溃残留的写盘 tmp 不清理会被一起同步走
+  cleanStaleTmp(dirs.data)
 
   const store = new TodoStore(path.join(dirs.data, 'todos.json'))
   store.ensureFile()
@@ -307,12 +314,19 @@ app.whenReady().then(() => {
   chat = createChat()
   void chat.init()
 
-  const reloadChat = async (): Promise<void> => {
-    const old = chat
-    chat = undefined
-    await old?.close()
-    chat = createChat()
-    await chat.init()
+  // 串行化重建：并发触发（快速保存+清除 provider、更新取消后重建）时后来者排队，
+  // 不会把上一个 host 的 close 与下一个的 init 交错出「无人持有的双活 host」。
+  let chatRebuild: Promise<void> = Promise.resolve()
+  const reloadChat = (): Promise<void> => {
+    const next = chatRebuild.then(async () => {
+      const old = chat
+      chat = undefined
+      await old?.close()
+      chat = createChat()
+      await chat.init()
+    })
+    chatRebuild = next.catch(() => {})
+    return next
   }
 
   // ---------- 应用内更新（M6）：创建时机必须在 reloadChat 之后、registerIpc 之前 ----------
@@ -571,6 +585,16 @@ app.whenReady().then(() => {
     }
     return { action: 'deny' }
   })
+  // 同窗口导航不受 setWindowOpenHandler 管：location.href 到外站会让 preload API 落进外部页面。
+  // 一律拦下；https 交给系统浏览器，其余静默丢弃。
+  panel.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault()
+    if (url.startsWith('https://')) void shell.openExternal(url)
+  })
+  // renderer 不需要任何 web 权限（通知/摄像头/剪贴板读…）：默认拒绝，收窄 Electron 默认策略
+  panel.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => {
+    callback(false)
+  })
 
   if (app.isPackaged) {
     // 打包后：dist/renderer/index.html（__dirname = app.asar/dist-electron）
@@ -638,7 +662,8 @@ function watchTodosFile(store: TodoStore, dataDir: string): void {
   let timer: NodeJS.Timeout | undefined
   try {
     const watcher = fs.watch(dataDir, (_event, filename) => {
-      if (filename !== 'todos.json') return
+      // macOS 上 filename 可能为 null（目录级事件）：当 todos.json 变化处理，下个事件自愈
+      if (filename !== null && filename !== 'todos.json') return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         const todos = store.list()

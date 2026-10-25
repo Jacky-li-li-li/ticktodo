@@ -54,9 +54,9 @@ export function CaptureLine({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            // 中文输入法选词时按回车不应提交（与 ChatPanel 保持一致）
+            // 中文输入法选词时按回车不应提交；Esc 在组词态是取消候选词，不能当「取消输入」
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit()
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
               setDraft('')
               setCapturing(false)
             }

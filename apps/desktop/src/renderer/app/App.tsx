@@ -5,8 +5,8 @@
  * 交互（重构 2026-10-18）：
  *  - 点捕获行 → 输入态（回车收下 / Esc 取消）；⌘⇧N 全局快捷键直接聚焦
  *  - 点勾选 → 立即归档（无确认框）→ toast 3s「已归档「X」· 撤销」
- *  - 点行 / 右侧箭头图标 → 进入线索详情页（首页不再内联展开）
- *  - 双击标题 → 原地改标题（Enter/失焦保存，Esc 取消）
+ *  - 点标题 / 行 / 右侧箭头图标 → 进入线索详情页（首页不再内联展开；改名在详情页）
+ *  - 首页列表整列渲染，超出面板高度由列表区滚动（无折叠、无展开按钮）
  *  - ⋯ 菜单：归档页 / 倒入历史会话 / 导出 / 设置
  */
 
@@ -34,8 +34,10 @@ export default function App(): React.JSX.Element {
   const { todos, create, patch, setStatus, refresh: refreshTodos } = useTodos()
   const { projects, refresh: refreshProjects } = useProjects()
   const { settings, update: updateSettings } = useSettings()
-  const open = todos.filter((t) => t.status === 'open')
-  const done = todos.filter((t) => t.status === 'done')
+  // 最近改动/拉起的在前（updatedAt 降序）：正在发生的排前面
+  const byRecency = (a: Todo, b: Todo): number => b.updatedAt.localeCompare(a.updatedAt)
+  const open = todos.filter((t) => t.status === 'open').sort(byRecency)
+  const done = todos.filter((t) => t.status === 'done').sort(byRecency)
 
   const [view, setView] = useState<View>('threads')
   const [toast, setToast] = useState<{ text: string; onUndo?: () => void } | null>(null)
@@ -45,7 +47,6 @@ export default function App(): React.JSX.Element {
   const [sessionPicker, setSessionPicker] = useState<{ todo: Todo | null } | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [pinned, setPinned] = useState(true)
-  const [expanded, setExpanded] = useState(false)
   const [focusSignal, setFocusSignal] = useState(0)
   /** P0-6：todoId → 最近会话摘要（首屏 / 30s / 回到前台刷新） */
   const [recent, setRecent] = useState<Record<string, TodoRecentSession>>({})
@@ -131,8 +132,12 @@ export default function App(): React.JSX.Element {
   )
 
   const archive = useCallback(
-    (todo: Todo) => {
-      void setStatus(todo.id, 'done')
+    async (todo: Todo) => {
+      const ok = await setStatus(todo.id, 'done')
+      if (!ok) {
+        showToast('归档失败：todos.json 可能被占用')
+        return
+      }
       showToast(`已归档「${todo.title}」`, () => {
         void setStatus(todo.id, 'open')
         setToast(null)
@@ -142,9 +147,9 @@ export default function App(): React.JSX.Element {
   )
 
   const restore = useCallback(
-    (todo: Todo) => {
-      void setStatus(todo.id, 'open')
-      showToast(`已恢复「${todo.title}」`)
+    async (todo: Todo) => {
+      const ok = await setStatus(todo.id, 'open')
+      showToast(ok ? `已恢复「${todo.title}」` : '恢复失败：todos.json 可能被占用')
     },
     [setStatus, showToast],
   )
@@ -152,7 +157,6 @@ export default function App(): React.JSX.Element {
   // sheet / 详情页里的 todo 可能被归档/删除：跟着列表走，找不到就关掉
   const activePicker = picker ? (open.find((t) => t.id === picker.id) ?? null) : null
   const activeDetail = detailId ? (todos.find((t) => t.id === detailId) ?? null) : null
-  const baseOpen = expanded ? open : open.slice(0, 5)
 
   useEffect(() => {
     if (detailId && !todos.some((t) => t.id === detailId)) setDetailId(null)
@@ -160,7 +164,7 @@ export default function App(): React.JSX.Element {
 
   // P0-6：首页每行的「上次说到哪」。只问当前渲染的这几条，避免为一行小字扫全部会话；
   // 30s 一次 + 回到前台刷新，和详情页的 15s 刷新同一节奏。
-  const recentKey = baseOpen
+  const recentKey = open
     .map((t) => `${t.id}:${t.bindings.length}:${t.primarySessionId ?? ''}`)
     .join(',')
   useEffect(() => {
@@ -197,18 +201,6 @@ export default function App(): React.JSX.Element {
       window.removeEventListener('focus', onFocus)
     }
   }, [recentKey])
-
-  // 首页双击标题 → 原地改名（空标题/未变则静默忽略）
-  const rename = useCallback(
-    (todo: Todo, next: string) => {
-      const title = next.trim()
-      if (!title || title === todo.title) return
-      void patch(todo.id, { title }).then((updated) => {
-        showToast(updated ? '已改标题' : '改标题失败')
-      })
-    },
-    [patch, showToast],
-  )
 
   return (
     <div className="panel">
@@ -374,7 +366,6 @@ export default function App(): React.JSX.Element {
                 todos={done}
                 onRestore={restore}
                 onEnter={(t) => setDetailId(t.id)}
-                onRename={rename}
               />
             ) : open.length === 0 && done.length === 0 ? (
               <div className="empty">
@@ -393,26 +384,12 @@ export default function App(): React.JSX.Element {
                 </button>
               </div>
             ) : (
-              <>
-                <TodoList
-                  todos={baseOpen}
-                  recent={recent}
-                  onArchive={archive}
-                  onEnter={(t) => setDetailId(t.id)}
-                  onRename={rename}
-                />
-                {open.length > 5 && (
-                  <button
-                    className="list-more"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setExpanded((v) => !v)
-                    }}
-                  >
-                    {expanded ? '收起' : `展开全部（${open.length}）`}
-                  </button>
-                )}
-              </>
+              <TodoList
+                todos={open}
+                recent={recent}
+                onArchive={archive}
+                onEnter={(t) => setDetailId(t.id)}
+              />
             )}
           </div>
 

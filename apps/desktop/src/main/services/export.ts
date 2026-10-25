@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { AppSettings, ExportRequest, ExportResult, ExportScope, Todo } from '@tick/shared'
 import type { AiToolAdapter, SessionUsage } from '@tick/ai-core'
-import { atomicWriteJson } from './storage'
+import { atomicWriteJson, writeFileAtomic } from './storage'
 import type { TodoStore } from '../store'
 
 interface ExportedSession {
@@ -91,6 +91,7 @@ export class ExportService {
     }
 
     const exportedAt = new Date().toISOString()
+    // 精确到毫秒：同秒内连续导出不再互相覆盖
     const stamp = exportedAt.replace(/[:.]/g, '-').replace('Z', '')
     fs.mkdirSync(this.exportsDir, { recursive: true, mode: 0o700 })
     const jsonPath = path.join(this.exportsDir, `tick-export-${stamp}.json`)
@@ -102,9 +103,16 @@ export class ExportService {
       tool: 'tick',
       todos: exported,
     })
-    fs.writeFileSync(markdownPath, renderMarkdown(exportedAt, exported), { mode: 0o600 })
+    writeFileAtomic(markdownPath, renderMarkdown(exportedAt, exported))
 
     return { jsonPath, markdownPath, todoCount: exported.length, sessionCount }
+  }
+
+  /** reveal 前的边界校验：只允许定位本服务产物目录里的文件 */
+  isInsideExports(filePath: string): boolean {
+    const resolved = path.resolve(filePath)
+    const exportsDir = path.resolve(this.exportsDir)
+    return resolved.startsWith(exportsDir + path.sep)
   }
 
   private pick(req: ExportRequest): Todo[] {

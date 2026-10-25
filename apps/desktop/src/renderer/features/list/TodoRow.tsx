@@ -2,13 +2,13 @@
  * TodoRow — 首页 / 归档页共用的线索行（重构：首页不再内联展开）。
  *
  * 交互：
- *  - 点行内空白或右侧「进入」图标 → 打开详情页
- *  - 双击标题 → 原地改标题（Enter/失焦保存，Esc 取消；空标题不保存）
+ *  - 点标题 / 行内空白 / 右侧「进入」图标 → 打开详情页（改名入口在详情页标题上）
  *  - 勾选圆 → 归档；归档页右侧「恢复」→ 恢复
- *  - 「继续」胶囊已移除，改为右侧圆形箭头图标按钮
+ *  - 列表行不提供改名：单击即进入，避免最大的点击区（标题）成为无响应死区
+ *  - P0-6：标题下一行 = 最近一条会话的最后一条 user 消息（单行截断，悬停看全文）
  */
 
-import React, { useEffect, useRef, useState } from 'react'
+import React from 'react'
 import type { Todo, TodoRecentSession } from '@tick/shared'
 import { toolDisplayName } from '@tick/shared'
 import { relTime } from './relTime'
@@ -27,7 +27,6 @@ export function TodoRow({
   onArchive,
   onRestore,
   onEnter,
-  onRename,
 }: {
   todo: Todo
   done?: boolean
@@ -36,37 +35,7 @@ export function TodoRow({
   onArchive?: (todo: Todo) => void
   onRestore?: (todo: Todo) => void
   onEnter: (todo: Todo) => void
-  onRename: (todo: Todo, title: string) => void
 }): React.JSX.Element {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(todo.title)
-  const cancelRef = useRef(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  // 外部（其他窗口 / extension）改了标题时同步草稿
-  useEffect(() => {
-    if (!editing) setDraft(todo.title)
-  }, [todo.title, editing])
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }
-  }, [editing])
-
-  const commit = (): void => {
-    setEditing(false)
-    if (cancelRef.current) {
-      cancelRef.current = false
-      setDraft(todo.title)
-      return
-    }
-    const next = draft.trim()
-    if (next && next !== todo.title) onRename(todo, next)
-    else setDraft(todo.title)
-  }
-
   const lastText = recentSession?.lastUserMessage?.trim()
   const toolName = recentSession ? toolDisplayName(recentSession.toolId) : ''
   const stateLabel =
@@ -79,12 +48,7 @@ export function TodoRow({
           : '已停下'
 
   return (
-    <div
-      className={`thread-row ${done ? 'done' : ''}`}
-      onClick={() => {
-        if (!editing) onEnter(todo)
-      }}
-    >
+    <div className={`thread-row ${done ? 'done' : ''}`} onClick={() => onEnter(todo)}>
       {done ? (
         <span className="check" aria-hidden>
           <Check />
@@ -103,41 +67,11 @@ export function TodoRow({
       )}
 
       <div className="thread-main">
-        {editing ? (
-          <input
-            ref={inputRef}
-            className="title-edit"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                e.currentTarget.blur()
-              } else if (e.key === 'Escape') {
-                cancelRef.current = true
-                e.currentTarget.blur()
-              }
-            }}
-            onBlur={commit}
-            aria-label="修改标题"
-          />
-        ) : (
-          <button
-            className="title title-button"
-            title="双击修改标题"
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => {
-              e.stopPropagation()
-              setEditing(true)
-            }}
-          >
-            {todo.title}
-          </button>
-        )}
+        {/* 点击自然冒泡到行 → 进详情；不 stopPropagation，避免标题成为无响应死区 */}
+        <button className="title title-button">{todo.title}</button>
 
         {/* P0-6：标题下一行 = 最近一条会话的最后一句（单行截断，悬停看全文） */}
-        {!editing && lastText && (
+        {lastText && (
           <span
             className={`thread-last ${recentSession?.state === 'active' ? 'is-active' : ''}`}
             title={`${toolName} · ${stateLabel}：${lastText}`}
@@ -165,7 +99,7 @@ export function TodoRow({
         className="row-enter"
         onClick={(e) => {
           e.stopPropagation()
-          if (!editing) onEnter(todo)
+          onEnter(todo)
         }}
         aria-label={`进入「${todo.title}」`}
         title="进入线索详情"

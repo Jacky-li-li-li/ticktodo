@@ -136,7 +136,9 @@ export function ChatPanel({
         ) : (
           chat.messages.map((m) => {
             // assistant 走 GFM Markdown；错误消息保留纯文本，避免把堆栈/路径当 markdown 重排
-            const markdown = m.role === 'assistant' && !m.text.startsWith('这轮没答出来：')
+            // （chat-host 有两种错误前缀，都要排除）
+            const isPlainError = m.text.startsWith('这轮没答出来：') || m.text.startsWith('这轮失败：')
+            const markdown = m.role === 'assistant' && !isPlainError
             return (
               <div className={`chat-msg ${m.role}`} key={m.id}>
                 <div className={`chat-bubble ${markdown ? 'markdown' : ''}`}>

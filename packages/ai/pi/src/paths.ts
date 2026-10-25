@@ -12,7 +12,8 @@
  * ⚠️ 绝不调用 pi 的 getDefaultSessionDir()——它会 mkdirSync，探测性路径会造垃圾目录。
  */
 
-import { createReadStream, existsSync, openSync, readdirSync, readSync, statSync, closeSync } from 'node:fs'
+import { createReadStream, existsSync, openSync, readSync, statSync, closeSync } from 'node:fs'
+import { promises as fsp } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
@@ -30,14 +31,38 @@ export interface SessionHeader {
   parentSession?: string
 }
 
-/** settings.json 是 jsonc（带注释/尾逗号），不能 JSON.parse —— 手写剥离（照 scripts/session-usage.mjs） */
+/**
+ * settings.json 是 jsonc（带注释/尾逗号），不能 JSON.parse —— 手写剥离（照 scripts/session-usage.mjs）。
+ * 尾逗号只在字符串外剥（`,}` / `,]` 出现在字符串内容里时不能改写值）。
+ */
 export function parseJsonc(text: string): unknown {
   let out = ''
   let inStr = false
   let esc = false
+  const nextMeaningful = (from: number): string | undefined => {
+    let i = from
+    for (;;) {
+      const c = text[i]
+      if (c === undefined) return undefined
+      if (/\s/.test(c)) {
+        i++
+        continue
+      }
+      if (c === '/' && text[i + 1] === '/') {
+        while (i < text.length && text[i] !== '\n') i++
+        continue
+      }
+      if (c === '/' && text[i + 1] === '*') {
+        i += 2
+        while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++
+        i += 2
+        continue
+      }
+      return c
+    }
+  }
   for (let i = 0; i < text.length; i++) {
     const c = text[i] as string
-    const d = text[i + 1]
     if (inStr) {
       out += c
       if (esc) esc = false
@@ -50,19 +75,22 @@ export function parseJsonc(text: string): unknown {
       out += c
       continue
     }
-    if (c === '/' && d === '/') {
+    if (c === '/' && text[i + 1] === '/') {
       while (i < text.length && text[i] !== '\n') i++
       continue
     }
-    if (c === '/' && d === '*') {
+    if (c === '/' && text[i + 1] === '*') {
       i += 2
       while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++
       i++
       continue
     }
+    if (c === ',') {
+      const n = nextMeaningful(i + 1)
+      if (n === '}' || n === ']') continue // 尾逗号：跳过
+    }
     out += c
   }
-  out = out.replace(/,(\s*[}\]])/g, '$1')
   try {
     return JSON.parse(out)
   } catch {
@@ -98,7 +126,18 @@ export function resolveSessionRoots(homedirOverride?: string): SessionRoot[] {
       roots.push({ dir: path.resolve(dir), source, flat: source !== 'default' })
     }
   }
-  return roots
+  // 去重：env/settings 覆盖指向默认目录（或其祖先）时，同一文件会被两个 root 各收集一次，
+  // 项目计数翻倍。被更深遍历的非平铺 root 覆盖的 root 丢弃。
+  const deduped: SessionRoot[] = []
+  for (const root of roots) {
+    const covered = deduped.some(
+      (kept) =>
+        !kept.flat &&
+        (root.dir === kept.dir || root.dir.startsWith(kept.dir + path.sep)),
+    )
+    if (!covered) deduped.push(root)
+  }
+  return deduped
 }
 
 function readFileSyncUtf8(file: string): string {
@@ -113,32 +152,29 @@ function readFileSyncUtf8(file: string): string {
   }
 }
 
-/** 递归收集 .jsonl（含子代理目录；写入时 pi 保证 pending 消息不落盘，无半条风险） */
-export function collectJsonlFiles(root: string, maxDepth = 3): string[] {
+/**
+ * 递归收集 .jsonl（含子代理目录；写入时 pi 保证 pending 消息不落盘，无半条风险）。
+ * 异步版：reconcile 每 5s 走一次，同步 walk 会周期性阻塞 Electron main 的事件循环。
+ */
+export async function collectJsonlFiles(root: string, maxDepth = 3): Promise<string[]> {
   const files: string[] = []
-  const walk = (dir: string, depth: number): void => {
-    let entries: string[]
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    let entries
     try {
-      entries = readdirSync(dir)
+      entries = await fsp.readdir(dir, { withFileTypes: true })
     } catch {
       return
     }
-    for (const name of entries) {
-      const p = path.join(dir, name)
-      let st
-      try {
-        st = statSync(p)
-      } catch {
-        continue
-      }
-      if (st.isDirectory()) {
-        if (depth < maxDepth) walk(p, depth + 1)
-      } else if (name.endsWith('.jsonl')) {
+    for (const entry of entries) {
+      const p = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (depth < maxDepth) await walk(p, depth + 1)
+      } else if (entry.name.endsWith('.jsonl')) {
         files.push(p)
       }
     }
   }
-  walk(root, 0)
+  await walk(root, 0)
   return files
 }
 
@@ -171,10 +207,14 @@ export function readFirstLineHeader(file: string): SessionHeader | undefined {
  * 命中 = 文件名以 `<timestamp>_<id>.jsonl` 结尾（或平铺形态 `<id>.jsonl`）。
  * 注意：调用方必须 stat size>0 才算真命——0 字节 = 僵尸（D16）。
  */
-export function findSessionFilesById(sessionId: string, roots: SessionRoot[], maxDepth = 3): string[] {
+export async function findSessionFilesById(
+  sessionId: string,
+  roots: SessionRoot[],
+  maxDepth = 3,
+): Promise<string[]> {
   const hits: string[] = []
   for (const root of roots) {
-    const files = collectJsonlFiles(root.dir, Math.min(maxDepth, root.flat ? 1 : 3))
+    const files = await collectJsonlFiles(root.dir, Math.min(maxDepth, root.flat ? 1 : 3))
     for (const f of files) {
       const base = path.basename(f, '.jsonl')
       if (base === sessionId || base.endsWith(`_${sessionId}`)) hits.push(f)
