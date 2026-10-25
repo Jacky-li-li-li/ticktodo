@@ -38,6 +38,9 @@ export function TodoRow({
 }): React.JSX.Element {
   const lastText = recentSession?.lastUserMessage?.trim()
   const toolName = recentSession ? toolDisplayName(recentSession.toolId) : ''
+  // 首条/最近一条消息常被直接当标题用，此时第二行会与标题逐字重复（看起来像渲染 bug）。
+  // 同一句话只说一次：重复时省掉第二行，把工具/状态/全文挪到整个主区的 title 上，信息不丢。
+  const duplicateOfTitle = !!lastText && lastText === todo.title.trim()
   const stateLabel =
     recentSession?.state === 'active'
       ? '进行中'
@@ -46,6 +49,7 @@ export function TodoRow({
         : recentSession?.state === 'missing'
           ? '不在本机'
           : '已停下'
+  const metaHint = recentSession ? `${toolName} · ${stateLabel}：${lastText}` : undefined
 
   return (
     <div className={`thread-row ${done ? 'done' : ''}`} onClick={() => onEnter(todo)}>
@@ -66,15 +70,15 @@ export function TodoRow({
         </button>
       )}
 
-      <div className="thread-main">
+      <div className="thread-main" title={duplicateOfTitle ? metaHint : undefined}>
         {/* 点击自然冒泡到行 → 进详情；不 stopPropagation，避免标题成为无响应死区 */}
         <button className="title title-button">{todo.title}</button>
 
-        {/* P0-6：标题下一行 = 最近一条会话的最后一句（单行截断，悬停看全文） */}
-        {lastText && (
+        {/* P0-6：标题下一行 = 最近一条会话的最后一句（单行截断，悬停看全文）；与标题重复时不重复渲染 */}
+        {lastText && !duplicateOfTitle && (
           <span
             className={`thread-last ${recentSession?.state === 'active' ? 'is-active' : ''}`}
-            title={`${toolName} · ${stateLabel}：${lastText}`}
+            title={metaHint}
           >
             {lastText}
           </span>
