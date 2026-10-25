@@ -99,6 +99,7 @@ MUST 在列表层按工具自己的会话 id 归并成**一条**会话，`filePa
 - 完成/活跃状态 **MUST** 读工具自带字段；**MUST NOT** 由文件 mtime 或猜测推断「完成」；未知取值映射 `idle` 并记录一次原因。
 - fork / 子代理：区分父会话消息；用量不重复计；时间线归属按 PRD。
 - 找不到合格 user 消息时走 PRD 保底文案，不抛错。
+- **时间线证据（P0-1..P0-6，as-built 2026-10-25）**：`SessionInfo` 可选带 `lastUserMessage / lastUserMessageAt / lastEventAt / endedCleanly / running`；adapter 只给证据，状态归一（`active / idle / done / missing`）与消息截断（4000 字）由 core 的 `deriveSessionState` / `buildSessionDigest` 统一做（活跃窗口 10 分钟）。工具自报进行中填 `running: true`，完成态填 `endedCleanly: true`；未知/不识别一律**不填**，不要用文件 mtime 或启发式猜 `done`。派生缓存只存证据 + `(mtimeMs, size, lastUsedAt)` 指纹（`cache/session-digests.json`），状态每次按当前时钟重算。
 
 ## 6. 拉起 / 回到会话
 
@@ -147,7 +148,7 @@ MUST 在列表层按工具自己的会话 id 归并成**一条**会话，`filePa
 
 ## 10. 验证与验收
 
-- `pnpm typecheck` **MUST** 通过（仓库唯一自动化检查；当前没有 test runner）。
+- `pnpm typecheck` **MUST** 通过；改 core / 适配器时还要跑相关 selftest（`pnpm selftest:prefill`、`pnpm selftest:timeline`）。仓库仍没有通用 test runner：断言写在 `scripts/selftest-*.ts`，由 `scripts/run-ts.mjs` 做 esbuild 临时打包。
 - 需要验证纯逻辑/夹具时，用一次性 `.mjs` 或 Node 脚本；夹具必须脱敏，**不得提交真实用户数据**。
 - PR 描述里逐条勾验收清单：
   - [ ] `detect()`：已安装 / 未安装 两态（不探测版本）

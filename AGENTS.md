@@ -16,6 +16,7 @@ pnpm dev                     # 先 build tick-extension，再起 Electron（vite
 pnpm typecheck               # 全仓 tsc --noEmit（提交前必跑）
 pnpm selftest:prefill        # 预填 / 多工具边界（不启动 Electron）
 pnpm selftest:update         # 应用内更新状态机
+pnpm selftest:timeline       # 会话时间线（digest 归一 / 三适配器证据 / 派生缓存）
 pnpm mcp:check               # MCP server 回归（真实 stdio 客户端）
 pnpm --filter @tick/desktop dist:dir   # 本地出 .app（apps/desktop/release）
 bash scripts/release-local.sh          # 正式发版（签名 + 公证 + SHA256SUMS）
@@ -88,6 +89,6 @@ node <会话工作台>/qa/shot.mjs "file://$PWD/site/index.html" site-1280 --w=1
 
 ## 验证与提交
 
-- 改代码：`pnpm typecheck` + 相关 selftest（`selftest:prefill` / `selftest:update` / `mcp:check`）。
+- 改代码：`pnpm typecheck` + 相关 selftest（`selftest:prefill` / `selftest:update` / `selftest:timeline` / `mcp:check`）。
 - 改官网：上面的无头截图 + 手动点一遍首屏演示、工具筛选、MCP 切换、语言切换、复制按钮。
 - 提交信息用中文 `feat(scope): …` / `fix(scope): …`；只提交本次相关的文件。

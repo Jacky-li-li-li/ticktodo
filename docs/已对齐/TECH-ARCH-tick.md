@@ -151,7 +151,7 @@ tick/
 | WindowManager | main | 置顶、显隐（位置记忆待补） |
 | ShortcutService | main | 全局快捷键（首版未实现） |
 | TodoStore | main | CRUD、软完成；原子写 + 文件锁（`todo-store.ts`） |
-| SessionStore | main | **只存绑定关系**（`Todo.bindings[]` 1:N + `primarySessionId`）；元数据不镜像，走 adapter。会话视图 `SessionService` 按 `binding.toolId` 路由到对应 adapter（id 空间互不相干），列表合并全部 adapter、以 `(toolId, sessionId)` 为唯一键 |
+| SessionStore | main | **只存绑定关系**（`Todo.bindings[]` 1:N + `primarySessionId`）；元数据不镜像，走 adapter。会话视图 `SessionService` 按 `binding.toolId` 路由到对应 adapter（id 空间互不相干），列表合并全部 adapter、以 `(toolId, sessionId)` 为唯一键；`forTodo()` 额外拼时间线 digest（P0-1..P0-6：状态每次按当前时钟现算），派生证据 + 文件指纹缓存在 `cache/session-digests.json`，`recentForTodos()` 供首页线索行第二行摘要 |
 | ProjectIndexService | main | **调度**各 adapter 采集 → 交给 core 归并 → 分段缓存（`cache/projects.json`）→ 失效重建 → IPC；含 **Warm/Ask 两级调度**（后台低优先级扫，用户请求时提速） |
 | mergeProjects | ai/core | **工具无关**的纯函数：归一化 → git 根上卷 → 按路径合并证据 → 排序（可单测，不依赖任何 adapter） |
 | canonicalPath | ai/core | 路径同一性：realpath / `/private/var` / 大小写 / trailing slash / worktree |
@@ -589,7 +589,8 @@ sequenceDiagram
 ├── sessions/               # ⚠️ 不建议同步 · 含对话正文（MB 级，丢了可承受）
 │   └── panel-chat/              # pi-durable store，与 CliSessionId 命名空间隔离
 ├── cache/                  # ❌ 无需同步 · 可再生
-│   └── projects.json           # ProjectIndex 缓存（带 mtime / piVersion 戳）
+│   ├── projects.json           # ProjectIndex 缓存（带 mtime / piVersion 戳）
+│   └── session-digests.json    # 时间线派生证据 + 文件指纹（状态每次现算）
 └── exports/                # F8 手动导出产物
 ```
 

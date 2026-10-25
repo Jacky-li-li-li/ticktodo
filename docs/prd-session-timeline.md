@@ -3,7 +3,7 @@
 | 字段 | 内容 |
 | --- | --- |
 | 状态 | 草案（v2，已同步 Jacky 的决定），待 Jacky 审阅 |
-| 实现状态 | P0-7 / P0-8 的 `workbuddy` / `workbuddy-ai` 适配器**已落地**（2026-10-19，as-built 见 §9B.9 与 `docs/workbuddy-adapter-notes.md` §11）；P0-1..P0-6 的「最后一条 user 消息 + 跨工具时间线」**尚未实现**，`SessionDigest` / `state` 归一也尚未进 `ai/core` |
+| 实现状态 | P0-7 / P0-8 的 `workbuddy` / `workbuddy-ai` 适配器**已落地**（2026-10-19，as-built 见 §9B.9 与 `docs/workbuddy-adapter-notes.md` §11）；**P0-1..P0-6 的「最后一条 user 消息 + 跨工具时间线」已于 2026-10-25 落地**（as-built 与本文提案的差异见 §11；三个适配器先给证据：`pi` / `claude` / `workbuddy` + `workbuddy-ai`，其余工具走旧 `lastMessage` 回退并标 `approximate`） |
 | 日期 | 2026-10-18 |
 | 关联 | `docs/已对齐/PRD-tick.md`（v0.3）、`TECH-ARCH-tick.md` §6、`RESEARCH-magpie.md` |
 | 一句话 | 在 todo 的绑定会话页面，每个会话直接显示该会话**最后一条 user 消息原文**，并把这件事在各 AI 工具里的会话按最后事件时间串成时间线，让人一眼看到「每段停在你说的哪一句」，并能点回任意会话继续。 |
@@ -437,3 +437,37 @@ export type TimelineItem = TodoSessionView & { digest?: SessionDigest }
 - 本 PRD 对 WorkBuddy 的依赖，**绝大部分是非公开契约**：没有一项有 WorkBuddy 官方文档给出明确规范；最关键的「会话索引 DB」「过滤标记字段」「完成状态字段」仅来自本机逆向，随时可能随版本变化（官方更新日志多次出现会话存储/回放/迁移的修复，无向后兼容承诺）。深链接是「官方提及有功能、无规范」，实测可用。
 - 因此必须：**① 版本探测**（App 版本 + 迁移目录 + `PRAGMA table_info`）；**② 降级策略**——读不到/不识别就显示为空（走保底文案），**仍能凭会话 id 经深链接定位**，不报错、不阻塞；**③ 未知 type 与缺失字段容错**；**④ 深链接调用前校验 id 存在**；**⑤ 适配器与 core 隔离**，格式变更只改 adapter。
 - 建议**向 WorkBuddy 官方并行验证**：确认 `workbuddy.db`/jsonl 的稳定性承诺、`providerData` 标记与 `sessions.status` 的语义、深链接 `chat/<id>` 的规范与不存在 id 的行为，以及 WorkBuddy 是否支持 hooks（能否官方拿 session_id + transcript_path）。官方若给出契约，可替换为更稳定的信号源并更新本表等级。
+
+## 11. as-built（2026-10-25 落地）
+
+P0-1..P0-6 已按 as-built 代码交付；§4 / §8 的「建议」与实现有出入时以本节为准。
+
+**合同与归一（`packages/ai/core`、`packages/shared`）**
+
+- 没有新增 `extractLastUserMessage()` 方法：证据随 `describeSession()` 的 `SessionInfo` 一起返回，避免为同一条会话再读一遍文件。新增可选字段：`lastUserMessage / lastUserMessageAt / lastEventAt / endedCleanly / running`（adapter 只吐证据）。
+- 新增纯函数 `deriveSessionState()` / `buildSessionDigest()` 与常量 `SESSION_ACTIVE_WINDOW_MS`（10 分钟）/ `SESSION_DIGEST_TEXT_MAX`（4000 字）。状态规则：`missing` = 文件/记录不在；`active` = 工具自报 `running` 或最后事件在活跃窗口内；`done` = `endedCleanly` 且已超窗口；其余 `idle`。截断只影响展示（加 `…` 并标 `lastUserMessageTruncated`），不改原文。
+- 视图类型：`SessionView.digest?: SessionDigest`、`TodoSessionView.digest`、`TodoRecentSession`；新增 IPC `sessions:recent`（shared 常量 / main / preload / renderer 四处同改）。
+
+**派生缓存（与 §4 建议的差异）**
+
+- 落在 `~/.ticktodo/cache/session-digests.json`（不是 §4 建议的 `data/`）：可再生、可删。只存「证据 + `(mtimeMs, size, lastUsedAt)` 指纹」，**不存状态判定结果**——状态每次按当前时钟现算（否则十分钟后还会显示「进行中」）。上限 500 条、落盘去抖 1.2s、写失败只 warn；`cache/` 被删不影响功能。
+- 没有实现 §4 的 `prefixHash`（P0-5 已列为后续项）：指纹只看 size / mtime / lastUsedAt；桌面工具的 DB 状态变化靠 `lastUsedAt` 进指纹。
+
+**UI**
+
+- 详情页「会话」改为「进展」：按 `lastActiveAt` 倒序、跨工具混排，`missing` 置底，`primary` 只加徽标；每项显示状态点 + 状态文案、消息时间（今天 `HH:mm` / 今年 `M月D日` / 跨年带年）、项目名、最后一条 user 消息原文（默认两行，点开全文；>4000 字截断并挂「消息已截断」）；没有原文时回退 `lastMessage` 并显示「标题回退」。
+- 首页线索行第二行 = 最近会话（`primary`，缺省为最后一条绑定）的最后一句，单行截断；首屏 + 30s + 窗口 focus 刷新；行高 44→56（`main.ts` 的 `ROW_H` 与 CSS 同步）。没有消息且不在进行中的线索不显示第二行。
+
+**适配器覆盖**（只给证据，不猜状态）
+
+| 工具 | 最后 user 原文 | 消息时间 | 事件时间 | 完成 / 进行中证据 |
+| --- | --- | --- | --- | --- |
+| `pi` | `readSessionMeta` 扫全部 message | `message.timestamp`（ms） | 消息事件时间，缺省回退 mtime | 末条 assistant `stopReason ∈ {stop, endTurn, …}` → `endedCleanly` |
+| `claude` | 现有 meta（已过滤 sidechain） | 记录 `timestamp`（ISO） | 最后一条记录时间 | 末条 assistant `stop_reason ∈ {end_turn, stop_sequence, stop}` |
+| `workbuddy` / `workbuddy-ai` | 共享 transcript 内核的「真实 user 消息」 | jsonl `message.timestamp`（ms） | 消息事件时间，缺省 DB `last_activity_at / updated_at` | DB `sessions.status`：`active` → `running`、`completed` → `endedCleanly`；状态缺失时回退末条 assistant `status=completed` |
+| 其余 11 个工具 | 暂未提供 | — | `lastUsedAt` | 只给 `missing / idle`，不猜 `done` |
+
+**验证与未做项**
+
+- `pnpm typecheck` 全绿；新增 `pnpm selftest:timeline`（16 PASS，覆盖状态归一 / 三个适配器证据解析 / 排序与 missing / 指纹缓存 / `recentForTodos` / 缓存落盘）；`pnpm selftest:prefill` 86 PASS、`pnpm selftest:update` 31 PASS。
+- 未做：真实多工具混合时间线的端到端 UI 走查（需 Electron 手测）、>50MB 冷读预算实测、WorkBuddy DB `status` 与 jsonl 末条的「去抖」判定（当前直接读 DB `status`，没有 §9.3 描述的 5s 静默窗口）。
