@@ -1,7 +1,7 @@
 {
   "name": "tick",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Tick — AI 会话的索引层：置顶 Todo 工作台",
   "scripts": {
     "dev": "pnpm --filter @tick/tick-extension build && pnpm --filter @tick/desktop dev",

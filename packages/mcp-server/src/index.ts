@@ -23,8 +23,8 @@ import { registerResources } from './resources'
 import { registerTools, type ServerState } from './tools'
 
 const SERVER_NAME = 'tick'
-const SERVER_VERSION = '0.3.1+mcp.1'
-const APP_VERSION = '0.3.1'
+const SERVER_VERSION = '0.3.2+mcp.1'
+const APP_VERSION = '0.3.2'
 
 /** spec §2.2 原文；进客户端系统提示，不要在大意上改写 */
 const INSTRUCTIONS = `Tick 是用户的本地线索（todo）系统，和用户的 AI 会话绑定在一起。
