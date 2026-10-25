@@ -11,7 +11,7 @@
 
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import type { CliSessionId, NewSessionMode, ToolClientId } from '@tick/shared'
+import type { CliSessionId, NewSessionMode, SessionDigest, SessionState, ToolClientId } from '@tick/shared'
 import { newCliSessionId as mkId } from '@tick/shared'
 
 /** 便捷出口：从任意字符串安全产出 CliSessionId（品牌类型由 shared 保证） */
@@ -53,6 +53,22 @@ export interface SessionInfo {
    * 用途：标注血缘 + 用量求和时跳过继承段（TECH-ARCH §6.2 陷阱 3）。
    */
   parentSessionPath?: string
+
+  // ---------- 时间线证据（P0-1/P0-3；全部可选：给不出就由 core 走保底） ----------
+  /**
+   * 最后一条**真实** user 消息原文（adapter 内部已过滤注入/合成消息，见 rules §5）。
+   * 与 `lastMessage` 的区别：`lastMessage` 是压成一行的标题回退，这条保留消息原文
+   * （服务层再截到 `SESSION_DIGEST_TEXT_MAX` 并标记 truncated）。
+   */
+  lastUserMessage?: string
+  /** 最后一条真实 user 消息的时间（ms） */
+  lastUserMessageAt?: number
+  /** 会话内最后事件时间（ms）——优先消息自身时间；缺失才回退文件 mtime */
+  lastEventAt?: number
+  /** 末条是 assistant 终态（不是中断/等待用户）；工具侧能判断才给 */
+  endedCleanly?: boolean
+  /** 工具自报正在执行（如 WorkBuddy `sessions.status=active`）；不知道就不填 */
+  running?: boolean
 }
 
 export interface SessionRef {
@@ -82,6 +98,67 @@ export interface SessionSummary {
    * 深链接定位行为未证伪，保守置灰）。缺省 = 可回到。
    */
   resumable?: boolean
+}
+
+// ---------- 时间线摘要（P0-1/P0-3/P0-5，纯函数） ----------
+
+/** 活跃窗口：最后事件在此之内 = 进行中（PRD §4 `T_active`） */
+export const SESSION_ACTIVE_WINDOW_MS = 10 * 60 * 1000
+
+/** 进 IPC / 派生缓存的消息原文上限：超长只截断（不改写）并标记 truncated */
+export const SESSION_DIGEST_TEXT_MAX = 4000
+
+/** 时间线的原始证据（adapter/`SessionInfo` → `buildSessionDigest` 的输入） */
+export interface SessionDigestSource {
+  toolId: string
+  sessionId: CliSessionId
+  exists: boolean
+  lastUserMessage?: string
+  lastUserMessageAt?: number
+  lastEventAt?: number
+  endedCleanly?: boolean
+  running?: boolean
+  /** true = `lastUserMessage` 只是旧 `lastMessage` 的回退，不是原文 */
+  approximate?: boolean
+}
+
+/**
+ * 状态归一（PRD §4）：
+ *  - `missing`：文件/记录不在；
+ *  - `active`：工具自报进行中，或最后事件在活跃窗口内；
+ *  - `done`：末条是 assistant 终态且已过活跃窗口；
+ *  - 其余 `idle`（中断/等待用户/无证据）。
+ *
+ * 只读、纯函数：时间线不改动 todo 完成状态。
+ */
+export function deriveSessionState(
+  input: Pick<SessionDigestSource, 'exists' | 'lastEventAt' | 'endedCleanly' | 'running'>,
+  now = Date.now(),
+): SessionState {
+  if (!input.exists) return 'missing'
+  if (input.running === true) return 'active'
+  if (input.lastEventAt === undefined) return 'idle'
+  // 时钟回拨/未来时间戳也按「刚刚有事件」处理，不要把进行中的会话误判成 idle
+  if (now - input.lastEventAt <= SESSION_ACTIVE_WINDOW_MS) return 'active'
+  if (input.endedCleanly === true) return 'done'
+  return 'idle'
+}
+
+/** 把 adapter 证据收成可进 IPC / 缓存的摘要（截断 + 状态判定都在这里） */
+export function buildSessionDigest(input: SessionDigestSource, now = Date.now()): SessionDigest {
+  const raw = input.lastUserMessage?.trim() || undefined
+  const truncated = raw !== undefined && raw.length > SESSION_DIGEST_TEXT_MAX
+  const message = truncated ? `${raw.slice(0, SESSION_DIGEST_TEXT_MAX)}…` : raw
+  return {
+    toolId: input.toolId,
+    sessionId: input.sessionId,
+    state: deriveSessionState(input, now),
+    ...(message ? { lastUserMessage: message } : {}),
+    ...(input.lastUserMessageAt !== undefined ? { lastUserMessageAt: input.lastUserMessageAt } : {}),
+    ...(input.lastEventAt !== undefined ? { lastActiveAt: input.lastEventAt } : {}),
+    ...(input.approximate ? { approximate: true } : {}),
+    ...(truncated ? { lastUserMessageTruncated: true } : {}),
+  }
 }
 
 // ---------- 用量（F6-b：只统计工具侧会话，面板不参与） ----------

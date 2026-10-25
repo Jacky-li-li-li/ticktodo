@@ -120,6 +120,34 @@ export interface SessionView {
   resumable?: boolean
   boundTodoId?: string
   boundTodoTitle?: string
+  /**
+   * 时间线（P0-1/P0-3）派生摘要：最后一条真实 user 消息 + 会话内事件时间 + 状态。
+   * 权威源仍在工具侧；这是 `SessionService` 现问 adapter 后拼出的只读视图，不落镜像。
+   */
+  digest?: SessionDigest
+}
+
+/** 时间线 P0-3：会话状态（`missing` = 文件/记录已不在本机） */
+export type SessionState = 'active' | 'idle' | 'done' | 'missing'
+
+/**
+ * 一条会话的时间线摘要（P0-1/P0-2/P0-5）。
+ *
+ * 与 `SessionInfo` 的区别：`SessionInfo` 是 adapter 的原始证据；这里由 core 的纯函数
+ * `buildSessionDigest` 归一（截断、状态判定），可以安全地进 IPC 与 `cache/` 派生缓存。
+ */
+export interface SessionDigest {
+  toolId: string
+  sessionId: CliSessionId
+  state: SessionState
+  /** 最后一条真实 user 消息原文（adapter 已过滤注入；服务层截到 4000 字并标记） */
+  lastUserMessage?: string
+  lastUserMessageAt?: number
+  /** 会话内最后事件时间（ms）——不是文件 mtime；工具侧没有事件时间时才回退 mtime */
+  lastActiveAt?: number
+  /** true = 该消息只是旧 `lastMessage`（压缩标题）的回退，不是原文 */
+  approximate?: boolean
+  lastUserMessageTruncated?: boolean
 }
 
 /** 某条 todo 下的会话（绑定详情；会话文件可能已被删 → exists=false） */
@@ -129,6 +157,19 @@ export interface TodoSessionView extends SessionView {
   primary: boolean
   /** false = 会话文件已不在本机（只能看/解绑，不能 resume） */
   missing: boolean
+}
+
+/** 首页线索行「上次说到哪」（P0-6）：每个 todo 只取一条最近绑定会话的摘要 */
+export interface TodoRecentSession {
+  todoId: string
+  toolId: string
+  sessionId: CliSessionId
+  state: SessionState
+  lastUserMessage?: string
+  lastUserMessageAt?: number
+  lastActiveAt?: number
+  approximate?: boolean
+  lastUserMessageTruncated?: boolean
 }
 
 export const SessionsIpc = {
@@ -141,6 +182,8 @@ export const SessionsIpc = {
   /** 把历史会话绑到已有 todo */
   bind: 'sessions:bind',
   unbind: 'sessions:unbind',
+  /** 首页线索行（P0-6）：批量取每个 todo 最近一条会话的时间线摘要 */
+  recent: 'sessions:recent',
 } as const
 
 /** 单会话用量（F6-b）：只统计工具侧会话，面板 Chat 永不参与 */

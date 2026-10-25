@@ -119,8 +119,14 @@ export interface ClaudeSessionMeta {
   lastUserText?: string
   /** 首条 user 记录时间（ms） */
   firstUserAt?: number
+  /** 最后一条 user 记录时间（ms） */
+  lastUserAt?: number
   /** 最后一条记录时间（ms），用于 lastUsedAt */
   lastEventAt?: number
+  /** 最后一条 user/assistant 记录的类型（判断「末条是不是 assistant 终态」） */
+  lastEventKind?: 'user' | 'assistant'
+  /** 最后一条 assistant 记录的 `message.stop_reason`（end_turn / tool_use / …） */
+  lastAssistantStopReason?: string
   /** 标题：`custom-title`（/rename 或 -n）> `ai-title`（自动生成）> `summary`（压缩摘要） */
   title?: string
   /** `type:"summary"` 的压缩摘要文本（只在没有前两种标题时用） */
@@ -406,6 +412,15 @@ function applyMetaEvent(meta: ClaudeSessionMeta, event: Record<string, unknown>)
     }
     return
   }
+  if (type === 'assistant') {
+    // 时间线：记录末条 assistant 的终态（end_turn / stop_sequence = 干净结束；tool_use = 还在跑）
+    meta.lastEventKind = 'assistant'
+    const message = event.message
+    if (isRecord(message) && typeof message.stop_reason === 'string') {
+      meta.lastAssistantStopReason = message.stop_reason
+    }
+    return
+  }
   if (type !== 'user') return // 用量单独算，这里只要 user 文本
   if (event.isSidechain === true) return // 子代理消息不并入主会话
 
@@ -420,6 +435,8 @@ function applyMetaEvent(meta: ClaudeSessionMeta, event: Record<string, unknown>)
     meta.firstUserAt = at
   }
   meta.lastUserText = text
+  meta.lastEventKind = 'user'
+  if (at !== undefined) meta.lastUserAt = at
 }
 
 /**

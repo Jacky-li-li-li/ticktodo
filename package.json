@@ -9,6 +9,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "selftest:prefill": "node scripts/selftest-prefill.mjs",
     "selftest:update": "node scripts/selftest-update.mjs",
+    "selftest:timeline": "node scripts/selftest-timeline.mjs",
     "mcp:build": "pnpm --filter @tick/mcp-server build",
     "mcp:check": "node scripts/mcp-check.mjs",
     "verify:agents": "node scripts/verify-agent-stores.mjs",

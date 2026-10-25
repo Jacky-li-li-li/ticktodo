@@ -106,6 +106,12 @@ export interface WorkbuddyTranscriptMeta {
   firstUserAt?: number
   /** 最后一条 user 事件时间（ms） */
   lastUserAt?: number
+  /** 会话内最后一条 message 事件时间（ms） */
+  lastEventAt?: number
+  /** 末条 user/assistant 消息类型（判断「末条是不是 assistant 终态」） */
+  lastEventKind?: 'user' | 'assistant'
+  /** 末条 assistant 消息自带的 status（实测 completed；未知值原样保留） */
+  lastAssistantStatus?: string
   /** 标题兜底：jsonl `custom-title` > `ai-title` */
   title?: string
 }

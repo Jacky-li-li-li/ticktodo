@@ -21,6 +21,7 @@ import type {
   Todo,
   TodoCreateInput,
   TodoPatch,
+  TodoRecentSession,
   TodoSessionView,
   ToolStatus,
   UpdateState,
@@ -201,6 +202,14 @@ export function registerIpc(
   ipcMain.handle(SessionsIpc.forTodo, async (_e, todoId: string): Promise<TodoSessionView[]> => {
     return services.sessions.forTodo(todoId)
   })
+  // 首页线索行（P0-6）：批量取每个 todo 最近会话的最后一条 user 消息
+  ipcMain.handle(
+    SessionsIpc.recent,
+    async (_e, todoIds: string[]): Promise<TodoRecentSession[]> => {
+      if (!Array.isArray(todoIds)) return []
+      return services.sessions.recentForTodos(todoIds.filter((id): id is string => typeof id === 'string'))
+    },
+  )
   ipcMain.handle(
     SessionsIpc.claim,
     async (_e, args: CliSessionId | { sessionId: CliSessionId; toolId?: string }) => {

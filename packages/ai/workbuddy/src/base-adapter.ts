@@ -27,7 +27,7 @@ import type {
   SessionInfo,
   SessionSummary,
 } from '@tick/ai-core'
-import { newCliSessionId } from '@tick/ai-core'
+import { newCliSessionId, SESSION_DIGEST_TEXT_MAX } from '@tick/ai-core'
 import type { CliSessionId } from '@tick/shared'
 import {
   appBundleCandidates,
@@ -241,6 +241,13 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
       meta = await this.transcriptMeta(transcript.filePath, transcript.mtimeMs, transcript.size)
     }
 
+    // 完成状态：DB `sessions.status` 是首选（completed/active/error/Pending，逆向证据）；
+    // 状态缺失时才回退到消息流末条 assistant 的 status。未知值一律当「不知道」，不猜 done。
+    const toolStatus = row.status.trim().toLowerCase()
+    const running = toolStatus === 'active'
+    const endedCleanly =
+      toolStatus === 'completed' || (toolStatus === '' && meta.lastAssistantStatus === 'completed')
+
     return {
       toolId: this.id,
       sessionId: newCliSessionId(row.id),
@@ -248,6 +255,12 @@ export abstract class WorkbuddyAdapterBase implements AiToolAdapter {
       name: this.nameOf(row) ?? clipText(collapseText(meta.title), NAME_MAX),
       firstMessage: clipText(collapseText(meta.firstUserText), FIRST_MESSAGE_MAX),
       lastMessage: clipText(collapseText(meta.lastUserText), LAST_MESSAGE_MAX),
+      // 时间线证据（P0-1/P0-3）：原文 + 消息时间 + 事件时间 + 完成证据
+      lastUserMessage: clipText(collapseText(meta.lastUserText), SESSION_DIGEST_TEXT_MAX),
+      lastUserMessageAt: meta.lastUserAt,
+      lastEventAt: meta.lastEventAt ?? row.lastActivityAt ?? row.updatedAt,
+      endedCleanly: endedCleanly || undefined,
+      running: running || undefined,
       createdAt: isoTimestamp(row.createdAt, row.updatedAt),
       lastUsedAt: this.usedAt(row),
       filePath: transcript.filePath || undefined,

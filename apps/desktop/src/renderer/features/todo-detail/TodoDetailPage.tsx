@@ -11,11 +11,10 @@
  *     右侧 1/8 为滑块（单击接着做 / 按住左拖到底解绑），设置开启时显示单会话用量
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Todo, TodoPatch, TodoSessionView } from '@tick/shared'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type { SessionState, Todo, TodoPatch, TodoSessionView } from '@tick/shared'
 import type { SessionUsage } from '@tick/ai-core'
 import { toolDisplayName } from '@tick/shared'
-import { relTime } from '../list/relTime'
 import { ToolIcon } from '../icons/ToolIcon'
 import { PlusIcon } from '../icons/PlusIcon'
 import { ImportIcon } from '../icons/ImportIcon'
@@ -23,30 +22,34 @@ import { TrashIcon } from '../icons/TrashIcon'
 
 const cwdLabel = (p?: string): string => (p ? p.replace(/^\/Users\/[^/]+/, '~') : '')
 
-interface SessionProjectGroup {
-  cwd: string
-  name: string
-  sessions: TodoSessionView[]
-  latest: number
+/** 时间线条目上显示的消息时间：今天只给 HH:mm，今年给 M月D日，跨年带年份 */
+function messageTime(ms?: number): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (sameDay) return hm
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
 }
 
-/** 会话按项目（cwd）分组：组间按最近使用倒序，组内同样倒序 */
-function groupSessionsByProject(sessions: TodoSessionView[]): SessionProjectGroup[] {
-  const map = new Map<string, TodoSessionView[]>()
-  for (const s of sessions) {
-    const key = s.cwd || '(未知项目)'
-    const list = map.get(key)
-    if (list) list.push(s)
-    else map.set(key, [s])
+/** 时间线状态文案（P0-3；不用「失败」这类压力词） */
+function stateText(state: SessionState): string {
+  switch (state) {
+    case 'active':
+      return '进行中'
+    case 'done':
+      return '已结束'
+    case 'missing':
+      return '不在本机'
+    default:
+      return '已停下'
   }
-  return [...map.entries()]
-    .map(([cwd, list]) => ({
-      cwd,
-      name: cwd.split('/').filter(Boolean).pop() ?? cwd,
-      sessions: [...list].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0)),
-      latest: Math.max(...list.map((s) => s.lastUsedAt ?? 0)),
-    }))
-    .sort((a, b) => b.latest - a.latest)
 }
 
 /** 悬停标题时展示的绝对时间：今年省略年份，跨年带年 */
@@ -225,7 +228,7 @@ export function TodoDetailPage({
   }
 
   const done = todo.status === 'done'
-  const projectGroups = useMemo(() => groupSessionsByProject(sessions), [sessions])
+  const toolCount = new Set(sessions.map((s) => s.toolId)).size
 
   return (
     <div className="panel-inner detail-page">
@@ -331,11 +334,12 @@ export function TodoDetailPage({
           </button>
         )}
 
-        {/* 会话 */}
+        {/* 进展（P0-2）：最后一条 user 消息 + 状态，按会话内最后事件时间倒序、跨工具混排 */}
         <section className="detail-section">
           <div className="detail-section-head">
             <span className="detail-section-title">
-              会话<span className="detail-count">{sessions.length}</span>
+              进展<span className="detail-count">{sessions.length}</span>
+              {toolCount > 1 && <span className="detail-tools-count">{toolCount} 个工具</span>}
             </span>
             <div className="detail-section-actions">
               <button
@@ -362,27 +366,17 @@ export function TodoDetailPage({
               还没有绑定会话。点右上角 ＋ 新建，或倒入一条历史会话。
             </div>
           ) : (
-            <div className="detail-session-groups">
-              {projectGroups.map((group) => (
-                <div className="detail-project-group" key={group.cwd}>
-                  <div className="detail-project-head" title={group.cwd}>
-                    <span className="detail-project-name">{group.name}</span>
-                    <span className="detail-project-path">{cwdLabel(group.cwd)}</span>
-                  </div>
-                  <div className="detail-sessions">
-                    {group.sessions.map((s) => (
-                      <SessionCard
-                        key={s.sessionId}
-                        session={s}
-                        usage={usages[s.sessionId]}
-                        usageEnabled={usageEnabled}
-                        onResume={(session) => void resumeSession(session)}
-                        onBlockedResume={notResumableHint}
-                        onUnbindRequest={setPendingUnbind}
-                      />
-                    ))}
-                  </div>
-                </div>
+            <div className="detail-timeline">
+              {sessions.map((s) => (
+                <SessionCard
+                  key={s.sessionId}
+                  session={s}
+                  usage={usages[s.sessionId]}
+                  usageEnabled={usageEnabled}
+                  onResume={(session) => void resumeSession(session)}
+                  onBlockedResume={notResumableHint}
+                  onUnbindRequest={setPendingUnbind}
+                />
               ))}
             </div>
           )}
@@ -472,10 +466,17 @@ function SessionCard({
   const [dragging, setDragging] = useState(false)
   const [armed, setArmed] = useState(false)
   const [pulse, setPulse] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
-  const firstText = (s.firstMessage ?? s.name ?? '未命名会话').trim()
-  const lastText = s.lastMessage?.trim()
-  const timeText = s.lastUsedAt ? relTime(new Date(s.lastUsedAt).toISOString(), new Date()) : '—'
+  // P0-1/P0-3：最后一条真实 user 消息原文 + 消息时间 + 归一状态；
+  // 旧 adapter 还没给 digest 时回退到 lastMessage（并如实标「标题回退」）。
+  const digest = s.digest
+  const state = digest?.state ?? (s.missing ? 'missing' : 'idle')
+  const message = (digest?.lastUserMessage ?? s.lastMessage ?? s.firstMessage ?? s.name ?? '未命名会话').trim()
+  const messageAt = digest?.lastUserMessageAt
+  const timeText = messageTime(messageAt ?? digest?.lastActiveAt ?? s.lastUsedAt)
+  const projectName = s.cwd ? (s.cwd.split('/').filter(Boolean).pop() ?? '') : ''
+  const canExpand = message.length > 90
   const toolName = toolDisplayName(s.toolId)
   /**
    * 两种原因禁止「接着做」：missing（会话文件不在本机，既有语义）与
@@ -579,29 +580,47 @@ function SessionCard({
           <ToolIcon toolId={s.toolId} size={16} />
         </div>
         <div className="detail-session-main">
-          {/* 第一行 = 该会话的第一条 user 消息；时间 = 最后使用时间，跟在文本后 */}
-          <div className="detail-session-headline">
-            <div className="detail-session-title" title={firstText}>
-              {firstText}
-            </div>
-            <span className="detail-session-time" title={`最后使用：${timeText}`}>
-              {timeText}
-            </span>
+          {/* 第一行：状态 + 消息时间 + 项目（P0-2） */}
+          <div className="detail-session-meta">
+            <span className={`detail-state-dot is-${state}`} aria-hidden="true" />
+            <span className="detail-session-state">{stateText(state)}</span>
+            {timeText && (
+              <span className="detail-session-time" title={messageAt ? '这条消息的时间' : '最后活动时间'}>
+                {timeText}
+              </span>
+            )}
+            {projectName && (
+              <span className="detail-session-project" title={cwdLabel(s.cwd)}>
+                {projectName}
+              </span>
+            )}
+            {s.primary && <span className="detail-session-primary">默认</span>}
           </div>
-          {lastText && lastText !== firstText && (
-            <div className="detail-session-last" title={lastText}>
-              <span className="detail-session-last-label">上次</span>
-              {lastText}
-            </div>
-          )}
+
+          {/* 第二块：最后一条真实 user 消息原文（P0-1；长文折叠，点开看全文） */}
+          <button
+            type="button"
+            className={`detail-session-msg ${expanded ? 'is-expanded' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (canExpand) setExpanded((v) => !v)
+            }}
+            title={canExpand ? (expanded ? '收起' : '展开全文') : message}
+          >
+            {message}
+            {digest?.approximate && <span className="detail-session-approx">（标题回退）</span>}
+          </button>
+
           {(s.state === 'pending' ||
             s.missing ||
             s.resumable === false ||
+            digest?.lastUserMessageTruncated ||
             (usageEnabled && usage)) && (
             <div className="detail-session-top">
               {s.state === 'pending' && <span className="session-tag">待发送</span>}
               {s.missing && <span className="session-tag">已不在本机</span>}
               {s.resumable === false && <span className="session-tag">不可从 Tick 定位</span>}
+              {digest?.lastUserMessageTruncated && <span className="session-tag">消息已截断</span>}
               {usageEnabled && usage && <span className="session-usage">{usageText(usage)}</span>}
             </div>
           )}
@@ -634,8 +653,8 @@ function SessionCard({
         onClick={onClick}
         aria-label={
           canResume
-            ? `接着做（${toolName}）；按住向左拖到底可解绑「${firstText}」`
-            : `${blockedReason}；按住向左拖到底可解绑「${firstText}」`
+            ? `接着做（${toolName}）；按住向左拖到底可解绑「${message}」`
+            : `${blockedReason}；按住向左拖到底可解绑「${message}」`
         }
         title={
           canResume

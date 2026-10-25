@@ -23,6 +23,7 @@ import type {
   Todo,
   TodoCreateInput,
   TodoPatch,
+  TodoRecentSession,
   TodoSessionView,
   ToolStatus,
   UpdateState,
@@ -129,6 +130,9 @@ const api = {
       ipcRenderer.invoke(SessionsIpc.list, opts),
     forTodo: (todoId: string): Promise<TodoSessionView[]> =>
       ipcRenderer.invoke(SessionsIpc.forTodo, todoId),
+    /** 首页线索行（P0-6）：批量取最近会话的最后一条 user 消息 */
+    recent: (todoIds: string[]): Promise<TodoRecentSession[]> =>
+      ipcRenderer.invoke(SessionsIpc.recent, todoIds),
     /** S5：建 todo 并绑定；toolId 用于跨工具同 id 时精确路由 */
     claim: (
       sessionId: CliSessionId,

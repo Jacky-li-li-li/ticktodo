@@ -190,18 +190,30 @@ export interface SessionMeta {
   firstUserText?: string
   /** 最后一条 user 消息的纯文本（UI-SPEC §6.2 展开卡片「上次停在哪」） */
   lastUserText?: string
+  /** 首条 / 最后一条 user 消息的时间（ms，取自 message.timestamp） */
+  firstUserAt?: number
+  lastUserAt?: number
+  /** 会话内最后事件时间（ms）——消息事件时间，不是文件 mtime */
+  lastEventAt?: number
+  /** 末条是 assistant 终态（stop 而非 toolUse / 中断 / 等待用户） */
+  endedCleanly?: boolean
 }
 
+/** pi 的 assistant 终态 stopReason（实测 'stop'；其余为 toolUse/中断/等待） */
+const CLEAN_STOP_REASONS = new Set(['stop', 'endTurn', 'end_turn', 'stopSequence', 'stop_sequence'])
+
 /**
- * 读会话元数据：最新 session_info.name + 首条 user 文本。
+ * 读会话元数据：最新 session_info.name + 首条/末条 user 文本 + 事件时间与终态。
  * 口径（TECH-ARCH §6）：name 必须全量扫（pi 自己也如此），但**只取字段、不缓存正文**。
- * 行内先 includes 再 parse；内存只保留两行文本。
+ * 行内先 includes 再 parse；内存只保留两段文本。
  */
 export async function readSessionMeta(file: string): Promise<SessionMeta> {
   return new Promise<SessionMeta>((resolve, reject) => {
     const rs = createReadStream(file, { encoding: 'utf8' })
     const meta: SessionMeta = {}
     let pending = ''
+    let lastRole: string | undefined
+    let lastStopReason: string | undefined
     const consume = (line: string): void => {
       if (line.includes('"session_info"')) {
         try {
@@ -212,24 +224,39 @@ export async function readSessionMeta(file: string): Promise<SessionMeta> {
         } catch {
           /* 坏行忽略 */
         }
-      } else if (line.includes('"role":"user"')) {
+        return
+      }
+      // 时间线证据要覆盖所有 message（含 toolResult/assistant），不能只看 user
+      if (!line.includes('"type":"message"') && !line.includes('"type": "message"')) return
+      try {
+        const parsed = JSON.parse(line) as {
+          type?: string
+          timestamp?: unknown
+          message?: { role?: string; content?: unknown; stopReason?: string; timestamp?: unknown }
+        }
+        if (parsed.type !== 'message' || !parsed.message) return
+        const at = timestampOf(parsed)
+        if (at !== undefined) meta.lastEventAt = at
+        const role = parsed.message.role
+        lastRole = role
+        if (role === 'assistant') {
+          lastStopReason = parsed.message.stopReason
+          return
+        }
+        if (role !== 'user') return
         // 注意：不能把「还没找到首条」作为整个分支的条件，否则找到 first 后
         // 后续 user 消息不会再被扫描，lastUserText 会永远停在第一条。
-        try {
-          const parsed = JSON.parse(line) as {
-            type?: string
-            message?: { role?: string; content?: unknown }
+        const text = messageText(parsed.message.content)
+        if (text.trim()) {
+          if (meta.firstUserText === undefined) {
+            meta.firstUserText = text
+            meta.firstUserAt = at
           }
-          if (parsed.type === 'message' && parsed.message?.role === 'user') {
-            const text = messageText(parsed.message.content)
-            if (text.trim()) {
-              if (meta.firstUserText === undefined) meta.firstUserText = text
-              meta.lastUserText = text
-            }
-          }
-        } catch {
-          /* 坏行忽略 */
+          meta.lastUserText = text
+          if (at !== undefined) meta.lastUserAt = at
         }
+      } catch {
+        /* 坏行忽略 */
       }
     }
     rs.on('data', (chunk) => {
@@ -244,10 +271,24 @@ export async function readSessionMeta(file: string): Promise<SessionMeta> {
     rs.on('end', () => {
       // 写入中的会话可能最后一行还没换行，不能丢
       if (pending) consume(pending)
+      meta.endedCleanly =
+        lastRole === 'assistant' && CLEAN_STOP_REASONS.has(lastStopReason ?? '')
       resolve(meta)
     })
     rs.on('error', reject)
   })
+}
+
+/** 消息时间：message.timestamp（ms）优先，顶层 timestamp（ISO）兜底 */
+function timestampOf(parsed: { timestamp?: unknown; message?: { timestamp?: unknown } }): number | undefined {
+  for (const raw of [parsed.message?.timestamp, parsed.timestamp]) {
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+    if (typeof raw === 'string') {
+      const ms = Date.parse(raw)
+      if (Number.isFinite(ms)) return ms
+    }
+  }
+  return undefined
 }
 
 function messageText(content: unknown): string {

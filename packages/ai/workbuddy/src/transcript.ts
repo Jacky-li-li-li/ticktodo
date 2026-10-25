@@ -68,13 +68,17 @@ export async function readTranscriptMeta(file: string): Promise<WorkbuddyTranscr
       if (!event) continue
       const type = event.type
       if (type === 'message') {
+        const at = eventTime(event)
+        if (at !== undefined) meta.lastEventAt = at
+        if (event.role === 'assistant') {
+          meta.lastEventKind = 'assistant'
+          if (typeof event.status === 'string') meta.lastAssistantStatus = event.status
+          continue
+        }
         const user = readUserMessageText(event)
         if (!user) continue
-        const at = event.timestamp
-        const candidate: Candidate = {
-          text: user.text,
-          at: typeof at === 'number' && Number.isFinite(at) ? at : undefined,
-        }
+        meta.lastEventKind = 'user'
+        const candidate: Candidate = { text: user.text, at }
         if (user.strong) {
           firstStrong ??= candidate
           lastStrong = candidate
@@ -179,6 +183,17 @@ function titleField(event: Record<string, unknown>): string | undefined {
   for (const key of ['customTitle', 'aiTitle', 'title'] as const) {
     const value = event[key]
     if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+/** 事件时间：message.timestamp 是毫秒数；其它形态（ISO 字符串）兜底解析，非法返回 undefined */
+function eventTime(event: Record<string, unknown>): number | undefined {
+  const raw = event.timestamp
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (typeof raw === 'string') {
+    const ms = Date.parse(raw)
+    if (Number.isFinite(ms)) return ms
   }
   return undefined
 }

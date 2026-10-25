@@ -9,7 +9,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
-import type { Todo } from '@tick/shared'
+import type { Todo, TodoRecentSession } from '@tick/shared'
+import { toolDisplayName } from '@tick/shared'
 import { relTime } from './relTime'
 import { EnterIcon } from '../icons/EnterIcon'
 
@@ -22,6 +23,7 @@ const Check = (): React.JSX.Element => (
 export function TodoRow({
   todo,
   done = false,
+  recentSession,
   onArchive,
   onRestore,
   onEnter,
@@ -29,6 +31,8 @@ export function TodoRow({
 }: {
   todo: Todo
   done?: boolean
+  /** 时间线 P0-6：最近一条绑定会话的最后一句（没有就不占位） */
+  recentSession?: TodoRecentSession
   onArchive?: (todo: Todo) => void
   onRestore?: (todo: Todo) => void
   onEnter: (todo: Todo) => void
@@ -63,6 +67,17 @@ export function TodoRow({
     else setDraft(todo.title)
   }
 
+  const lastText = recentSession?.lastUserMessage?.trim()
+  const toolName = recentSession ? toolDisplayName(recentSession.toolId) : ''
+  const stateLabel =
+    recentSession?.state === 'active'
+      ? '进行中'
+      : recentSession?.state === 'done'
+        ? '已结束'
+        : recentSession?.state === 'missing'
+          ? '不在本机'
+          : '已停下'
+
   return (
     <div
       className={`thread-row ${done ? 'done' : ''}`}
@@ -87,38 +102,50 @@ export function TodoRow({
         </button>
       )}
 
-      {editing ? (
-        <input
-          ref={inputRef}
-          className="title-edit"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-              e.currentTarget.blur()
-            } else if (e.key === 'Escape') {
-              cancelRef.current = true
-              e.currentTarget.blur()
-            }
-          }}
-          onBlur={commit}
-          aria-label="修改标题"
-        />
-      ) : (
-        <button
-          className="title title-button"
-          title="双击修改标题"
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => {
-            e.stopPropagation()
-            setEditing(true)
-          }}
-        >
-          {todo.title}
-        </button>
-      )}
+      <div className="thread-main">
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="title-edit"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                e.currentTarget.blur()
+              } else if (e.key === 'Escape') {
+                cancelRef.current = true
+                e.currentTarget.blur()
+              }
+            }}
+            onBlur={commit}
+            aria-label="修改标题"
+          />
+        ) : (
+          <button
+            className="title title-button"
+            title="双击修改标题"
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              setEditing(true)
+            }}
+          >
+            {todo.title}
+          </button>
+        )}
+
+        {/* P0-6：标题下一行 = 最近一条会话的最后一句（单行截断，悬停看全文） */}
+        {!editing && lastText && (
+          <span
+            className={`thread-last ${recentSession?.state === 'active' ? 'is-active' : ''}`}
+            title={`${toolName} · ${stateLabel}：${lastText}`}
+          >
+            {lastText}
+          </span>
+        )}
+      </div>
 
       <span className="time">{relTime(todo.updatedAt, new Date())}</span>
 

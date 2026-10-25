@@ -315,6 +315,11 @@ export class PiAdapter implements AiToolAdapter {
       name: meta.name,
       firstMessage: toSessionTitle(meta.firstUserText),
       lastMessage: toSessionTitle(meta.lastUserText),
+      // 时间线证据（P0-1/P0-3）：原文 + 消息时间 + 事件时间 + 终态
+      lastUserMessage: meta.lastUserText,
+      lastUserMessageAt: meta.lastUserAt,
+      lastEventAt: meta.lastEventAt ?? st.mtimeMs,
+      endedCleanly: meta.endedCleanly,
       createdAt: header.timestamp ?? new Date(st.mtimeMs).toISOString(),
       lastUsedAt: st.mtimeMs,
       filePath: file,

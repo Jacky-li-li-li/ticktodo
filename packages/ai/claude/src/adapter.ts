@@ -53,6 +53,9 @@ import { computeUsageFromFile } from './usage'
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
+/** assistant 的干净终态：end_turn / stop_sequence（max_tokens 是截断、tool_use 是还在跑） */
+const CLEAN_ASSISTANT_STOP_REASONS = new Set(['end_turn', 'stop_sequence', 'stop'])
+
 export interface ClaudeAdapterDeps {
   /** 剪贴板投递出口（main 注入 clipboard.writeText；ai 包不依赖 Electron） */
   clipboardWrite?: (text: string) => void
@@ -386,6 +389,14 @@ export class ClaudeAdapter implements AiToolAdapter {
       name: withName ? sessionTitleOf(meta) : undefined,
       firstMessage: withName ? toSessionTitle(meta.firstUserText) : undefined,
       lastMessage: withName ? toSessionTitle(meta.lastUserText) : undefined,
+      // 时间线证据：原文 + 消息时间 + 事件时间 + 终态（末条 assistant 且 stop_reason 干净）
+      lastUserMessage: withName ? meta.lastUserText : undefined,
+      lastUserMessageAt: withName ? meta.lastUserAt : undefined,
+      lastEventAt: meta.lastEventAt,
+      endedCleanly:
+        withName && meta.lastEventKind === 'assistant'
+          ? CLEAN_ASSISTANT_STOP_REASONS.has(meta.lastAssistantStopReason ?? '')
+          : undefined,
       createdAt: new Date(meta.firstUserAt ?? stat.birthtimeMs ?? stat.mtimeMs).toISOString(),
       lastUsedAt: meta.lastEventAt ?? stat.mtimeMs,
       filePath: file,

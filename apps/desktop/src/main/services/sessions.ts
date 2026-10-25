@@ -7,15 +7,35 @@
  *
  * 多工具（M5）：每行会话自带 toolId，读会话必须按 **binding 里的 toolId** 路由到 adapter，
  * 不用 sessionId 全局反查再猜工具——不同工具的 id 命名空间互不相干（合同 §1）。
+ *
+ * 时间线（P0-1..P0-5）：`forTodo()` 在每条绑定上多拼一个 `digest`（最后一条真实 user 消息 +
+ * 会话内事件时间 + 归一状态）。digest 是**派生数据**：adapter 的 `SessionInfo` 是证据，
+ * 这里只缓存「证据 + 文件指纹」到 `cache/session-digests.json`，状态每次按当前时间重算
+ * （缓存里不能存 active/idle 的判定结果，否则十分钟后还是「进行中」）。
  */
 
-import type { CliSessionId, SessionBinding, SessionView, Todo, TodoSessionView } from '@tick/shared'
+import fs from 'node:fs'
+import type {
+  CliSessionId,
+  SessionBinding,
+  SessionDigest,
+  SessionView,
+  Todo,
+  TodoRecentSession,
+  TodoSessionView,
+} from '@tick/shared'
 import { newCliSessionId } from '@tick/shared'
-import type { AiToolAdapter, SessionInfo, SessionSummary } from '@tick/ai-core'
-import { canonicalPath } from '@tick/ai-core'
+import type { AiToolAdapter, SessionDigestSource, SessionInfo, SessionSummary } from '@tick/ai-core'
+import { buildSessionDigest, canonicalPath } from '@tick/ai-core'
 import type { TodoStore } from '../store'
+import { atomicWriteJson, readJson } from './storage'
 
 const CACHE_MS = 5_000
+
+/** digest 派生缓存上限：只服务最近打开过的 todo，不无限长 */
+const DIGEST_CACHE_MAX = 500
+/** 缓存落盘去抖：forTodo 每 15s 刷一次，没必要每次写盘 */
+const DIGEST_FLUSH_MS = 1_200
 
 export interface ClaimResult {
   ok: boolean
@@ -23,17 +43,52 @@ export interface ClaimResult {
   reason?: string
 }
 
+export interface SessionServiceOptions {
+  /** 派生缓存文件（`cache/session-digests.json`）；缺省 = 只内存缓存 */
+  digestCacheFile?: string
+  /** 时钟注入（状态单测/夹具用） */
+  now?: () => number
+}
+
+interface DigestFingerprint {
+  mtimeMs: number
+  size: number
+  /** 也纳入指纹：桌面工具的 DB 状态可能变而 jsonl 未追加 */
+  lastUsedAt?: number
+}
+
+interface DigestCacheEntry {
+  fingerprint: DigestFingerprint
+  source: SessionDigestSource
+}
+
+interface DigestCacheFile {
+  version: 1
+  entries: Record<string, DigestCacheEntry>
+}
+
 export class SessionService {
   private cache?: { at: number; items: SessionSummary[] }
   private adapters: AiToolAdapter[]
+  private digestCache = new Map<string, DigestCacheEntry>()
+  private digestCacheLoaded = false
+  private digestWriteTimer?: ReturnType<typeof setTimeout>
+  private readonly digestCacheFile?: string
+  private readonly clock: () => number
 
-  constructor(adapters: AiToolAdapter[], private store: TodoStore) {
+  constructor(
+    adapters: AiToolAdapter[],
+    private store: TodoStore,
+    opts: SessionServiceOptions = {},
+  ) {
     this.adapters = adapters
+    this.digestCacheFile = opts.digestCacheFile
+    this.clock = opts.now ?? Date.now
   }
 
   /** 会话列表（5s 进程内缓存：S5 反复打开不重复扫 49MB） */
   private async summaries(force = false): Promise<SessionSummary[]> {
-    const now = Date.now()
+    const now = this.clock()
     if (!force && this.cache && now - this.cache.at < CACHE_MS) return this.cache.items
     const items: SessionSummary[] = []
     for (const adapter of this.adapters) {
@@ -111,7 +166,7 @@ export class SessionService {
     return views
   }
 
-  /** 某条 todo 下的会话（绑定详情）；会话被删也能返回 missing 占位 */
+  /** 某条 todo 下的会话（绑定详情 + 时间线摘要）；会话被删也能返回 missing 占位 */
   async forTodo(todoId: string): Promise<TodoSessionView[]> {
     const todo = this.store.list().find((t) => t.id === todoId)
     if (!todo) return []
@@ -134,6 +189,7 @@ export class SessionService {
         exists: Boolean(info),
         // info 都读不到时没有「能不能回」的信息，交给 missing 表达（UI 已禁 resume）
         resumable: info ? info.resumable !== false : undefined,
+        digest: await this.digestOf(binding, hit),
         boundAt: binding.boundAt,
         state: binding.state,
         primary: todo.primarySessionId === binding.sessionId,
@@ -142,8 +198,49 @@ export class SessionService {
         boundTodoTitle: todo.title,
       })
     }
-    // primary 在前，其余按最后使用时间倒序
-    out.sort((a, b) => Number(b.primary) - Number(a.primary) || (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
+    // P0-2：按会话内最后事件时间倒序（跨工具混排）；primary 只加徽标，不改排序。
+    // missing 排最后——它已经不能「接着做」，不该占据时间线顶部。
+    out.sort((a, b) => {
+      if (a.missing !== b.missing) return a.missing ? 1 : -1
+      const at = a.digest?.lastActiveAt ?? a.lastUsedAt ?? 0
+      const bt = b.digest?.lastActiveAt ?? b.lastUsedAt ?? 0
+      return bt - at
+    })
+    return out
+  }
+
+  /**
+   * 首页线索行（P0-6）：每个 todo 取一条「最近会话」的最后一条 user 消息。
+   *
+   * 这里刻意只取 primary（缺省退到最后一条绑定），不扫全部 sessions 列表：
+   * 首页每次渲染都调，不能为了一行小字把 15 个工具的会话库全扫一遍。
+   */
+  async recentForTodos(todoIds: string[]): Promise<TodoRecentSession[]> {
+    const todos = new Map(this.store.list().map((t) => [t.id, t]))
+    const out: TodoRecentSession[] = []
+    for (const todoId of [...new Set(todoIds)].slice(0, 50)) {
+      const todo = todos.get(todoId)
+      if (!todo || todo.bindings.length === 0) continue
+      const binding =
+        todo.bindings.find((b) => b.sessionId === todo.primarySessionId) ??
+        todo.bindings[todo.bindings.length - 1]
+      if (!binding) continue
+      const hit = await this.describeBinding(binding)
+      const digest = await this.digestOf(binding, hit)
+      // 没有消息、也不在进行中 → 这行没有可说的，宁可不占位
+      if (!digest.lastUserMessage && digest.state !== 'active') continue
+      out.push({
+        todoId,
+        toolId: digest.toolId,
+        sessionId: digest.sessionId,
+        state: digest.state,
+        lastUserMessage: digest.lastUserMessage,
+        lastUserMessageAt: digest.lastUserMessageAt,
+        lastActiveAt: digest.lastActiveAt,
+        approximate: digest.approximate,
+        lastUserMessageTruncated: digest.lastUserMessageTruncated,
+      })
+    }
     return out
   }
 
@@ -165,6 +262,87 @@ export class SessionService {
       if (info) return { adapter, info }
     }
     return undefined
+  }
+
+  // ---------- 时间线摘要 + 派生缓存 ----------
+
+  private async digestOf(
+    binding: SessionBinding,
+    hit: { adapter: AiToolAdapter; info?: SessionInfo } | undefined,
+  ): Promise<SessionDigest> {
+    const info = hit?.info
+    const toolId = info?.toolId ?? hit?.adapter.id ?? binding.toolId
+    if (!info) {
+      // 会话文件/记录不在了：仍然是时间线条目，只是 state=missing、没有消息
+      return buildSessionDigest(
+        { toolId, sessionId: binding.sessionId, exists: false },
+        this.clock(),
+      )
+    }
+
+    this.loadDigestCache()
+    const key = `${info.toolId}\u0000${info.sessionId}`
+    const fingerprint = this.fingerprintOf(info)
+    if (fingerprint) {
+      const cached = this.digestCache.get(key)
+      if (cached && sameFingerprint(cached.fingerprint, fingerprint)) {
+        return buildSessionDigest(cached.source, this.clock())
+      }
+    }
+
+    const source = sourceOf(info)
+    if (fingerprint) {
+      this.pruneDigestCache(key)
+      this.digestCache.set(key, { fingerprint, source })
+      this.scheduleDigestPersist()
+    }
+    return buildSessionDigest(source, this.clock())
+  }
+
+  /** 文件指纹：用于判断「证据是否需要重读」；拿不到 stat 就不缓存（每次现算，绝不误用旧证据） */
+  private fingerprintOf(info: SessionInfo): DigestFingerprint | undefined {
+    if (!info.filePath) return undefined
+    try {
+      const st = fs.statSync(info.filePath)
+      return { mtimeMs: st.mtimeMs, size: st.size, lastUsedAt: info.lastUsedAt }
+    } catch {
+      return undefined
+    }
+  }
+
+  private loadDigestCache(): void {
+    if (this.digestCacheLoaded) return
+    this.digestCacheLoaded = true
+    const file = this.digestCacheFile
+    if (!file) return
+    const raw = readJson<DigestCacheFile>(file)
+    if (!raw || raw.version !== 1 || typeof raw.entries !== 'object' || raw.entries === null) return
+    for (const [key, entry] of Object.entries(raw.entries)) {
+      if (!isCacheEntry(entry)) continue
+      this.digestCache.set(key, entry)
+    }
+  }
+
+  private pruneDigestCache(incomingKey: string): void {
+    if (this.digestCache.size < DIGEST_CACHE_MAX || this.digestCache.has(incomingKey)) return
+    // Map 保持插入顺序：删最旧的一批，给新条目腾位置
+    for (const key of [...this.digestCache.keys()].slice(0, 100)) this.digestCache.delete(key)
+  }
+
+  private scheduleDigestPersist(): void {
+    if (!this.digestCacheFile || this.digestWriteTimer) return
+    this.digestWriteTimer = setTimeout(() => {
+      this.digestWriteTimer = undefined
+      try {
+        const entries: Record<string, DigestCacheEntry> = {}
+        for (const [key, entry] of this.digestCache) entries[key] = entry
+        atomicWriteJson(this.digestCacheFile as string, { version: 1, entries })
+      } catch (e) {
+        // 派生缓存写失败不影响功能：下次还会重建
+        console.warn('[tick] session-digests 缓存写入失败:', (e as Error).message)
+      }
+    }, DIGEST_FLUSH_MS)
+    this.digestWriteTimer.unref?.()
   }
 
   /** S5：用一条历史会话建 todo 并绑定（不批量自动生成） */
@@ -239,4 +417,43 @@ export class SessionService {
     const summaries = await this.summaries()
     return summaries.find((x) => x.sessionId === sessionId && (!toolId || x.toolId === toolId))
   }
+}
+
+/** adapter 证据 → 时间线源；没有原文时用旧 `lastMessage` 兜底并标 approximate */
+function sourceOf(info: SessionInfo): SessionDigestSource {
+  const approximate = info.lastUserMessage === undefined && info.lastMessage !== undefined
+  return {
+    toolId: info.toolId,
+    sessionId: info.sessionId,
+    exists: info.exists,
+    lastUserMessage: info.lastUserMessage ?? info.lastMessage,
+    // 压缩标题回退没有可靠消息时间：宁可留空，也不要把文件 mtime 冒充消息时间
+    lastUserMessageAt: info.lastUserMessage === undefined ? undefined : info.lastUserMessageAt,
+    lastEventAt: info.lastEventAt ?? info.lastUsedAt,
+    endedCleanly: info.endedCleanly,
+    running: info.running,
+    approximate,
+  }
+}
+
+function sameFingerprint(a: DigestFingerprint, b: DigestFingerprint): boolean {
+  return a.mtimeMs === b.mtimeMs && a.size === b.size && a.lastUsedAt === b.lastUsedAt
+}
+
+function isCacheEntry(value: unknown): value is DigestCacheEntry {
+  if (typeof value !== 'object' || value === null) return false
+  const entry = value as { fingerprint?: unknown; source?: unknown }
+  const fp = entry.fingerprint as Partial<DigestFingerprint> | undefined
+  const src = entry.source as Partial<SessionDigestSource> | undefined
+  return (
+    typeof fp === 'object' &&
+    fp !== null &&
+    typeof fp.mtimeMs === 'number' &&
+    typeof fp.size === 'number' &&
+    typeof src === 'object' &&
+    src !== null &&
+    typeof src.toolId === 'string' &&
+    typeof src.sessionId === 'string' &&
+    typeof src.exists === 'boolean'
+  )
 }

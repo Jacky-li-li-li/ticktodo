@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { Todo } from '@tick/shared'
+import type { Todo, TodoRecentSession } from '@tick/shared'
 import { CaptureLine } from '../features/editor/capture-line/CaptureLine'
 import { TodoList } from '../features/list/TodoList'
 import { ArchiveList } from '../features/list/ArchiveList'
@@ -47,6 +47,8 @@ export default function App(): React.JSX.Element {
   const [pinned, setPinned] = useState(true)
   const [expanded, setExpanded] = useState(false)
   const [focusSignal, setFocusSignal] = useState(0)
+  /** P0-6：todoId → 最近会话摘要（首屏 / 30s / 回到前台刷新） */
+  const [recent, setRecent] = useState<Record<string, TodoRecentSession>>({})
   const toastTimer = useRef<number>()
 
   const showToast = useCallback((text: string, onUndo?: () => void) => {
@@ -155,6 +157,46 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     if (detailId && !todos.some((t) => t.id === detailId)) setDetailId(null)
   }, [todos, detailId])
+
+  // P0-6：首页每行的「上次说到哪」。只问当前渲染的这几条，避免为一行小字扫全部会话；
+  // 30s 一次 + 回到前台刷新，和详情页的 15s 刷新同一节奏。
+  const recentKey = baseOpen
+    .map((t) => `${t.id}:${t.bindings.length}:${t.primarySessionId ?? ''}`)
+    .join(',')
+  useEffect(() => {
+    const ids = recentKey
+      ? recentKey
+          .split(',')
+          .map((part) => part.split(':')[0] ?? '')
+          .filter(Boolean)
+      : []
+    if (ids.length === 0) {
+      setRecent({})
+      return
+    }
+    let alive = true
+    const tick = (): void => {
+      if (document.hidden) return
+      void window.tick.sessions
+        .recent(ids)
+        .then((list) => {
+          if (!alive) return
+          setRecent(Object.fromEntries(list.map((item) => [item.todoId, item])))
+        })
+        .catch(() => {
+          /* 摘要失败不影响列表：宁可不显示第二行 */
+        })
+    }
+    tick()
+    const timer = window.setInterval(tick, 30_000)
+    const onFocus = (): void => tick()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [recentKey])
 
   // 首页双击标题 → 原地改名（空标题/未变则静默忽略）
   const rename = useCallback(
@@ -354,6 +396,7 @@ export default function App(): React.JSX.Element {
               <>
                 <TodoList
                   todos={baseOpen}
+                  recent={recent}
                   onArchive={archive}
                   onEnter={(t) => setDetailId(t.id)}
                   onRename={rename}

@@ -87,10 +87,10 @@ app.on('second-instance', () => {
 /**
  * 面板内容尺寸口径（与 renderer/styles.css 对应，改动布局时要同步）：
  * - 顶部 chrome：panel padding 14*2 + topbar 26 + gap 12*2 + capture 46 = 126
- * - 每条线索行 44，content 子元素 gap 2；默认最多展示 5 条
+ * - 每条线索行 56（标题 + 上次说到哪两行），content 子元素 gap 2；默认最多展示 5 条
  */
 const PANEL_CHROME_H = 126
-const ROW_H = 44
+const ROW_H = 56
 const ROW_GAP = 2
 const MAX_VISIBLE_ROWS = 5
 
@@ -272,7 +272,10 @@ app.whenReady().then(() => {
   const projectIndex = new ProjectIndexService(adapters, path.join(dirs.cache, 'projects.json'), {
     launchClock,
   })
-  const sessionService = new SessionService(adapters, store)
+  // 时间线派生缓存放 cache/（可再生；不进 data/，避免被同步/当成致命数据）
+  const sessionService = new SessionService(adapters, store, {
+    digestCacheFile: path.join(dirs.cache, 'session-digests.json'),
+  })
   const exportService = new ExportService(adapters, store, () => settingsStore.get(), dirs.exports)
   const mcpConnection = new McpConnectionService({
     isPackaged: app.isPackaged,
