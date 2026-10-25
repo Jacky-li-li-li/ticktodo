@@ -16,7 +16,7 @@
   // ======================================================================
   // 1. 基础
   // ======================================================================
-  const CFG = Object.assign({ version: '0.2.1', date: '2026-10-19', nextShippedIn: null, nextDate: '' }, window.TICK_SITE || {});
+  const CFG = Object.assign({ version: '0.3.2', date: '2026-10-25', nextShippedIn: null, nextDate: '' }, window.TICK_SITE || {});
   /** nextShippedIn 一填，页面上「下一版」的东西就整体算已发布 */
   const SHIPPED = Boolean(CFG.nextShippedIn);
   const REL_VERSION = SHIPPED ? CFG.nextShippedIn : CFG.version;

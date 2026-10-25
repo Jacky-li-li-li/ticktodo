@@ -3,7 +3,7 @@
 | 字段 | 内容 |
 | --- | --- |
 | 状态 | 草案（v2，已同步 Jacky 的决定），待 Jacky 审阅 |
-| 实现状态 | P0-7 / P0-8 的 `workbuddy` / `workbuddy-ai` 适配器**已落地**（2026-10-19，as-built 见 §9B.9 与 `docs/workbuddy-adapter-notes.md` §11）；**P0-1..P0-6 的「最后一条 user 消息 + 跨工具时间线」已于 2026-10-25 落地**（as-built 与本文提案的差异见 §11；三个适配器先给证据：`pi` / `claude` / `workbuddy` + `workbuddy-ai`，其余工具走旧 `lastMessage` 回退并标 `approximate`） |
+| 实现状态 | P0-7 / P0-8 的 `workbuddy` / `workbuddy-ai` 适配器**已落地**（2026-10-19，as-built 见 §9B.9 与 `docs/workbuddy-adapter-notes.md` §11）；**P0-1..P0-6 的「最后一条 user 消息 + 跨工具时间线」已于 2026-10-25 落地并随 v0.3.2 发布**（as-built 与本文提案的差异见 §11；三个适配器先给证据：`pi` / `claude` / `workbuddy` + `workbuddy-ai`，其余工具走旧 `lastMessage` 回退并标 `approximate`） |
 | 日期 | 2026-10-18 |
 | 关联 | `docs/已对齐/PRD-tick.md`（v0.3）、`TECH-ARCH-tick.md` §6、`RESEARCH-magpie.md` |
 | 一句话 | 在 todo 的绑定会话页面，每个会话直接显示该会话**最后一条 user 消息原文**，并把这件事在各 AI 工具里的会话按最后事件时间串成时间线，让人一眼看到「每段停在你说的哪一句」，并能点回任意会话继续。 |
