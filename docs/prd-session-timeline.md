@@ -470,4 +470,5 @@ P0-1..P0-6 已按 as-built 代码交付；§4 / §8 的「建议」与实现有�
 **验证与未做项**
 
 - `pnpm typecheck` 全绿；新增 `pnpm selftest:timeline`（16 PASS，覆盖状态归一 / 三个适配器证据解析 / 排序与 missing / 指纹缓存 / `recentForTodos` / 缓存落盘）；`pnpm selftest:prefill` 86 PASS、`pnpm selftest:update` 31 PASS。
-- 未做：真实多工具混合时间线的端到端 UI 走查（需 Electron 手测）、>50MB 冷读预算实测、WorkBuddy DB `status` 与 jsonl 末条的「去抖」判定（当前直接读 DB `status`，没有 §9.3 描述的 5s 静默窗口）。
+- UI 走查（2026-10-25，只读）：① 合并前的 dev 实例 + 临时 `TICK_HOME` 播种本机真实会话——一条线索下 pi / claude / workbuddy / workbuddy-ai 四个会话按时间倒序混排，状态点、日期、项目名、最后一条 user 原文、「默认」徽标均正确；② 合并 `origin/main`（UI 终值版）后，在真实数据 dev 实例上复查——首页线索行高 56、第二行显示最近一条原文，一条线索的「进展」5 条会话按时间倒序，`primary` 徽标 / `idle`·`done` 状态点 / 日期 / 项目名 / 原文均正确，面板无横向溢出（`scrollWidth === innerWidth`）。
+- 未做：>50MB 冷读预算实测、WorkBuddy DB `status` 与 jsonl 末条的「去抖」判定（当前直接读 DB `status`，没有 §9.3 描述的 5s 静默窗口）、真实「进行中」会话的活跃窗口观察（需要用户在 10 分钟内实际操作工具）。
